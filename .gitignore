@@ -1,0 +1,28 @@
+# Build
+build/
+dist/
+installer_output/
+*.spec.bak
+__pycache__/
+*.pyc
+
+# Data (user profiles)
+data/runtime/
+data/profiles/
+
+# Claude
+.claude/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+server.err.log
+server.out.log
+data/profiles.json
+artifacts/

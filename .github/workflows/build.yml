@@ -1,0 +1,90 @@
+name: Build FoxDesk Installer
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g. v1.0.0)'
+        required: false
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install pillow
+
+      - name: Create icon
+        run: python make_ico.py
+
+      - name: Build with PyInstaller
+        run: python -m PyInstaller foxdesk.spec --noconfirm --clean --log-level WARN
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Build installer
+        run: |
+          $iscc = Get-ChildItem "C:\Program Files*\Inno Setup 6\ISCC.exe" | Select-Object -First 1
+          & $iscc.FullName installer.iss
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: FoxDesk-Installer
+          path: installer_output/FoxDesk-*-Setup.exe
+          retention-days: 30
+
+      - name: Upload portable
+        uses: actions/upload-artifact@v4
+        with:
+          name: FoxDesk-Portable
+          path: dist/FoxDesk/
+          retention-days: 30
+
+  release:
+    needs: build-windows
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - name: Download installer
+        uses: actions/download-artifact@v4
+        with:
+          name: FoxDesk-Installer
+          path: dist/
+
+      - name: Download portable
+        uses: actions/download-artifact@v4
+        with:
+          name: FoxDesk-Portable
+          path: portable/
+
+      - name: Create zip from portable
+        run: cd portable && zip -r ../FoxDesk-windows-x64.zip .
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/FoxDesk-*-Setup.exe
+            FoxDesk-windows-x64.zip
+          generate_release_notes: true
+          draft: false
+          prerelease: false

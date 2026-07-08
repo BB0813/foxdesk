@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FoxDesk</title>
+    <link rel="icon" type="image/png" href="/assets/logo.png" />
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <!-- ═══ Top Bar ═══ -->
+    <header class="top-bar">
+      <div class="brand">
+        <img class="brand-icon" src="/assets/logo.png" alt="FoxDesk" />
+        <span class="brand-name">FoxDesk</span>
+      </div>
+      <nav class="tab-nav">
+        <button type="button" class="active" data-page="profiles">
+          <i data-lucide="fingerprint"></i>
+          <span data-i18n="tabProfiles">配置档案</span>
+        </button>
+        <button type="button" data-page="sessions">
+          <i data-lucide="monitor-play"></i>
+          <span data-i18n="tabSessions">运行会话</span>
+        </button>
+        <button type="button" data-page="system">
+          <i data-lucide="settings-2"></i>
+          <span data-i18n="tabSystem">系统</span>
+        </button>
+      </nav>
+      <div class="top-actions">
+        <span class="status-pill" id="installStatus">Checking</span>
+        <button class="button secondary icon-only" id="themeToggle" type="button" title="Dark mode">
+          <i data-lucide="moon"></i>
+        </button>
+        <div class="segmented" aria-label="Language">
+          <button type="button" data-lang="zh" class="active">中</button>
+          <button type="button" data-lang="en">EN</button>
+        </div>
+        <button class="button secondary icon-only" id="refreshBtn" type="button" title="Refresh">
+          <i data-lucide="refresh-cw"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- ═══ Tab: Profiles ═══ -->
+    <div class="workspace">
+      <div class="tab-page active" data-page="profiles">
+        <div class="profiles-layout">
+          <!-- Profile Sidebar -->
+          <div class="profile-sidebar panel">
+            <div class="panel-head">
+              <div>
+                <h2 data-i18n="profiles">配置档案</h2>
+                <p data-i18n="profilesDesc">管理 Camoufox 启动参数</p>
+              </div>
+              <div class="button-row">
+                <button class="button secondary icon-only" id="importBtn" type="button" title="Import">
+                  <i data-lucide="upload"></i>
+                </button>
+                <button class="button secondary icon-only" id="exportBtn" type="button" title="Export">
+                  <i data-lucide="download"></i>
+                </button>
+                <button class="button secondary icon-only" id="viewToggleBtn" type="button" title="Toggle view">
+                  <i data-lucide="list"></i>
+                </button>
+                <button class="button icon-only" id="newProfileBtn" type="button" title="New">
+                  <i data-lucide="plus"></i>
+                </button>
+              </div>
+            </div>
+            <div class="profile-search">
+              <input id="profileSearch" type="text" data-i18n-placeholder="searchProfiles" placeholder="搜索档案..." />
+            </div>
+            <div class="tag-filter-bar" id="tagFilterBar"></div>
+            <div class="profile-list-wrap">
+              <div class="profile-list" id="profileList" aria-live="polite"></div>
+            </div>
+            <div class="batch-bar hidden" id="batchBar">
+              <span id="batchCount" style="font-size:12px;color:var(--muted)"></span>
+              <button class="button" id="batchStartBtn" type="button" style="min-height:28px;font-size:12px">
+                <i data-lucide="play"></i>
+                <span data-i18n="batchStart">批量启动</span>
+              </button>
+            </div>
+            <input id="importFile" type="file" accept="application/json,.json" hidden />
+          </div>
+
+          <!-- Profile Editor -->
+          <div class="panel editor-panel">
+            <div class="panel-head">
+              <div>
+                <h2 data-i18n="editor">档案编辑器</h2>
+                <p id="editorHint">选择一个档案后编辑</p>
+              </div>
+              <div class="button-row">
+                <button class="button secondary" id="openDirBtn" type="button">
+                  <i data-lucide="folder-open"></i>
+                  <span data-i18n="openDir">目录</span>
+                </button>
+                <button class="button secondary" id="cloneBtn" type="button">
+                  <i data-lucide="copy"></i>
+                  <span data-i18n="clone">复制</span>
+                </button>
+                <button class="button secondary" id="checkFpBtn" type="button">
+                  <i data-lucide="scan"></i>
+                  <span data-i18n="checkFingerprint">检测</span>
+                </button>
+                <button class="button secondary" id="launchBtn" type="button">
+                  <i data-lucide="play"></i>
+                  <span data-i18n="launch">启动</span>
+                </button>
+                <button class="button primary" id="saveBtn" type="button">
+                  <i data-lucide="save"></i>
+                  <span data-i18n="save">保存</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="tab-bar" id="profileTabBar">
+              <button type="button" class="active" data-tab="basic"><span data-i18n="tabBasic">基础</span></button>
+              <button type="button" data-tab="proxy"><span data-i18n="tabProxy">代理</span></button>
+              <button type="button" data-tab="fingerprint"><span data-i18n="tabFingerprint">指纹环境</span></button>
+              <button type="button" data-tab="advanced"><span data-i18n="tabAdvanced">高级</span></button>
+            </div>
+
+            <form class="form-grid" id="profileForm">
+              <div class="tab-content active" data-tab-content="basic">
+                <div class="form-grid">
+                  <label>
+                    <span data-i18n="name">名称</span>
+                    <input name="name" required maxlength="80" />
+                  </label>
+                  <label>
+                    <span data-i18n="startupUrl">启动网址</span>
+                    <input name="startup_url" placeholder="https://browserleaks.com/javascript" />
+                  </label>
+                  <label>
+                    <span data-i18n="mode">模式</span>
+                    <select name="mode">
+                      <option value="browser" data-i18n-option="modeBrowser">浏览器</option>
+                      <option value="server" data-i18n-option="modeServer">远程服务</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span data-i18n="targetOs">目标系统</span>
+                    <select name="os">
+                      <option value="auto" data-i18n-option="osAuto">自动</option>
+                      <option value="windows" data-i18n-option="osWindows">Windows</option>
+                      <option value="macos" data-i18n-option="osMacos">macOS</option>
+                      <option value="linux" data-i18n-option="osLinux">Linux</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span data-i18n="userDataDir">用户数据目录</span>
+                    <input name="user_data_dir" placeholder="data/profiles/name" />
+                  </label>
+                  <label>
+                    <span data-i18n="locale">语言区域</span>
+                    <input name="locale" placeholder="en-US / zh-CN" />
+                  </label>
+                  <label>
+                    <span data-i18n="tags">标签</span>
+                    <input name="tags" data-i18n-placeholder="tagsPlaceholder" placeholder="标签 (逗号分隔)" />
+                  </label>
+                  <label class="span-2">
+                    <span data-i18n="notes">备注</span>
+                    <textarea name="notes" rows="2"></textarea>
+                  </label>
+                </div>
+                <div class="toggle-grid" style="margin-top:4px">
+                  <label class="toggle"><input type="checkbox" name="headless" /> <span data-i18n="toggleHeadless">无界面模式</span></label>
+                  <label class="toggle"><input type="checkbox" name="persistent_context" /> <span data-i18n="togglePersistent">持久化上下文</span></label>
+                  <label class="toggle"><input type="checkbox" name="humanize" /> <span data-i18n="toggleHumanize">人性化</span></label>
+                  <label class="toggle"><input type="checkbox" name="geoip" /> <span data-i18n="toggleGeoip">地理位置</span></label>
+                  <label class="toggle"><input type="checkbox" name="block_images" /> <span data-i18n="toggleBlockImages">拦截图片</span></label>
+                  <label class="toggle"><input type="checkbox" name="block_webrtc" /> <span data-i18n="toggleBlockWebrtc">拦截 WebRTC</span></label>
+                  <label class="toggle"><input type="checkbox" name="block_webgl" /> <span data-i18n="toggleBlockWebgl">拦截 WebGL</span></label>
+                  <label class="toggle"><input type="checkbox" name="disable_coop" /> <span data-i18n="toggleDisableCoop">禁用 COOP</span></label>
+                  <label class="toggle"><input type="checkbox" name="enable_cache" /> <span data-i18n="toggleEnableCache">启用缓存</span></label>
+                </div>
+              </div>
+
+              <div class="tab-content" data-tab-content="proxy">
+                <div class="form-grid">
+                  <label>
+                    <span data-i18n="proxyServer">代理地址</span>
+                    <input name="proxy_server" placeholder="http://127.0.0.1:8080 / socks5://127.0.0.1:20170" />
+                  </label>
+                  <label>
+                    <span data-i18n="proxyUsername">代理用户名</span>
+                    <input name="proxy_username" />
+                  </label>
+                  <label>
+                    <span data-i18n="proxyPassword">代理密码</span>
+                    <input name="proxy_password" type="password" autocomplete="off" />
+                  </label>
+                  <div class="span-2" style="display:flex;align-items:flex-end;gap:8px">
+                    <button class="button secondary" id="testProxyBtn" type="button" style="white-space:nowrap">
+                      <i data-lucide="activity"></i>
+                      <span data-i18n="testProxy">测试代理</span>
+                    </button>
+                    <div id="proxyResult" style="flex:1"></div>
+                  </div>
+                  <div class="span-2" style="margin-top:8px;padding-top:12px;border-top:1px solid var(--border)">
+                    <label style="margin-bottom:8px">
+                      <span style="font-size:12px;font-weight:600;color:var(--muted)" data-i18n="bulkProxyImport">批量导入代理（每行一个）</span>
+                      <textarea id="bulkProxyInput" rows="4" placeholder="socks5://user:pass@1.2.3.4:1080&#10;http://5.6.7.8:8080&#10;..." style="margin-top:6px;font-family:var(--mono);font-size:12px"></textarea>
+                    </label>
+                    <div style="display:flex;gap:8px;margin-top:6px">
+                      <button class="button secondary" id="bulkProxyBtn" type="button" style="min-height:30px;font-size:12px">
+                        <i data-lucide="upload"></i>
+                        <span data-i18n="bulkProxyImportBtn">批量导入</span>
+                      </button>
+                      <span id="bulkProxyResult" style="font-size:12px;color:var(--muted);display:flex;align-items:center"></span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="tab-content" data-tab-content="fingerprint">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                  <span style="font-size:13px;font-weight:600;color:var(--muted)" data-i18n="fingerprintParams">指纹参数</span>
+                  <button class="button secondary" id="randomFpBtn" type="button" style="min-height:30px;font-size:12px">
+                    <i data-lucide="shuffle"></i>
+                    <span data-i18n="randomFingerprint">随机生成</span>
+                  </button>
+                </div>
+                <div class="form-grid">
+                  <label>
+                    <span data-i18n="navigatorPlatform">Platform</span>
+                    <input name="navigator_platform" placeholder="Win32 / MacIntel / Linux x86_64" />
+                  </label>
+                  <label>
+                    <span data-i18n="navigatorVendor">Vendor</span>
+                    <input name="navigator_vendor" placeholder="Google Inc." />
+                  </label>
+                  <label>
+                    <span data-i18n="screenWidth">Screen Width</span>
+                    <input name="screen_width" type="number" placeholder="1920" />
+                  </label>
+                  <label>
+                    <span data-i18n="screenHeight">Screen Height</span>
+                    <input name="screen_height" type="number" placeholder="1080" />
+                  </label>
+                  <label>
+                    <span data-i18n="colorDepth">Color Depth</span>
+                    <input name="screen_color_depth" type="number" placeholder="24" />
+                  </label>
+                  <label>
+                    <span data-i18n="pixelRatio">Pixel Ratio</span>
+                    <input name="device_pixel_ratio" type="number" step="0.1" placeholder="1.0" />
+                  </label>
+                  <label>
+                    <span data-i18n="webglVendor">WebGL Vendor</span>
+                    <input name="webgl_vendor" placeholder="Google Inc. (NVIDIA)" />
+                  </label>
+                  <label>
+                    <span data-i18n="webglRenderer">WebGL Renderer</span>
+                    <input name="webgl_renderer" placeholder="ANGLE (NVIDIA, ...)" />
+                  </label>
+                  <label>
+                    <span data-i18n="timezone">时区</span>
+                    <input name="timezone" placeholder="America/New_York" />
+                  </label>
+                  <label>
+                    <span data-i18n="locale">语言区域</span>
+                    <input name="fp_locale" placeholder="en-US" />
+                  </label>
+                  <label>
+                    <span data-i18n="webrtcMode">WebRTC Mode</span>
+                    <select name="webrtc_mode">
+                      <option value="default" data-i18n-option="default">默认</option>
+                      <option value="disable" data-i18n-option="disable">禁用</option>
+                      <option value="public_only" data-i18n-option="publicOnly">仅公网</option>
+                      <option value="force_proxy" data-i18n-option="forceProxy">强制代理</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span data-i18n="mediaDevices">媒体设备</span>
+                    <select name="media_devices">
+                      <option value="default" data-i18n-option="default">默认</option>
+                      <option value="random" data-i18n-option="random">随机</option>
+                      <option value="empty" data-i18n-option="empty">空</option>
+                    </select>
+                  </label>
+                  <label class="span-2">
+                    <span data-i18n="fonts">Fonts (comma-separated)</span>
+                    <input name="fonts" placeholder="Arial, Helvetica, Times New Roman..." />
+                  </label>
+                </div>
+                <div class="toggle-grid" style="margin-top:12px">
+                  <label class="toggle"><input type="checkbox" name="canvas_noise" checked /> <span data-i18n="canvasNoise">Canvas Noise</span></label>
+                  <label class="toggle"><input type="checkbox" name="audio_noise" checked /> <span data-i18n="audioNoise">Audio Noise</span></label>
+                </div>
+                <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);display:flex;gap:8px">
+                  <button class="button secondary" id="exportCookiesBtn" type="button" style="min-height:30px;font-size:12px">
+                    <i data-lucide="cookie"></i>
+                    <span data-i18n="exportCookies">导出 Cookie</span>
+                  </button>
+                  <button class="button secondary" id="importCookiesBtn" type="button" style="min-height:30px;font-size:12px">
+                    <i data-lucide="upload"></i>
+                    <span data-i18n="importCookies">导入 Cookie</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="tab-content" data-tab-content="advanced">
+                <div class="form-grid">
+                  <label>
+                    <span data-i18n="addons">扩展路径</span>
+                    <input name="addons" placeholder="逗号或换行分隔" />
+                  </label>
+                  <label>
+                    <span data-i18n="extraArgs">额外启动参数</span>
+                    <input name="extra_args" placeholder="--start-maximized, --disable-features=..." />
+                  </label>
+                </div>
+              </div>
+            </form>
+            <div class="fp-check-result" id="fpCheckResult"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ Tab: Sessions ═══ -->
+      <div class="tab-page" data-page="sessions">
+        <div class="sessions-layout">
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h2 data-i18n="sessions">运行会话</h2>
+                <p data-i18n="sessionsDesc">由管理器启动和跟踪的 Camoufox 进程</p>
+              </div>
+              <div class="button-row">
+                <button class="button danger" id="stopAllBtn" type="button" style="min-height:30px;font-size:12px">
+                  <i data-lucide="square"></i>
+                  <span data-i18n="stopAll">全部停止</span>
+                </button>
+                <button class="button secondary" id="refreshSessionsBtn" type="button">
+                  <i data-lucide="refresh-cw"></i>
+                  <span data-i18n="refresh">刷新</span>
+                </button>
+              </div>
+            </div>
+            <div class="process-list" id="sessionList"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ Tab: System ═══ -->
+      <div class="tab-page" data-page="system">
+        <div class="system-layout">
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h2 data-i18n="system">系统与安装</h2>
+                <p data-i18n="systemDesc">检查 Python 环境、Camoufox 包和浏览器文件</p>
+              </div>
+              <div class="button-row">
+                <button class="button secondary" data-task="install" type="button">Install</button>
+                <button class="button secondary" data-task="version" type="button">Version</button>
+                <button class="button secondary" data-task="path" type="button">Path</button>
+                <button class="button secondary" data-task="test" type="button">Test</button>
+                <button class="button primary" data-task="fetch" type="button">Fetch</button>
+              </div>
+            </div>
+            <div class="install-flow" id="installFlow"></div>
+            <div class="channel-bar" id="channelBar">
+              <span data-i18n="downloadSource">下载源</span>
+              <div class="segmented" id="channelSelector"></div>
+              <button class="button primary" id="channelFetchBtn" type="button">
+                <i data-lucide="download"></i>
+                <span data-i18n="fetchBtn">Fetch</span>
+              </button>
+            </div>
+            <div id="channelCustomRow" style="display:none;padding:10px 16px;border-top:1px solid var(--border)">
+              <label style="display:flex;gap:8px;align-items:center">
+                <span style="font-size:12px;color:var(--muted);white-space:nowrap" data-i18n="customMirrorUrl">自定义镜像地址</span>
+                <input id="customMirrorInput" placeholder="https://mirror.example.com/" style="flex:1" />
+              </label>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h2 data-i18n="systemInfo">System Info</h2>
+              </div>
+            </div>
+            <dl class="system-grid" id="systemGrid"></dl>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h2 data-i18n="taskHistory">任务历史</h2>
+              </div>
+            </div>
+            <div class="task-list" id="taskList"></div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h2 data-i18n="activityLog">操作日志</h2>
+              </div>
+            </div>
+            <div id="activityList"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <!-- Context Menu -->
+    <div id="contextMenu" style="display:none;position:fixed;z-index:200;min-width:180px;background:var(--surface-active);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:var(--radius-sm);box-shadow:0 8px 32px rgba(0,0,0,0.3);padding:4px">
+      <button class="ctx-item" data-action="launch" type="button"><i data-lucide="play"></i> <span data-i18n="launch">启动</span></button>
+      <button class="ctx-item" data-action="edit" type="button"><i data-lucide="pencil"></i> <span data-i18n="editor">编辑</span></button>
+      <button class="ctx-item" data-action="clone" type="button"><i data-lucide="copy"></i> <span data-i18n="clone">复制</span></button>
+      <button class="ctx-item" data-action="export" type="button"><i data-lucide="download"></i> <span data-i18n="export">导出</span></button>
+      <button class="ctx-item" data-action="open-dir" type="button"><i data-lucide="folder-open"></i> <span data-i18n="openDir">目录</span></button>
+      <div style="height:1px;background:var(--border);margin:4px 0"></div>
+      <button class="ctx-item danger" data-action="delete" type="button"><i data-lucide="trash-2"></i> <span data-i18n="delete">删除</span></button>
+    </div>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script src="/assets/app.js"></script>
+  </body>
+</html>

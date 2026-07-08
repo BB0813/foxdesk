@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FoxDesk - 文档</title>
+  <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/user-attachments/assets/logo.png">
+  <style>
+    :root {
+      --bg: #0a0e17; --surface: rgba(255,255,255,0.04); --surface-hover: rgba(255,255,255,0.07);
+      --border: rgba(255,255,255,0.06); --ink: #e2e8f0; --muted: #94a3b8; --primary: #06b6d4;
+      --primary-glow: rgba(6,182,212,0.25); --danger: #ef4444; --success: #22c55e;
+      --radius: 12px; --font: 'Segoe UI', system-ui, sans-serif; --mono: 'Cascadia Code', Consolas, monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 15px; line-height: 1.7; }
+    a { color: var(--primary); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .layout { display: grid; grid-template-columns: 260px 1fr; min-height: 100vh; }
+    .sidebar {
+      position: sticky; top: 0; height: 100vh; padding: 24px 20px;
+      border-right: 1px solid var(--border); background: var(--surface);
+      backdrop-filter: blur(16px); overflow-y: auto;
+    }
+    .sidebar .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 28px; }
+    .sidebar .brand img { width: 32px; height: 32px; border-radius: 8px; }
+    .sidebar .brand span { font-weight: 700; font-size: 17px; }
+    .sidebar nav { display: flex; flex-direction: column; gap: 2px; }
+    .sidebar nav a {
+      padding: 8px 12px; border-radius: 8px; color: var(--muted); font-size: 14px; font-weight: 500;
+      transition: all 150ms;
+    }
+    .sidebar nav a:hover { background: var(--surface-hover); color: var(--ink); text-decoration: none; }
+    .sidebar nav a.active { background: var(--primary-glow); color: var(--primary); }
+    .sidebar nav .section-label {
+      font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase;
+      letter-spacing: 0.8px; padding: 16px 12px 6px; margin-top: 8px;
+    }
+
+    .main { padding: 40px 56px; max-width: 860px; }
+    h1 { font-size: 32px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 8px; }
+    h2 { font-size: 22px; font-weight: 700; margin: 36px 0 12px; letter-spacing: -0.3px; }
+    h3 { font-size: 17px; font-weight: 600; margin: 24px 0 8px; }
+    p { margin: 8px 0; color: var(--muted); }
+    p strong { color: var(--ink); }
+
+    .subtitle { color: var(--muted); font-size: 16px; margin-bottom: 32px; }
+
+    .card {
+      border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface);
+      padding: 20px 24px; margin: 16px 0;
+    }
+
+    pre {
+      background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 8px;
+      padding: 16px; overflow-x: auto; font-family: var(--mono); font-size: 13px;
+      line-height: 1.6; color: #a5f3fc; margin: 12px 0;
+    }
+
+    code { font-family: var(--mono); font-size: 13px; background: rgba(6,182,212,0.1); padding: 2px 6px; border-radius: 4px; color: var(--primary); }
+
+    table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+    th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+    td code { font-size: 12px; }
+
+    .badge {
+      display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+    }
+    .badge.p0 { background: rgba(239,68,68,0.15); color: var(--danger); }
+    .badge.p1 { background: rgba(245,158,11,0.15); color: #f59e0b; }
+    .badge.p2 { background: rgba(6,182,212,0.15); color: var(--primary); }
+
+    ul { margin: 8px 0; padding-left: 20px; color: var(--muted); }
+    li { margin: 4px 0; }
+
+    .hero { text-align: center; padding: 80px 0 40px; }
+    .hero h1 { font-size: 48px; margin-bottom: 12px; }
+    .hero p { font-size: 18px; }
+    .hero .badges { display: flex; gap: 10px; justify-content: center; margin-top: 20px; }
+    .hero .badges span {
+      padding: 6px 14px; border-radius: 999px; border: 1px solid var(--border);
+      font-size: 13px; color: var(--muted);
+    }
+
+    @media (max-width: 800px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--border); }
+      .main { padding: 24px 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <img src="https://raw.githubusercontent.com/user-attachments/assets/logo.png" alt="FoxDesk" onerror="this.style.display='none'">
+        <span>FoxDesk</span>
+      </div>
+      <nav>
+        <a href="#home" class="active">首页</a>
+        <div class="section-label">用户指南</div>
+        <a href="#install">安装与启动</a>
+        <a href="#quickstart">快速上手</a>
+        <a href="#profiles">配置档案</a>
+        <a href="#fingerprint">指纹参数</a>
+        <a href="#proxy">代理设置</a>
+        <a href="#sessions">会话管理</a>
+        <a href="#cookies">Cookie 管理</a>
+        <a href="#download">下载源</a>
+        <div class="section-label">开发者</div>
+        <a href="#architecture">系统架构</a>
+        <a href="#api">API 接口</a>
+        <a href="#build">构建与打包</a>
+        <a href="#contributing">参与贡献</a>
+        <a href="#changelog">更新日志</a>
+      </nav>
+    </aside>
+
+    <main class="main">
+      <!-- HOME -->
+      <div id="home" class="hero">
+        <h1>FoxDesk</h1>
+        <p>本地 Camoufox 指纹浏览器管理器 — 免费、开源、隐私优先</p>
+        <div class="badges">
+          <span>Python 3.12+</span>
+          <span>FastAPI</span>
+          <span>Camoufox</span>
+          <span>Windows / macOS / Linux</span>
+        </div>
+      </div>
+
+      <!-- INSTALL -->
+      <h2 id="install">安装与启动</h2>
+      <h3>方式一：直接运行（推荐开发者）</h3>
+      <pre>git clone https://github.com/yourname/foxdesk.git
+cd foxdesk
+python -m pip install -r requirements.txt
+python desktop.py</pre>
+      <p>或双击 <code>Start-CamoufoxManager.bat</code></p>
+
+      <h3>方式二：下载 exe 安装包</h3>
+      <p>从 <a href="#">GitHub Releases</a> 下载最新版本，解压后双击 <code>FoxDesk.exe</code> 即可运行。</p>
+      <p>无需安装 Python 环境。</p>
+
+      <h3>方式三：Web 调试模式</h3>
+      <pre>python -m uvicorn backend.app:app --host 127.0.0.1 --port 8765 --reload
+# 浏览器打开 http://127.0.0.1:8765</pre>
+
+      <h3>首次启动</h3>
+      <p>首次启动需要安装 Camoufox 浏览器。进入「系统」标签页，按顺序执行：</p>
+      <div class="card">
+        <p><strong>1. Install</strong> — 安装 Python 包 <code>pip install camoufox</code></p>
+        <p><strong>2. Fetch</strong> — 下载浏览器二进制文件 <code>camoufox fetch</code></p>
+        <p><strong>3. Test</strong> — 运行自检（可选，可能耗时较长）</p>
+      </div>
+
+      <!-- QUICKSTART -->
+      <h2 id="quickstart">快速上手</h2>
+      <ol style="color:var(--muted);padding-left:20px">
+        <li>启动 FoxDesk</li>
+        <li>点击「新建」创建一个 Profile</li>
+        <li>在「基础」标签页设置名称和启动网址</li>
+        <li>在「代理」标签页填写代理地址（可选）</li>
+        <li>在「指纹环境」标签页点击「随机生成」</li>
+        <li>点击「保存」</li>
+        <li>点击「启动」打开浏览器</li>
+      </ol>
+
+      <!-- PROFILES -->
+      <h2 id="profiles">配置档案</h2>
+      <p>Profile 是 FoxDesk 的核心概念，每个 Profile 对应一个独立的浏览器身份。</p>
+      <table>
+        <tr><th>字段</th><th>说明</th><th>默认值</th></tr>
+        <tr><td><code>name</code></td><td>档案名称</td><td>新档案</td></tr>
+        <tr><td><code>startup_url</code></td><td>浏览器启动后打开的网址</td><td>browserleaks.com</td></tr>
+        <tr><td><code>mode</code></td><td>浏览器模式 / 远程服务模式</td><td>browser</td></tr>
+        <tr><td><code>os</code></td><td>模拟的操作系统</td><td>auto</td></tr>
+        <tr><td><code>user_data_dir</code></td><td>浏览器数据持久化目录</td><td>自动生成</td></tr>
+        <tr><td><code>locale</code></td><td>语言区域</td><td>空（使用系统默认）</td></tr>
+        <tr><td><code>tags</code></td><td>自定义标签，逗号分隔</td><td>空</td></tr>
+      </table>
+
+      <h3>操作</h3>
+      <ul>
+        <li><strong>新建</strong> — 创建空 Profile</li>
+        <li><strong>保存</strong> — 保存当前编辑的 Profile</li>
+        <li><strong>复制</strong> — 克隆当前 Profile</li>
+        <li><strong>删除</strong> — 右键菜单删除</li>
+        <li><strong>导入/导出</strong> — JSON 格式导入导出</li>
+        <li><strong>右键菜单</strong> — 在 Profile 列表右键可启动、编辑、复制、导出、删除</li>
+      </ul>
+
+      <!-- FINGERPRINT -->
+      <h2 id="fingerprint">指纹参数</h2>
+      <p>在「指纹环境」标签页可以精确控制浏览器指纹：</p>
+      <table>
+        <tr><th>参数</th><th>说明</th></tr>
+        <tr><td><code>Platform</code></td><td>navigator.platform（Win32 / MacIntel / Linux x86_64）</td></tr>
+        <tr><td><code>Vendor</code></td><td>navigator.vendor（Google Inc. / Apple Computer, Inc.）</td></tr>
+        <tr><td><code>Screen</code></td><td>屏幕分辨率、色深、像素比</td></tr>
+        <tr><td><code>WebGL</code></td><td>WebGL 厂商和渲染器</td></tr>
+        <tr><td><code>Timezone</code></td><td>时区（如 America/New_York）</td></tr>
+        <tr><td><code>WebRTC Mode</code></td><td>Default / Disable / Public Only / Force Proxy</td></tr>
+        <tr><td><code>Canvas Noise</code></td><td>Canvas 指纹噪声</td></tr>
+        <tr><td><code>Audio Noise</code></td><td>音频指纹噪声</td></tr>
+        <tr><td><code>Fonts</code></td><td>自定义字体列表</td></tr>
+      </table>
+
+      <h3>随机生成</h3>
+      <p>点击「随机生成」按钮，会根据选择的 OS 自动生成一套完整的指纹参数组合。</p>
+
+      <h3>指纹检测</h3>
+      <p>点击编辑器顶栏「检测」按钮，FoxDesk 会分析当前 Profile 的指纹一致性，给出 0-100 分评分并列出潜在问题。</p>
+
+      <!-- PROXY -->
+      <h2 id="proxy">代理设置</h2>
+      <p>支持的代理协议：</p>
+      <table>
+        <tr><th>协议</th><th>格式</th></tr>
+        <tr><td>HTTP</td><td><code>http://host:port</code></td></tr>
+        <tr><td>HTTPS</td><td><code>https://host:port</code></td></tr>
+        <tr><td>SOCKS4</td><td><code>socks4://host:port</code></td></tr>
+        <tr><td>SOCKS5</td><td><code>socks5://host:port</code></td></tr>
+      </table>
+      <p>支持认证：<code>socks5://user:pass@host:port</code></p>
+      <p>只填 <code>host:port</code> 会自动补全为 <code>http://host:port</code></p>
+
+      <h3>代理测试</h3>
+      <p>点击「测试代理」按钮，FoxDesk 会通过代理连接到检测服务器，返回：</p>
+      <ul>
+        <li>出口 IP 地址</li>
+        <li>连接延迟</li>
+        <li>成功/失败状态</li>
+      </ul>
+
+      <h3>批量导入</h3>
+      <p>在代理标签页底部，每行一个代理地址，点击「批量导入」会自动分配给 Profile。</p>
+
+      <!-- SESSIONS -->
+      <h2 id="sessions">会话管理</h2>
+      <p>每个启动的浏览器是一个「会话」。在「运行会话」标签页可以看到所有运行中的会话。</p>
+      <ul>
+        <li><strong>展开详情</strong> — 点击会话行的下拉箭头</li>
+        <li><strong>查看日志</strong> — 展开后可看到实时日志</li>
+        <li><strong>下载日志</strong> — 点击「下载日志」按钮</li>
+        <li><strong>停止</strong> — 点击「停止」按钮终止进程</li>
+        <li><strong>全部停止</strong> — 一键停止所有会话</li>
+      </ul>
+
+      <!-- COOKIES -->
+      <h2 id="cookies">Cookie 管理</h2>
+      <p>在「指纹环境」标签页底部：</p>
+      <ul>
+        <li><strong>导出 Cookie</strong> — 从 Profile 的 cookies.sqlite 读取并下载为 JSON</li>
+        <li><strong>导入 Cookie</strong> — 上传 JSON 格式的 Cookie 文件</li>
+      </ul>
+
+      <!-- DOWNLOAD -->
+      <h2 id="download">下载源</h2>
+      <p>在「系统」标签页可以选择不同的 Camoufox 下载源：</p>
+      <table>
+        <tr><th>源</th><th>说明</th></tr>
+        <tr><td>GitHub Official</td><td>官方 GitHub Releases</td></tr>
+        <tr><td>GitHub Mirror</td><td>ghproxy.com 镜像（中国加速）</td></tr>
+        <tr><td>Custom Mirror</td><td>自定义镜像地址</td></tr>
+      </table>
+
+      <!-- ARCHITECTURE -->
+      <h2 id="architecture">系统架构</h2>
+      <pre>
+FoxDesk
+├── desktop.py              # 桌面启动器（pywebview / 浏览器回退）
+├── backend/
+│   ├── app.py              # FastAPI 主服务（API + 静态文件）
+│   └── camoufox_worker.py  # Camoufox 启动 worker 进程
+├── static/
+│   ├── index.html          # 前端 SPA
+│   ├── styles.css          # 样式（深浅色双主题）
+│   ├── app.js              # 前端逻辑（原生 JS，无框架）
+│   └── logo.png            # 品牌 Logo
+├── data/
+│   ├── profiles.json       # Profile 数据
+│   ├── channels.json       # 下载源配置
+│   ├── activity.json       # 操作日志
+│   └── runtime/            # 运行时临时文件
+└── foxdesk.spec            # PyInstaller 打包配置</pre>
+
+      <h3>数据流</h3>
+      <p><strong>桌面启动流程：</strong></p>
+      <ol style="color:var(--muted);padding-left:20px">
+        <li><code>desktop.py</code> 找可用端口</li>
+        <li>启动 uvicorn 后端（子进程或内嵌）</li>
+        <li>等待后端就绪</li>
+        <li>用 pywebview 打开窗口（或回退到浏览器）</li>
+      </ol>
+
+      <p><strong>会话启动流程：</strong></p>
+      <ol style="color:var(--muted);padding-left:20px">
+        <li>前端调用 <code>POST /api/sessions</code></li>
+        <li>后端验证 Profile → 写入 runtime JSON</li>
+        <li>启动 <code>camoufox_worker.py</code> 子进程</li>
+        <li>Worker 读取 Profile → 调用 Camoufox API</li>
+        <li>Worker 通过 stdout 输出 JSON 日志事件</li>
+        <li>后端捕获日志 → 前端轮询显示</li>
+      </ol>
+
+      <!-- API -->
+      <h2 id="api">API 接口</h2>
+      <p>所有接口基础路径：<code>http://127.0.0.1:8765</code></p>
+
+      <h3>系统</h3>
+      <table>
+        <tr><th>方法</th><th>路径</th><th>说明</th></tr>
+        <tr><td>GET</td><td><code>/api/system</code></td><td>系统状态与安装信息</td></tr>
+        <tr><td>POST</td><td><code>/api/tasks/{name}</code></td><td>执行任务（install/fetch/test/version/path）</td></tr>
+        <tr><td>GET</td><td><code>/api/tasks</code></td><td>任务列表</td></tr>
+      </table>
+
+      <h3>Profile</h3>
+      <table>
+        <tr><th>方法</th><th>路径</th><th>说明</th></tr>
+        <tr><td>GET</td><td><code>/api/profiles</code></td><td>Profile 列表</td></tr>
+        <tr><td>POST</td><td><code>/api/profiles</code></td><td>创建 Profile</td></tr>
+        <tr><td>PUT</td><td><code>/api/profiles/{id}</code></td><td>更新 Profile</td></tr>
+        <tr><td>DELETE</td><td><code>/api/profiles/{id}</code></td><td>删除 Profile</td></tr>
+        <tr><td>POST</td><td><code>/api/profiles/{id}/clone</code></td><td>克隆 Profile</td></tr>
+        <tr><td>GET</td><td><code>/api/profiles/export</code></td><td>导出所有 Profile</td></tr>
+        <tr><td>POST</td><td><code>/api/profiles/import</code></td><td>导入 Profile</td></tr>
+        <tr><td>POST</td><td><code>/api/profiles/{id}/open-data-dir</code></td><td>打开数据目录</td></tr>
+        <tr><td>GET</td><td><code>/api/profiles/{id}/cookies</code></td><td>导出 Cookie</td></tr>
+        <tr><td>POST</td><td><code>/api/profiles/{id}/cookies</code></td><td>导入 Cookie</td></tr>
+        <tr><td>GET</td><td><code>/api/profiles/{id}/fingerprint-check</code></td><td>指纹检测</td></tr>
+        <tr><td>POST</td><td><code>/api/profiles/bulk-proxy</code></td><td>批量代理导入</td></tr>
+      </table>
+
+      <h3>会话</h3>
+      <table>
+        <tr><th>方法</th><th>路径</th><th>说明</th></tr>
+        <tr><td>POST</td><td><code>/api/sessions</code></td><td>启动会话</td></tr>
+        <tr><td>GET</td><td><code>/api/sessions</code></td><td>会话列表</td></tr>
+        <tr><td>GET</td><td><code>/api/sessions/{id}</code></td><td>会话详情</td></tr>
+        <tr><td>POST</td><td><code>/api/sessions/{id}/logs/download</code></td><td>下载日志</td></tr>
+        <tr><td>POST</td><td><code>/api/sessions/batch</code></td><td>批量启动</td></tr>
+        <tr><td>POST</td><td><code>/api/sessions/batch-stop</code></td><td>批量停止</td></tr>
+        <tr><td>POST</td><td><code>/api/sessions/stop-all</code></td><td>停止所有</td></tr>
+        <tr><td>POST</td><td><code>/api/processes/{id}/stop</code></td><td>停止进程</td></tr>
+      </table>
+
+      <h3>其他</h3>
+      <table>
+        <tr><th>方法</th><th>路径</th><th>说明</th></tr>
+        <tr><td>POST</td><td><code>/api/proxy/test</code></td><td>代理测试</td></tr>
+        <tr><td>POST</td><td><code>/api/fingerprint/generate</code></td><td>随机指纹生成</td></tr>
+        <tr><td>GET</td><td><code>/api/channels</code></td><td>下载源列表</td></tr>
+        <tr><td>PUT</td><td><code>/api/channels</code></td><td>更新下载源</td></tr>
+        <tr><td>POST</td><td><code>/api/channels/{id}/fetch</code></td><td>通过指定源下载</td></tr>
+        <tr><td>GET</td><td><code>/api/activity</code></td><td>操作日志</td></tr>
+        <tr><td>GET</td><td><code>/api/v1/sessions</code></td><td>公开 API：会话列表</td></tr>
+      </table>
+
+      <!-- BUILD -->
+      <h2 id="build">构建与打包</h2>
+      <h3>本地构建</h3>
+      <pre>双击 build.bat</pre>
+      <p>构建产物：<code>dist/FoxDesk/FoxDesk.exe</code></p>
+
+      <h3>CI/CD 自动构建</h3>
+      <p>推送 <code>v*</code> tag 自动触发 GitHub Actions：</p>
+      <pre>git tag v1.0.0
+git push origin v1.0.0</pre>
+      <p>自动构建 Windows exe 并创建 GitHub Release。</p>
+
+      <!-- CONTRIBUTING -->
+      <h2 id="contributing">参与贡献</h2>
+      <ol style="color:var(--muted);padding-left:20px">
+        <li>Fork 本仓库</li>
+        <li>创建特性分支 <code>git checkout -b feature/amazing</code></li>
+        <li>提交更改 <code>git commit -m 'Add amazing feature'</code></li>
+        <li>推送分支 <code>git push origin feature/amazing</code></li>
+        <li>创建 Pull Request</li>
+      </ol>
+
+      <!-- CHANGELOG -->
+      <h2 id="changelog">更新日志</h2>
+      <div class="card">
+        <h3>v1.0.0 <span class="badge p0">最新</span></h3>
+        <p style="color:var(--muted)">2026-07-08</p>
+        <ul>
+          <li>Profile CRUD + 克隆 + 导入导出</li>
+          <li>指纹参数编辑 + 随机生成</li>
+          <li>代理配置 + 测试 + 批量导入</li>
+          <li>会话启动/停止/日志查看</li>
+          <li>批量启动/停止</li>
+          <li>Cookie 导入/导出</li>
+          <li>指纹完整性检测</li>
+          <li>深浅色模式</li>
+          <li>中英文双语</li>
+          <li>右键上下文菜单</li>
+          <li>下载源切换</li>
+          <li>PyInstaller exe 打包</li>
+          <li>GitHub Actions CI/CD</li>
+        </ul>
+      </div>
+
+      <div style="margin-top:60px;padding-top:20px;border-top:1px solid var(--border);color:var(--muted);font-size:13px">
+        <p>FoxDesk — Built with Camoufox, FastAPI, and pywebview</p>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // Smooth scroll + active state
+    document.querySelectorAll('.sidebar nav a').forEach(a => {
+      a.addEventListener('click', e => {
+        document.querySelectorAll('.sidebar nav a').forEach(l => l.classList.remove('active'));
+        a.classList.add('active');
+      });
+    });
+    // Intersection observer for active state
+    const sections = document.querySelectorAll('[id]');
+    const navLinks = document.querySelectorAll('.sidebar nav a[href^="#"]');
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          navLinks.forEach(l => l.classList.remove('active'));
+          const link = document.querySelector(`.sidebar nav a[href="#${entry.target.id}"]`);
+          if (link) link.classList.add('active');
+        }
+      });
+    }, { rootMargin: '-80px 0px -60% 0px' });
+    sections.forEach(s => observer.observe(s));
+  </script>
+</body>
+</html>
