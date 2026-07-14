@@ -35,8 +35,9 @@ UninstallDisplayIcon={app}\{#MyAppExeName}
 CloseApplications=force
 RestartApplications=no
 InfoBeforeFile=
-VersionInfoVersion=1.1.0
-VersionInfoProductVersion={#MyAppVersion}
+; Windows VERSIONINFO fields must be numeric (x.y.z[.w]); beta labels stay in AppVersion/AppVerName.
+VersionInfoVersion=1.1.0.0
+VersionInfoProductVersion=1.1.0.0
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

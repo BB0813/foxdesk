@@ -60,20 +60,29 @@ jobs:
         run: |
           $version = "${{ steps.meta.outputs.version }}"
           Set-Content -Path VERSION -Value $version -NoNewline
-          $files = @('desktop.py', 'backend/app.py', 'installer.iss', 'README.md')
-          foreach ($file in $files) {
+
+          # App-facing version string (may include beta/rc)
+          foreach ($file in @('desktop.py', 'backend/app.py', 'README.md')) {
             if (Test-Path $file) {
               $content = Get-Content $file -Raw
               $content = $content -replace '1\.1\.0-beta\.1', $version
-              $content = $content -replace '#define MyAppVersion ".*?"', "#define MyAppVersion `"$version`""
               Set-Content -Path $file -Value $content -NoNewline
             }
           }
-          # Keep numeric VersionInfoVersion stable for Inno (x.y.z)
-          $numeric = ($version -replace '[^0-9.].*$', '')
+
+          # Inno Setup: AppVersion can be pre-release text; VERSIONINFO must be numeric.
+          $numeric = ($version -replace '[^0-9.].*$', '').Trim('.')
           if (-not $numeric) { $numeric = '0.0.0' }
-          (Get-Content installer.iss -Raw) -replace 'VersionInfoVersion=.*', "VersionInfoVersion=$numeric" |
-            Set-Content installer.iss -NoNewline
+          $parts = $numeric.Split('.')
+          while ($parts.Count -lt 4) { $parts += '0' }
+          $fileVersion = ($parts[0..3] -join '.')
+
+          $iss = Get-Content installer.iss -Raw
+          $iss = $iss -replace '#define MyAppVersion ".*?"', "#define MyAppVersion `"$version`""
+          $iss = $iss -replace 'VersionInfoVersion=.*', "VersionInfoVersion=$fileVersion"
+          $iss = $iss -replace 'VersionInfoProductVersion=.*', "VersionInfoProductVersion=$fileVersion"
+          Set-Content -Path installer.iss -Value $iss -NoNewline
+          Write-Host "Inno AppVersion=$version VersionInfo=$fileVersion"
 
       - name: Set up Python
         uses: actions/setup-python@v5
