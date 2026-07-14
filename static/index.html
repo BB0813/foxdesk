@@ -48,17 +48,6 @@
       </div>
     </header>
 
-    <div class="banner hidden" id="firstRunBanner">
-      <div>
-        <strong data-i18n="firstRunTitle">首次使用</strong>
-        <span data-i18n="firstRunDesc">检测到 Camoufox 尚未就绪。请先安装包并下载浏览器文件。</span>
-      </div>
-      <div class="button-row">
-        <button class="button secondary" id="firstRunHealthBtn" type="button" data-i18n="healthCheck">健康检查</button>
-        <button class="button primary" id="firstRunSetupBtn" type="button" data-i18n="goSetup">去配置</button>
-        <button class="button secondary icon-only" id="firstRunDismissBtn" type="button" title="Dismiss"><i data-lucide="x"></i></button>
-      </div>
-    </div>
     <div class="banner update hidden" id="updateBanner">
       <div>
         <strong data-i18n="updateAvailable">发现新版本</strong>
@@ -67,6 +56,50 @@
       <div class="button-row">
         <a class="button primary" id="updateBannerLink" href="#" target="_blank" rel="noreferrer" data-i18n="openRelease">打开发布页</a>
         <button class="button secondary icon-only" id="updateDismissBtn" type="button" title="Dismiss"><i data-lucide="x"></i></button>
+      </div>
+    </div>
+
+    <!-- ═══ First-run Setup Wizard (blocks UI until environment ready) ═══ -->
+    <div class="setup-overlay hidden" id="setupOverlay" role="dialog" aria-modal="true" aria-labelledby="setupTitle">
+      <div class="setup-card">
+        <div class="setup-brand">
+          <img src="/assets/logo.png" alt="FoxDesk" width="48" height="48" />
+          <div>
+            <h1 id="setupTitle" data-i18n="setupTitle">欢迎使用 FoxDesk</h1>
+            <p data-i18n="setupSubtitle">正在为你准备运行环境，无需手动操作</p>
+          </div>
+        </div>
+
+        <div class="setup-channel-row">
+          <span data-i18n="downloadSource">下载源</span>
+          <div class="segmented" id="setupChannelSelector">
+            <button type="button" data-setup-channel="github" class="active" data-i18n="channelGithub">GitHub 官方</button>
+            <button type="button" data-setup-channel="ghproxy" data-i18n="channelGhproxy">GitHub 镜像</button>
+          </div>
+        </div>
+
+        <div class="setup-progress-wrap">
+          <div class="setup-progress-bar"><div class="setup-progress-fill" id="setupProgressFill"></div></div>
+          <div class="setup-progress-meta">
+            <span id="setupStatusText" data-i18n="setupPreparing">准备中…</span>
+            <span id="setupProgressPct">0%</span>
+          </div>
+        </div>
+
+        <ol class="setup-steps" id="setupSteps"></ol>
+        <pre class="setup-log" id="setupLog" aria-live="polite"></pre>
+
+        <div class="setup-actions">
+          <button class="button secondary" id="setupRetryBtn" type="button" disabled>
+            <i data-lucide="refresh-cw"></i>
+            <span data-i18n="setupRetry">重试</span>
+          </button>
+          <button class="button primary" id="setupContinueBtn" type="button" disabled>
+            <i data-lucide="check"></i>
+            <span data-i18n="setupContinue">开始使用</span>
+          </button>
+        </div>
+        <p class="setup-hint" data-i18n="setupHint">首次下载浏览器文件可能需要几分钟，请保持网络畅通。</p>
       </div>
     </div>
 

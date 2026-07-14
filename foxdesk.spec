@@ -53,6 +53,7 @@ a = Analysis(
         'backend.process_utils',
         'backend.proxy_pool',
         'backend.templates_data',
+        'backend.setup_manager',
         'pystray',
         'pystray._base',
         'pystray._win32',

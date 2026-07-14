@@ -766,6 +766,154 @@ textarea { resize: vertical; min-height: 60px; }
 .fp-checks-grid dt { color: var(--subtle); padding: 3px 0; }
 .fp-checks-grid dd { color: var(--ink); padding: 3px 0; overflow-wrap: anywhere; }
 
+/* ── First-run setup wizard ── */
+.setup-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--bg) 72%, #000 28%);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+.setup-overlay.hidden { display: none !important; }
+.setup-card {
+  width: min(560px, 100%);
+  max-height: min(90vh, 760px);
+  overflow: auto;
+  padding: 28px 28px 22px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--surface-active);
+  box-shadow: var(--shadow), 0 0 0 1px color-mix(in srgb, var(--primary) 12%, transparent);
+}
+.setup-brand {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 18px;
+}
+.setup-brand h1 {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.setup-brand p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.setup-channel-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.setup-progress-wrap { margin-bottom: 16px; }
+.setup-progress-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface);
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.setup-progress-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--primary), color-mix(in srgb, var(--primary) 55%, #22d3ee));
+  transition: width 280ms ease;
+}
+.setup-progress-meta {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.setup-steps {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.setup-steps li {
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  gap: 10px;
+  align-items: start;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 13px;
+}
+.setup-steps li.running {
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--border));
+  background: color-mix(in srgb, var(--primary-glow) 55%, var(--surface));
+}
+.setup-steps li.done { border-color: color-mix(in srgb, var(--success) 35%, var(--border)); }
+.setup-steps li.failed { border-color: color-mix(in srgb, var(--danger) 40%, var(--border)); }
+.setup-steps .step-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--surface-active);
+  border: 1px solid var(--border);
+}
+.setup-steps li.done .step-icon { background: var(--success-glow); color: var(--success); border-color: transparent; }
+.setup-steps li.failed .step-icon { background: var(--danger-glow); color: var(--danger); border-color: transparent; }
+.setup-steps li.running .step-icon {
+  border-color: var(--primary);
+  color: var(--primary);
+  animation: pulse-dot 1.2s ease infinite;
+}
+.setup-steps .step-detail {
+  grid-column: 2 / -1;
+  color: var(--subtle);
+  font-size: 12px;
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+}
+.setup-log {
+  margin: 0 0 14px;
+  max-height: 140px;
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 70%, #000 30%);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+.setup-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.setup-hint {
+  margin: 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--subtle);
+}
+
 /* ── Beta 1.1 banners / proxies / sessions ── */
 .banner {
   display: flex;

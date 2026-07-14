@@ -115,8 +115,23 @@ const i18n = {
     cleanupRuntime: "清理运行时",
     checkUpdate: "检查更新",
     firstRunTitle: "首次使用",
-    firstRunDesc: "检测到 Camoufox 尚未就绪。请先安装包并下载浏览器文件。",
-    goSetup: "去配置",
+    firstRunDesc: "检测到环境未就绪，正在自动安装…",
+    goSetup: "打开引导",
+    setupTitle: "欢迎使用 FoxDesk",
+    setupSubtitle: "正在为你准备运行环境，无需手动操作",
+    setupPreparing: "准备中…",
+    setupInstalling: "正在安装环境…",
+    setupDownloading: "正在下载浏览器…",
+    setupVerifying: "正在验证…",
+    setupDone: "环境已就绪",
+    setupFailed: "自动安装失败",
+    setupRetry: "重试",
+    setupContinue: "开始使用",
+    setupHint: "首次下载浏览器文件可能需要几分钟，请保持网络畅通。",
+    setupStepCheck: "环境检测",
+    setupStepPackage: "安装组件",
+    setupStepFetch: "下载浏览器",
+    setupStepVerify: "安装校验",
     updateAvailable: "发现新版本",
     openRelease: "打开发布页",
     templates: "模板",
@@ -324,8 +339,23 @@ const i18n = {
     cleanupRuntime: "Cleanup Runtime",
     checkUpdate: "Check Updates",
     firstRunTitle: "First Run",
-    firstRunDesc: "Camoufox is not ready yet. Install the package and fetch browser files.",
-    goSetup: "Go Setup",
+    firstRunDesc: "Environment is not ready. Setting up automatically…",
+    goSetup: "Open Setup",
+    setupTitle: "Welcome to FoxDesk",
+    setupSubtitle: "Preparing your environment — no manual steps needed",
+    setupPreparing: "Preparing…",
+    setupInstalling: "Installing components…",
+    setupDownloading: "Downloading browser…",
+    setupVerifying: "Verifying…",
+    setupDone: "Environment ready",
+    setupFailed: "Automatic setup failed",
+    setupRetry: "Retry",
+    setupContinue: "Get Started",
+    setupHint: "First browser download may take a few minutes. Keep your network available.",
+    setupStepCheck: "Environment check",
+    setupStepPackage: "Install package",
+    setupStepFetch: "Download browser",
+    setupStepVerify: "Verify install",
     updateAvailable: "Update available",
     openRelease: "Open Release",
     templates: "Templates",
@@ -420,6 +450,11 @@ const state = {
   firstRunDismissed: localStorage.getItem("cm-first-run-dismissed") === "1",
   updateDismissedTag: localStorage.getItem("cm-update-dismissed") || "",
   viewMode: localStorage.getItem("cm-view-mode") || "list",
+  setup: null,
+  setupChannel: localStorage.getItem("cm-setup-channel") || "github",
+  setupPollTimer: null,
+  setupAutoStarted: false,
+  setupBlocking: false,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -1475,13 +1510,185 @@ function renderTemplates() {
   });
 }
 
-// --- Health / Cleanup / Updates / First-run ---
+// --- Guided first-run setup (auto install environment) ---
+function setupStepLabel(id) {
+  const map = {
+    check: t("setupStepCheck"),
+    package: t("setupStepPackage"),
+    fetch: t("setupStepFetch"),
+    verify: t("setupStepVerify"),
+  };
+  return map[id] || id;
+}
+
+function setupStatusLabel(status, currentStep) {
+  if (status === "done") return t("setupDone");
+  if (status === "failed") return t("setupFailed");
+  if (currentStep === "package") return t("setupInstalling");
+  if (currentStep === "fetch") return t("setupDownloading");
+  if (currentStep === "verify") return t("setupVerifying");
+  return t("setupPreparing");
+}
+
+function renderSetupWizard() {
+  const overlay = $("#setupOverlay");
+  if (!overlay) return;
+  const setup = state.setup || {};
+  const steps = setup.steps || [];
+  const progress = Number(setup.progress || 0);
+  const fill = $("#setupProgressFill");
+  const pct = $("#setupProgressPct");
+  const statusText = $("#setupStatusText");
+  const stepsEl = $("#setupSteps");
+  const logEl = $("#setupLog");
+  const retryBtn = $("#setupRetryBtn");
+  const continueBtn = $("#setupContinueBtn");
+
+  if (fill) fill.style.width = `${Math.max(0, Math.min(100, progress))}%`;
+  if (pct) pct.textContent = `${Math.max(0, Math.min(100, progress))}%`;
+  if (statusText) statusText.textContent = setupStatusLabel(setup.status, setup.current_step);
+
+  if (stepsEl) {
+    stepsEl.innerHTML = steps
+      .map((step) => {
+        const icon =
+          step.status === "done" || step.status === "skipped"
+            ? "✓"
+            : step.status === "failed"
+              ? "!"
+              : step.status === "running"
+                ? "…"
+                : "·";
+        return `<li class="${escapeHtml(step.status || "pending")}">
+          <span class="step-icon">${icon}</span>
+          <span>${escapeHtml(setupStepLabel(step.id) || step.label || step.id)}</span>
+          <span style="font-size:11px;color:var(--subtle)">${escapeHtml(step.status || "")}</span>
+          ${step.detail ? `<div class="step-detail">${escapeHtml(step.detail)}</div>` : ""}
+        </li>`;
+      })
+      .join("");
+  }
+
+  if (logEl) {
+    const logs = setup.logs || [];
+    logEl.textContent = logs.slice(-80).join("\n") || "…";
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  $$("[data-setup-channel]").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.setupChannel === state.setupChannel);
+    btn.disabled = setup.status === "running";
+  });
+
+  if (retryBtn) retryBtn.disabled = setup.status === "running";
+  if (continueBtn) {
+    const ready = setup.status === "done" || (state.system && state.system.camoufox_installed && !state.system.needs_setup);
+    continueBtn.disabled = !ready;
+  }
+
+  if (state.setupBlocking) overlay.classList.remove("hidden");
+  else overlay.classList.add("hidden");
+  renderIcons();
+}
+
+function showSetupWizard(blocking = true) {
+  state.setupBlocking = blocking;
+  renderSetupWizard();
+}
+
+function hideSetupWizard() {
+  state.setupBlocking = false;
+  stopSetupPolling();
+  $("#setupOverlay")?.classList.add("hidden");
+}
+
+function stopSetupPolling() {
+  if (state.setupPollTimer) {
+    window.clearInterval(state.setupPollTimer);
+    state.setupPollTimer = null;
+  }
+}
+
+async function pollSetupStatus() {
+  try {
+    state.setup = await api("/api/setup/status");
+    renderSetupWizard();
+    if (state.setup.status === "done") {
+      stopSetupPolling();
+      await loadSystem();
+      // Auto-enter app after short delay so user sees success state
+      window.setTimeout(() => {
+        if (state.setup?.status === "done") hideSetupWizard();
+      }, 700);
+    } else if (state.setup.status === "failed") {
+      stopSetupPolling();
+    }
+  } catch (_) {
+    // keep polling; transient errors during long fetch are possible
+  }
+}
+
+async function startGuidedSetup({ force = false } = {}) {
+  showSetupWizard(true);
+  try {
+    state.setup = await api("/api/setup/start", {
+      method: "POST",
+      body: JSON.stringify({
+        channel: state.setupChannel || "github",
+        auto: true,
+        force,
+      }),
+    });
+    state.setupAutoStarted = true;
+    renderSetupWizard();
+    stopSetupPolling();
+    state.setupPollTimer = window.setInterval(pollSetupStatus, 1200);
+    await pollSetupStatus();
+  } catch (err) {
+    toast(err.message);
+    state.setup = {
+      status: "failed",
+      error: err.message,
+      steps: [],
+      logs: [err.message],
+      progress: 0,
+    };
+    renderSetupWizard();
+  }
+}
+
+async function maybeAutoSetup() {
+  const sys = state.system;
+  if (!sys) return;
+  const needs = Boolean(sys.needs_setup || sys.first_run || !sys.camoufox_installed);
+  const setup = sys.setup || state.setup || {};
+  if (setup.status === "running") {
+    state.setup = setup;
+    showSetupWizard(true);
+    if (!state.setupPollTimer) {
+      state.setupPollTimer = window.setInterval(pollSetupStatus, 1200);
+    }
+    return;
+  }
+  if (needs) {
+    // Force guided setup — do not allow silent dismiss on first install
+    if (!state.setupAutoStarted || setup.status === "failed" || setup.status === "idle") {
+      await startGuidedSetup({ force: setup.status === "failed" });
+    } else {
+      state.setup = setup;
+      showSetupWizard(true);
+    }
+    return;
+  }
+  // Ready: only show wizard if user opened it manually
+  if (!state.setupBlocking) {
+    hideSetupWizard();
+  }
+}
+
 function updateFirstRunBanner() {
-  const banner = $("#firstRunBanner");
-  if (!banner) return;
-  const missing = state.system && !state.system.camoufox_installed;
-  if (missing && !state.firstRunDismissed) banner.classList.remove("hidden");
-  else banner.classList.add("hidden");
+  // Legacy banner removed — guided overlay handles first-run.
+  maybeAutoSetup().catch(() => {});
 }
 
 async function runHealthCheck() {
@@ -1798,7 +2005,7 @@ async function refreshAll() {
     loadTasks(),
     loadChannels(),
   ]);
-  updateFirstRunBanner();
+  await maybeAutoSetup();
   checkForUpdates(true).catch(() => {});
   renderIcons();
 }
@@ -1864,12 +2071,22 @@ function bindEvents() {
   $("#healthCheckBtn")?.addEventListener("click", runHealthCheck);
   $("#cleanupRuntimeBtn")?.addEventListener("click", runCleanupRuntime);
   $("#checkUpdateBtn")?.addEventListener("click", () => checkForUpdates(false));
-  $("#firstRunHealthBtn")?.addEventListener("click", runHealthCheck);
-  $("#firstRunSetupBtn")?.addEventListener("click", () => switchPage("system"));
-  $("#firstRunDismissBtn")?.addEventListener("click", () => {
-    state.firstRunDismissed = true;
-    localStorage.setItem("cm-first-run-dismissed", "1");
-    updateFirstRunBanner();
+  $("#setupRetryBtn")?.addEventListener("click", () => startGuidedSetup({ force: true }));
+  $("#setupContinueBtn")?.addEventListener("click", async () => {
+    try {
+      await api("/api/setup/complete", { method: "POST", body: "{}" });
+    } catch (_) {}
+    hideSetupWizard();
+    await loadSystem();
+    toast(t("setupDone"));
+  });
+  $$("[data-setup-channel]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (state.setup?.status === "running") return;
+      state.setupChannel = btn.dataset.setupChannel || "github";
+      localStorage.setItem("cm-setup-channel", state.setupChannel);
+      renderSetupWizard();
+    });
   });
   $("#updateDismissBtn")?.addEventListener("click", () => {
     const text = $("#updateBannerText")?.textContent || "";

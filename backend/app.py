@@ -55,7 +55,7 @@ def migrate_legacy_data() -> None:
         shutil.copytree(legacy_profiles_dir, app_profiles_dir)
 
 
-APP_VERSION = "1.1.0-beta.2"
+APP_VERSION = "1.1.0-beta.3"
 GITHUB_REPO = "BB0813/foxdesk"
 
 if getattr(sys, "frozen", False):
@@ -459,6 +459,7 @@ app = FastAPI(title="FoxDesk", version=APP_VERSION)
 app.mount("/assets", StaticFiles(directory=STATIC_DIR), name="assets")
 
 from backend.proxy_pool import ProxyPoolStore  # noqa: E402
+from backend.setup_manager import SetupManager  # noqa: E402
 from backend.templates_data import profile_templates  # noqa: E402
 
 proxy_pool = ProxyPoolStore(DATA_DIR / "proxies.json")
@@ -504,6 +505,14 @@ def camoufox_command(*args: str) -> list[str]:
     return [sys.executable, "-m", "camoufox", *args]
 
 
+def _channel_prefix(channel_id: str) -> str | None:
+    for ch in channel_store.all():
+        if ch.get("id") == channel_id:
+            prefix = (ch.get("prefix") or "").strip()
+            return prefix or None
+    return None
+
+
 def run_short(command: list[str], timeout: int = 10) -> dict[str, Any]:
     try:
         completed = subprocess.run(
@@ -538,6 +547,18 @@ def import_available(module: str) -> bool:
         stderr=subprocess.DEVNULL,
         creationflags=CREATE_NO_WINDOW,
     ).returncode == 0
+
+
+setup_manager = SetupManager(
+    is_frozen=bool(getattr(sys, "frozen", False)),
+    executable=APP_EXECUTABLE,
+    root=ROOT if not getattr(sys, "frozen", False) else Path(sys.executable).resolve().parent,
+    create_no_window=CREATE_NO_WINDOW,
+    camoufox_command=camoufox_command,
+    import_available=import_available,
+    channel_prefix=_channel_prefix,
+    marker_path=DATA_DIR / "setup.completed",
+)
 
 
 def worker_command(runtime_path: Path) -> list[str]:
@@ -673,6 +694,7 @@ def system() -> dict[str, Any]:
         },
     ]
     first_run = (not installed) or (not path_ok)
+    setup = setup_manager.status()
     return {
         "app_name": "FoxDesk",
         "app_version": APP_VERSION,
@@ -686,10 +708,39 @@ def system() -> dict[str, Any]:
         "install_flow": install_flow,
         "running_sessions": running_sessions,
         "first_run": first_run,
+        "needs_setup": first_run or bool(setup.get("needs_setup")),
+        "setup": setup,
         "github_repo": GITHUB_REPO,
         "proxy_pool_count": len(proxy_pool.all()),
         "profile_count": len(store.all()),
     }
+
+
+class SetupStartRequest(BaseModel):
+    channel: str = "github"
+    auto: bool = True
+    force: bool = False
+
+
+@app.get("/api/setup/status")
+def setup_status() -> dict[str, Any]:
+    return setup_manager.status()
+
+
+@app.post("/api/setup/start")
+def setup_start(request: SetupStartRequest | None = None) -> dict[str, Any]:
+    req = request or SetupStartRequest()
+    # Persist custom channel prefix if provided via channel store already.
+    result = setup_manager.start(channel=req.channel or "github", auto=req.auto, force=req.force)
+    activity.log("setup_start", f"channel={req.channel} force={req.force}")
+    return result
+
+
+@app.post("/api/setup/complete")
+def setup_complete() -> dict[str, Any]:
+    """Mark guided setup as completed even if user skips (not recommended)."""
+    setup_manager.mark_completed()
+    return {"ok": True, **setup_manager.status()}
 
 
 @app.post("/api/system/health")
