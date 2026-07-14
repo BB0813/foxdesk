@@ -452,6 +452,7 @@
                 </button>
               </div>
             </div>
+            <div id="sessionResourceHint" style="padding:0 16px 8px;font-size:12px;color:var(--muted)"></div>
             <div class="process-list" id="sessionList"></div>
           </div>
         </div>
@@ -467,6 +468,10 @@
                 <p data-i18n="proxyPoolDesc">统一管理代理，档案可引用代理 ID</p>
               </div>
               <div class="button-row">
+                <button class="button secondary" id="proxyHealthNowBtn" type="button">
+                  <i data-lucide="activity"></i>
+                  <span data-i18n="proxyHealthNow">立即巡检</span>
+                </button>
                 <button class="button secondary" id="proxyImportBtn" type="button">
                   <i data-lucide="upload"></i>
                   <span data-i18n="import">导入</span>
@@ -477,6 +482,7 @@
                 </button>
               </div>
             </div>
+            <div id="proxyHealthHint" style="padding:0 16px 8px;font-size:12px;color:var(--muted)"></div>
             <div class="form-grid" style="padding:12px 16px;border-bottom:1px solid var(--border)">
               <label>
                 <span data-i18n="name">名称</span>
@@ -584,6 +590,56 @@
                 <span data-i18n="clearGithubToken">清除已保存的 Token</span>
               </label>
               <p class="span-2" id="settingsTokenHint" style="margin:0;font-size:12px;color:var(--muted)"></p>
+              <label>
+                <span data-i18n="maxConcurrentSessions">最大并发会话</span>
+                <input id="maxConcurrentSessions" type="number" min="1" max="64" step="1" value="8" />
+              </label>
+              <label>
+                <span data-i18n="idleSessionMinutes">空闲自动停止（分钟，0=关）</span>
+                <input id="idleSessionMinutes" type="number" min="0" max="1440" step="1" value="0" />
+              </label>
+              <label>
+                <span data-i18n="proxyAssignMode">代理分配模式</span>
+                <select id="proxyAssignMode">
+                  <option value="sticky" data-i18n-option="proxyModeSticky">粘性（档案绑定）</option>
+                  <option value="round_robin" data-i18n-option="proxyModeRoundRobin">轮询</option>
+                  <option value="random_healthy" data-i18n-option="proxyModeRandomHealthy">随机健康</option>
+                </select>
+              </label>
+              <label>
+                <span data-i18n="proxyCheckInterval">代理巡检间隔（秒）</span>
+                <input id="proxyCheckInterval" type="number" min="30" max="3600" step="30" value="300" />
+              </label>
+              <label class="span-2" style="display:flex;align-items:center;gap:8px">
+                <input id="proxyAutoCheck" type="checkbox" checked />
+                <span data-i18n="proxyAutoCheck">启用代理自动健康检查</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h2 data-i18n="localBackup">本地备份</h2>
+                <p data-i18n="localBackupDesc">导出配置 JSON 到 data_dir/backups（密码仅作完整性标记）</p>
+              </div>
+              <div class="button-row">
+                <button class="button primary" id="createBackupBtn" type="button">
+                  <i data-lucide="archive"></i>
+                  <span data-i18n="createBackup">创建备份</span>
+                </button>
+              </div>
+            </div>
+            <div class="form-grid" style="padding:12px 16px">
+              <label>
+                <span data-i18n="backupPassword">备份密码</span>
+                <input id="backupPasswordInput" type="password" autocomplete="new-password" minlength="4" placeholder="至少 4 位" />
+              </label>
+              <label class="span-2" style="display:flex;align-items:center;gap:8px">
+                <input id="backupIncludeProfiles" type="checkbox" />
+                <span data-i18n="backupIncludeProfiles">包含 profiles 目录小文件</span>
+              </label>
+              <p class="span-2" id="backupHint" style="margin:0;font-size:12px;color:var(--muted)"></p>
             </div>
           </div>
 

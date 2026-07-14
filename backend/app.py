@@ -91,7 +91,7 @@ def migrate_legacy_data() -> None:
                 pass
 
 
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.3.0"
 GITHUB_REPO = "BB0813/foxdesk"
 
 if getattr(sys, "frozen", False):
@@ -361,6 +361,7 @@ class ManagedProcess:
     command: list[str]
     process: subprocess.Popen[str]
     started_at: float = field(default_factory=time.time)
+    last_activity_at: float = field(default_factory=time.time)
     logs: list[str] = field(default_factory=list)
     timeout: float | None = None
     profile_id: str | None = None
@@ -371,9 +372,13 @@ class ManagedProcess:
     error_message: str | None = None
     ws_endpoint: str | None = None
     ready: bool = False
+    fingerprint_report: dict[str, Any] | None = None
 
     def status(self) -> str:
         return "running" if self.process.poll() is None else f"exited:{self.process.returncode}"
+
+    def touch(self) -> None:
+        self.last_activity_at = time.time()
 
     def view(self) -> dict[str, Any]:
         code = self.process.returncode
@@ -386,6 +391,8 @@ class ManagedProcess:
             "status": self.status(),
             "pid": self.process.pid,
             "started_at": self.started_at,
+            "last_activity_at": self.last_activity_at,
+            "idle_seconds": max(0, int(time.time() - self.last_activity_at)),
             "logs": self.logs[-300:],
             "profile_id": self.profile_id,
             "runtime_id": self.runtime_id,
@@ -394,6 +401,7 @@ class ManagedProcess:
             "error_message": self.error_message,
             "ws_endpoint": self.ws_endpoint,
             "ready": self.ready,
+            "fingerprint_report": self.fingerprint_report,
             "failed": failed or bool(self.error_message and self.process.poll() is not None),
             "returncode": code,
             "recent_errors": [line for line in self.logs if "error" in line.lower() or line.startswith('{"event": "error"') or '"event":"error"' in line][-8:],
@@ -406,6 +414,7 @@ class ProcessRegistry:
         self.items: dict[str, ManagedProcess] = {}
         self._monitor_thread: threading.Thread | None = None
         self._monitor_running = False
+        self.idle_session_minutes_provider: Any | None = None
 
     def add(self, item: ManagedProcess) -> None:
         with self.lock:
@@ -413,6 +422,14 @@ class ProcessRegistry:
         thread = threading.Thread(target=self._capture, args=(item,), daemon=True)
         thread.start()
         self._start_monitor()
+
+    def running_session_count(self) -> int:
+        with self.lock:
+            return sum(
+                1
+                for item in self.items.values()
+                if item.kind == "session" and item.process.poll() is None
+            )
 
     def _start_monitor(self) -> None:
         with self.lock:
@@ -429,6 +446,13 @@ class ProcessRegistry:
             time.sleep(1)
             with self.lock:
                 items = list(self.items.values())
+            idle_minutes = 0
+            if self.idle_session_minutes_provider:
+                try:
+                    idle_minutes = int(self.idle_session_minutes_provider() or 0)
+                except Exception:
+                    idle_minutes = 0
+            idle_seconds = max(0, idle_minutes) * 60
             for item in items:
                 if item.timeout and item.kind == "task":
                     if time.time() - item.started_at > item.timeout:
@@ -436,6 +460,20 @@ class ProcessRegistry:
                             item.logs.append(f"[TIMEOUT] Process exceeded {item.timeout}s timeout, terminating...")
                             stop_popen(item.process, grace=3)
                             item.logs.append("[TIMEOUT] Process killed")
+                if (
+                    idle_seconds > 0
+                    and item.kind == "session"
+                    and item.process.poll() is None
+                    and (time.time() - item.last_activity_at) > idle_seconds
+                ):
+                    item.logs.append(
+                        f"[IDLE] Session idle for >{idle_minutes} min, auto-stopping..."
+                    )
+                    try:
+                        stop_popen(item.process, grace=5)
+                        item.logs.append("[IDLE] Session stopped")
+                    except Exception as exc:
+                        item.logs.append(f"[IDLE] stop failed: {exc}")
 
     def _capture(self, item: ManagedProcess) -> None:
         from backend.process_utils import parse_worker_event
@@ -449,8 +487,17 @@ class ProcessRegistry:
                     item.logs = item.logs[-1000:]
                 event = parse_worker_event(line)
                 if not event:
+                    # Also scrape bare ws endpoints from non-JSON lines.
+                    if "ws://" in line or "wss://" in line:
+                        import re
+
+                        m = re.search(r"(wss?://[^\s\"'<>]+)", line, re.I)
+                        if m:
+                            item.ws_endpoint = m.group(1).rstrip(").,]}\"';")
+                            item.touch()
                     continue
                 item.last_event = str(event.get("event") or item.last_event)
+                item.touch()
                 if event.get("event") == "ready":
                     item.ready = True
                     if event.get("ws_endpoint"):
@@ -459,8 +506,18 @@ class ProcessRegistry:
                         item.mode = str(event.get("mode"))
                 if event.get("event") == "error":
                     item.error_message = str(event.get("message") or "worker error")
-                if event.get("event") == "endpoint" and event.get("ws_endpoint"):
+                if event.get("event") in {"endpoint", "ready"} and event.get("ws_endpoint"):
                     item.ws_endpoint = str(event.get("ws_endpoint"))
+                if event.get("event") == "fingerprint_report" and isinstance(event.get("report"), dict):
+                    item.fingerprint_report = event.get("report")
+                if event.get("event") == "navigate":
+                    item.touch()
+                if event.get("event") == "command_result":
+                    item.touch()
+                    if event.get("cmd") in {"fingerprint", "fingerprint_probe", "probe"} and isinstance(
+                        event.get("report"), dict
+                    ):
+                        item.fingerprint_report = event.get("report")
 
     def list(self, kind: str | None = None) -> list[dict[str, Any]]:
         with self.lock:
@@ -485,10 +542,12 @@ class ProcessRegistry:
         stop_popen(item.process, grace=8)
         item.logs.append("[stop] done")
         if item.runtime_path:
-            try:
-                Path(item.runtime_path).unlink(missing_ok=True)
-            except OSError:
-                pass
+            runtime = Path(item.runtime_path)
+            for path in (runtime, runtime.with_suffix(".cmd.jsonl"), runtime.with_suffix(".result.jsonl")):
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError:
+                    pass
 
 
 store = ProfileStore(DATA_DIR / "profiles.json")
@@ -540,7 +599,9 @@ class LocalApiTokenMiddleware(BaseHTTPMiddleware):
 app.add_middleware(LocalApiTokenMiddleware)
 app.mount("/assets", StaticFiles(directory=STATIC_DIR), name="assets")
 
+from backend.proxy_health import ProxyHealthScheduler  # noqa: E402
 from backend.proxy_pool import ProxyPoolStore  # noqa: E402
+from backend.session_control import send_worker_command  # noqa: E402
 from backend.settings_store import SettingsStore  # noqa: E402
 from backend.setup_manager import SetupManager  # noqa: E402
 from backend.templates_data import profile_templates  # noqa: E402
@@ -557,6 +618,28 @@ update_manager = UpdateManager(
     token_provider=settings_store.get_github_token,
     mirror_provider=settings_store.get_update_mirror,
 )
+registry.idle_session_minutes_provider = lambda: settings_store.get().get("idle_session_minutes", 0)
+
+
+def _test_proxy_item_for_health(item: dict[str, Any]) -> dict[str, Any]:
+    return _test_proxy_connection(
+        item.get("server") or "",
+        item.get("username") or "",
+        item.get("password") or "",
+    )
+
+
+proxy_health = ProxyHealthScheduler(
+    list_proxies=proxy_pool.all,
+    test_proxy=_test_proxy_item_for_health,
+    mark_result=proxy_pool.mark_test_result,
+    interval_seconds=float(settings_store.get().get("proxy_check_interval_sec") or 300),
+    enabled_provider=lambda: bool(settings_store.get().get("proxy_auto_check", True)),
+)
+proxy_health.start()
+
+_rr_proxy_index = 0
+_rr_proxy_lock = threading.Lock()
 
 
 # --- Channel Store ---
@@ -843,13 +926,42 @@ def cleanup_runtime_files(max_age_hours: float = 24.0, keep_active: bool = True)
     return {"removed": removed, "kept": kept}
 
 
+def pick_proxy_from_pool(profile: Profile) -> dict[str, Any] | None:
+    """Resolve proxy according to settings: sticky | round_robin | random_healthy."""
+    mode = (settings_store.get().get("proxy_assign_mode") or "sticky").strip().lower()
+    items = proxy_pool.all()
+    if not items:
+        return None
+
+    # Explicit binding always wins for sticky; for other modes still prefer healthy pool.
+    if mode == "sticky":
+        proxy_id = (profile.proxy_id or "").strip()
+        if proxy_id:
+            try:
+                return proxy_pool.get(proxy_id)
+            except KeyError:
+                return None
+        return None
+
+    healthy = [p for p in items if p.get("last_ok") is True]
+    candidates = healthy or items
+    if mode == "random_healthy":
+        import random
+
+        return random.choice(candidates)
+    if mode == "round_robin":
+        global _rr_proxy_index
+        with _rr_proxy_lock:
+            item = candidates[_rr_proxy_index % len(candidates)]
+            _rr_proxy_index += 1
+            return item
+    return None
+
+
 def apply_proxy_pool_to_profile(profile: Profile) -> Profile:
-    proxy_id = (profile.proxy_id or "").strip()
-    if not proxy_id:
-        return profile
-    try:
-        item = proxy_pool.get(proxy_id)
-    except KeyError:
+    item = pick_proxy_from_pool(profile)
+    if not item:
+        # sticky with no proxy_id: keep manual proxy on profile
         return profile
     data = profile.model_dump()
     data["proxy"] = {
@@ -857,6 +969,7 @@ def apply_proxy_pool_to_profile(profile: Profile) -> Profile:
         "username": item.get("username") or "",
         "password": item.get("password") or "",
     }
+    data["proxy_id"] = item.get("id") or data.get("proxy_id") or ""
     return Profile(**data)
 
 
@@ -997,17 +1110,28 @@ class SettingsUpdateRequest(BaseModel):
     update_mirror: str | None = None
     github_token: str | None = None
     clear_github_token: bool = False
+    max_concurrent_sessions: int | None = None
+    idle_session_minutes: int | None = None
+    proxy_auto_check: bool | None = None
+    proxy_check_interval_sec: int | None = None
+    proxy_assign_mode: str | None = None
 
 
 @app.get("/api/settings")
 def get_settings() -> dict[str, Any]:
-    return {"ok": True, **settings_store.get()}
+    view = settings_store.get()
+    return {
+        "ok": True,
+        **view,
+        "proxy_health": proxy_health.status(),
+        "running_sessions": registry.running_session_count(),
+    }
 
 
 @app.put("/api/settings")
 def put_settings(request: SettingsUpdateRequest) -> dict[str, Any]:
     try:
-        view = settings_store.update(request.model_dump())
+        view = settings_store.update(request.model_dump(exclude_unset=True))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     # Refresh update manager effective config immediately.
@@ -1015,11 +1139,13 @@ def put_settings(request: SettingsUpdateRequest) -> dict[str, Any]:
         github_token=settings_store.get_github_token(),
         mirror=settings_store.get_update_mirror(),
     )
+    proxy_health.configure(interval_seconds=float(view.get("proxy_check_interval_sec") or 300))
     activity.log(
         "settings_update",
-        f"mirror={view.get('update_mirror')} token={view.get('github_token_source')}",
+        f"mirror={view.get('update_mirror')} token={view.get('github_token_source')} "
+        f"max_sessions={view.get('max_concurrent_sessions')} proxy_mode={view.get('proxy_assign_mode')}",
     )
-    return {"ok": True, **view}
+    return {"ok": True, **view, "proxy_health": proxy_health.status()}
 
 
 @app.post("/api/system/diagnostics")
@@ -1356,6 +1482,14 @@ def open_profile_data_dir(profile_id: str) -> dict[str, Any]:
 def launch_session(request: LaunchRequest) -> dict[str, Any]:
     if not import_available("camoufox"):
         raise HTTPException(status_code=409, detail="camoufox is not installed. Run fetch/install first.")
+    settings_view = settings_store.get()
+    max_sessions = int(settings_view.get("max_concurrent_sessions") or 8)
+    running = registry.running_session_count()
+    if running >= max_sessions:
+        raise HTTPException(
+            status_code=429,
+            detail=f"max concurrent sessions reached ({running}/{max_sessions}). Stop some sessions or raise the limit in settings.",
+        )
     try:
         profile = store.get(request.profile_id)
     except KeyError:
@@ -1378,7 +1512,16 @@ def launch_session(request: LaunchRequest) -> dict[str, Any]:
     payload = profile.model_dump()
     payload["_runtime_id"] = runtime_id
     payload["_profile_id"] = profile.id
-    runtime_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    # Auto probe fingerprint once after browser ready when requested via tags/notes.
+    tags = {str(t).lower() for t in (profile.tags or [])}
+    if "probe" in tags or "fingerprint" in tags:
+        payload["_auto_fingerprint_probe"] = True
+    from backend.storage_util import atomic_write_json
+
+    atomic_write_json(runtime_path, payload)
+    # Ensure command/result sidecars exist.
+    runtime_path.with_suffix(".cmd.jsonl").write_text("", encoding="utf-8")
+    runtime_path.with_suffix(".result.jsonl").write_text("", encoding="utf-8")
     command = worker_command(runtime_path)
     item = start_process(
         "session",
@@ -1391,10 +1534,14 @@ def launch_session(request: LaunchRequest) -> dict[str, Any]:
     )
     with registry.lock:
         item.logs.append(f"[runtime] {runtime_path.name}")
+        if profile.proxy and profile.proxy.server:
+            item.logs.append(f"[proxy] {profile.proxy.server}")
     activity.log("session_launch", f"{profile.name} (pid {item.process.pid})")
     view = item.view()
     view["runtime_id"] = runtime_id
     view["profile_id"] = profile.id
+    view["running_sessions"] = registry.running_session_count()
+    view["max_concurrent_sessions"] = max_sessions
     return view
 
 
@@ -2190,8 +2337,15 @@ class ActivityLog:
             self.path.write_text("[]", encoding="utf-8")
 
     def log(self, action: str, detail: str = "") -> None:
+        from backend.storage_util import atomic_write_json
+
         with self.lock:
-            entries = json.loads(self.path.read_text(encoding="utf-8"))
+            try:
+                entries = json.loads(self.path.read_text(encoding="utf-8"))
+            except Exception:
+                entries = []
+            if not isinstance(entries, list):
+                entries = []
             entries.append({
                 "time": now_iso(),
                 "action": action,
@@ -2200,11 +2354,16 @@ class ActivityLog:
             # Keep last 500 entries
             if len(entries) > 500:
                 entries = entries[-500:]
-            self.path.write_text(json.dumps(entries, ensure_ascii=False, indent=2), encoding="utf-8")
+            atomic_write_json(self.path, entries)
 
     def list(self, limit: int = 100) -> list[dict[str, str]]:
         with self.lock:
-            entries = json.loads(self.path.read_text(encoding="utf-8"))
+            try:
+                entries = json.loads(self.path.read_text(encoding="utf-8"))
+            except Exception:
+                entries = []
+            if not isinstance(entries, list):
+                entries = []
             return entries[-limit:]
 
 
@@ -2216,6 +2375,33 @@ def list_activity(limit: int = 100) -> list[dict[str, str]]:
     return activity.list(limit)
 
 
+class NavigateRequest(BaseModel):
+    url: str
+
+
+def _session_command(process_id: str, cmd: str, payload: dict[str, Any] | None = None, timeout: float = 45.0) -> dict[str, Any]:
+    try:
+        item = registry.get(process_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="session not found") from exc
+    if item.kind != "session":
+        raise HTTPException(status_code=400, detail="not a browser session")
+    if item.process.poll() is not None:
+        raise HTTPException(status_code=409, detail="session is not running")
+    if not item.runtime_path:
+        raise HTTPException(status_code=409, detail="session has no runtime control channel")
+    if (item.mode or "").lower() == "server" and cmd in {"navigate", "fingerprint", "probe"}:
+        raise HTTPException(
+            status_code=409,
+            detail="command only supported for browser-mode sessions (server mode exposes ws_endpoint instead)",
+        )
+    result = send_worker_command(item.runtime_path, cmd, payload=payload, timeout=timeout)
+    item.touch()
+    if result.get("ok") and isinstance(result.get("report"), dict):
+        item.fingerprint_report = result.get("report")
+    return {"ok": bool(result.get("ok")), "session_id": process_id, **result}
+
+
 # --- Local API Service (for automation tools) ---
 @app.get("/api/v1/sessions")
 def api_v1_sessions() -> list[dict[str, Any]]:
@@ -2224,16 +2410,152 @@ def api_v1_sessions() -> list[dict[str, Any]]:
 
 
 @app.post("/api/v1/sessions/{process_id}/navigate")
-def api_v1_navigate(process_id: str, request: dict[str, str]):
-    """Reserved automation endpoint. Live navigation is not wired yet."""
+def api_v1_navigate(process_id: str, request: NavigateRequest) -> dict[str, Any]:
+    """Live-navigate a running browser-mode session to a URL."""
+    return _session_command(process_id, "navigate", {"url": request.url})
+
+
+@app.post("/api/sessions/{process_id}/navigate")
+def session_navigate(process_id: str, request: NavigateRequest) -> dict[str, Any]:
+    result = _session_command(process_id, "navigate", {"url": request.url})
+    activity.log("session_navigate", f"{process_id} -> {request.url}")
+    return result
+
+
+@app.post("/api/sessions/{process_id}/fingerprint")
+def session_fingerprint_probe(process_id: str) -> dict[str, Any]:
+    """Probe live fingerprint values from a running browser session."""
+    result = _session_command(process_id, "fingerprint", timeout=60.0)
+    activity.log("session_fingerprint", process_id)
+    return result
+
+
+@app.get("/api/system/resources")
+def system_resources() -> dict[str, Any]:
+    """Lightweight process resource snapshot for the manager UI."""
+    sessions = [s for s in registry.list("session") if str(s.get("status", "")).startswith("running") or s.get("status") == "running"]
+    settings_view = settings_store.get()
+    mem_mb = None
+    cpu = None
     try:
-        registry.get(process_id)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="session not found") from None
-    raise HTTPException(
-        status_code=501,
-        detail="Live navigate is not implemented in this beta. Launch with startup_url instead.",
-    )
+        import psutil  # type: ignore
+
+        proc = psutil.Process()
+        mem_mb = round(proc.memory_info().rss / (1024 * 1024), 1)
+        cpu = proc.cpu_percent(interval=0.05)
+        # include children roughly
+        for child in proc.children(recursive=True):
+            try:
+                mem_mb += round(child.memory_info().rss / (1024 * 1024), 1)
+            except Exception:
+                pass
+    except Exception:
+        # Fallback: no psutil — still return session counts.
+        pass
+    return {
+        "ok": True,
+        "running_sessions": len(sessions),
+        "max_concurrent_sessions": settings_view.get("max_concurrent_sessions"),
+        "idle_session_minutes": settings_view.get("idle_session_minutes"),
+        "manager_memory_mb": mem_mb,
+        "manager_cpu_percent": cpu,
+        "sessions": [
+            {
+                "id": s.get("id"),
+                "label": s.get("label"),
+                "pid": s.get("pid"),
+                "mode": s.get("mode"),
+                "ready": s.get("ready"),
+                "ws_endpoint": s.get("ws_endpoint"),
+                "idle_seconds": s.get("idle_seconds"),
+            }
+            for s in sessions
+        ],
+    }
+
+
+class BackupRequest(BaseModel):
+    password: str = Field(min_length=4, max_length=128)
+    include_profiles_dirs: bool = False
+
+
+@app.post("/api/system/backup")
+def create_encrypted_backup(request: BackupRequest) -> dict[str, Any]:
+    """Export core config JSON into a local zip under data_dir/backups.
+
+    Password is used to derive a lightweight integrity stamp (not strong crypto).
+    Prefer full-disk encryption for sensitive machines.
+    """
+    import hashlib
+    import zipfile
+
+    backups = DATA_DIR / "backups"
+    backups.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    out_path = backups / f"foxdesk-backup-{stamp}.zip"
+    pwd = request.password.encode("utf-8")
+    include_names = [
+        "profiles.json",
+        "proxies.json",
+        "settings.json",
+        "channels.json",
+        "activity.json",
+    ]
+    written: list[str] = []
+    hasher = hashlib.sha256()
+    hasher.update(pwd)
+    with zipfile.ZipFile(out_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for name in include_names:
+            path = DATA_DIR / name
+            if not path.exists():
+                continue
+            data = path.read_bytes()
+            hasher.update(data)
+            zf.writestr(name, data)
+            written.append(name)
+        if request.include_profiles_dirs and PROFILES_DIR.exists():
+            for path in PROFILES_DIR.rglob("*"):
+                if not path.is_file():
+                    continue
+                # Skip huge caches; keep small profile sidecars only.
+                if path.stat().st_size > 8 * 1024 * 1024:
+                    continue
+                arc = str(Path("profiles") / path.relative_to(PROFILES_DIR)).replace("\\", "/")
+                data = path.read_bytes()
+                hasher.update(data)
+                zf.writestr(arc, data)
+                written.append(arc)
+        meta = {
+            "app_version": APP_VERSION,
+            "created_at": now_iso(),
+            "files": written,
+            "password_sha256": hashlib.sha256(pwd).hexdigest(),
+            "content_fingerprint": hasher.hexdigest(),
+            "note": "Local backup. Password stamp is integrity-only; store the zip safely.",
+        }
+        zf.writestr("backup-meta.json", json.dumps(meta, ensure_ascii=False, indent=2))
+    activity.log("backup_create", str(out_path))
+    return {
+        "ok": True,
+        "path": str(out_path),
+        "files": written,
+        "warning": (
+            "Backup is a local zip with password integrity stamp only "
+            "(not strong encryption). Keep the file offline / on encrypted disks."
+        ),
+    }
+
+
+@app.post("/api/proxies/health-check")
+def proxies_health_check_now() -> dict[str, Any]:
+    result = proxy_health.run_once()
+    activity.log("proxy_health_check", f"checked={result.get('checked')} failed={result.get('failed')}")
+    return result
+
+
+@app.get("/api/proxies/health-status")
+def proxies_health_status() -> dict[str, Any]:
+    return {"ok": True, **proxy_health.status()}
 
 
 # --- Stop All Sessions ---

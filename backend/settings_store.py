@@ -16,6 +16,13 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     # Prefer env FOXDESK_GITHUB_TOKEN / GITHUB_TOKEN when set.
     "github_token": "",
     "github_token_set": False,
+    # Session limits / housekeeping
+    "max_concurrent_sessions": 8,
+    "idle_session_minutes": 0,  # 0 = disabled
+    # Proxy pool
+    "proxy_auto_check": True,
+    "proxy_check_interval_sec": 300,
+    "proxy_assign_mode": "sticky",  # sticky | round_robin | random_healthy
 }
 
 
@@ -53,6 +60,24 @@ class SettingsStore:
         mirror = (data.get("update_mirror") or "ghproxy").strip().lower()
         if mirror not in {"official", "ghproxy"}:
             mirror = "ghproxy"
+        assign = (data.get("proxy_assign_mode") or "sticky").strip().lower()
+        if assign not in {"sticky", "round_robin", "random_healthy"}:
+            assign = "sticky"
+        try:
+            max_sessions = int(data.get("max_concurrent_sessions") or 8)
+        except (TypeError, ValueError):
+            max_sessions = 8
+        max_sessions = max(1, min(64, max_sessions))
+        try:
+            idle_min = int(data.get("idle_session_minutes") or 0)
+        except (TypeError, ValueError):
+            idle_min = 0
+        idle_min = max(0, min(24 * 60, idle_min))
+        try:
+            interval = int(data.get("proxy_check_interval_sec") or 300)
+        except (TypeError, ValueError):
+            interval = 300
+        interval = max(30, min(3600, interval))
         return {
             "update_mirror": mirror,
             "github_token_set": bool(effective),
@@ -63,6 +88,11 @@ class SettingsStore:
             ),
             # Never return the raw token to UI by default.
             "github_token_preview": ("••••" + effective[-4:]) if len(effective) >= 8 else ("set" if effective else ""),
+            "max_concurrent_sessions": max_sessions,
+            "idle_session_minutes": idle_min,
+            "proxy_auto_check": bool(data.get("proxy_auto_check", True)),
+            "proxy_check_interval_sec": interval,
+            "proxy_assign_mode": assign,
         }
 
     def get_github_token(self) -> str:
@@ -100,6 +130,19 @@ class SettingsStore:
                     data["github_token"] = protect_secret(text)
         if "clear_github_token" in patch and patch.get("clear_github_token"):
             data["github_token"] = ""
+        if "max_concurrent_sessions" in patch and patch["max_concurrent_sessions"] is not None:
+            data["max_concurrent_sessions"] = max(1, min(64, int(patch["max_concurrent_sessions"])))
+        if "idle_session_minutes" in patch and patch["idle_session_minutes"] is not None:
+            data["idle_session_minutes"] = max(0, min(24 * 60, int(patch["idle_session_minutes"])))
+        if "proxy_auto_check" in patch and patch["proxy_auto_check"] is not None:
+            data["proxy_auto_check"] = bool(patch["proxy_auto_check"])
+        if "proxy_check_interval_sec" in patch and patch["proxy_check_interval_sec"] is not None:
+            data["proxy_check_interval_sec"] = max(30, min(3600, int(patch["proxy_check_interval_sec"])))
+        if "proxy_assign_mode" in patch and patch["proxy_assign_mode"] is not None:
+            mode = str(patch["proxy_assign_mode"]).strip().lower()
+            if mode not in {"sticky", "round_robin", "random_healthy"}:
+                raise ValueError("proxy_assign_mode must be sticky, round_robin, or random_healthy")
+            data["proxy_assign_mode"] = mode
         data["github_token_set"] = bool(unprotect_secret(data.get("github_token") or ""))
         self._write(data)
         return self.get()

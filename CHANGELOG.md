@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.3.0 — 2026-07-14
+
+Local-only control plane improvements (still **no cloud control**).
+
+### Session control
+- Live **navigate** + **fingerprint probe** for browser-mode sessions via worker command channel (`.cmd.jsonl` / `.result.jsonl`)
+- Server mode stdout tee to capture **ws_endpoint** when Camoufox prints it
+- **Max concurrent sessions** (default 8) and **idle auto-stop** (minutes, 0=off)
+- Session resource hint API (`/api/system/resources`)
+
+### Proxy pool
+- Background **proxy health scheduler** (interval + enable in settings)
+- Assign modes: **sticky** | **round_robin** | **random_healthy**
+- One-click “check now” in UI
+
+### Data & ops
+- Local **backup zip** under `data_dir/backups` (password integrity stamp; not strong encryption)
+- Activity log atomic writes
+- Extra profile templates (social / research / mobile window)
+- Launcher rename: `Start-FoxDesk.bat` / `.ps1` (legacy names forward)
+- Unit tests for settings, session control, SHA256SUMS, navigate URL validation
+
+### UI
+- Settings: sessions / idle / proxy mode & interval
+- Sessions: navigate, probe, idle display, fingerprint report
+- Proxies: health-now button
+
 ## 1.2.0 — 2026-07-14
 
 Local-only quality release (no cloud control).

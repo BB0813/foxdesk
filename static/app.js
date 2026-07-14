@@ -246,6 +246,33 @@ const i18n = {
     taskPath: "路径",
     taskTest: "自检",
     taskFetch: "下载",
+    maxConcurrentSessions: "最大并发会话",
+    idleSessionMinutes: "空闲自动停止（分钟，0=关）",
+    proxyAssignMode: "代理分配模式",
+    proxyModeSticky: "粘性（档案绑定）",
+    proxyModeRoundRobin: "轮询",
+    proxyModeRandomHealthy: "随机健康",
+    proxyCheckInterval: "代理巡检间隔（秒）",
+    proxyAutoCheck: "启用代理自动健康检查",
+    proxyHealthNow: "立即巡检",
+    proxyHealthRunning: "代理巡检进行中…",
+    proxyHealthDone: "代理巡检完成",
+    localBackup: "本地备份",
+    localBackupDesc: "导出配置 JSON 到 data_dir/backups（密码仅作完整性标记）",
+    createBackup: "创建备份",
+    backupPassword: "备份密码",
+    backupIncludeProfiles: "包含 profiles 目录小文件",
+    backupCreated: "备份已创建",
+    backupPasswordRequired: "请输入至少 4 位备份密码",
+    navigateSession: "导航",
+    probeFingerprint: "探测指纹",
+    navigateUrlPrompt: "输入要打开的网址",
+    navigateDone: "已导航",
+    probeDone: "指纹探测完成",
+    idleSeconds: "空闲",
+    resourceHint: "资源",
+    sessionsCap: "并发上限",
+    fingerprintReport: "指纹报告",
   },
   en: {
     productName: "FoxDesk",
@@ -492,8 +519,35 @@ const i18n = {
     taskInstall: "Install",
     taskVersion: "Version",
     taskPath: "Path",
-    taskTest: "Test",
+    taskTest: "Self-test",
     taskFetch: "Fetch",
+    maxConcurrentSessions: "Max concurrent sessions",
+    idleSessionMinutes: "Idle auto-stop (minutes, 0=off)",
+    proxyAssignMode: "Proxy assign mode",
+    proxyModeSticky: "Sticky (profile-bound)",
+    proxyModeRoundRobin: "Round-robin",
+    proxyModeRandomHealthy: "Random healthy",
+    proxyCheckInterval: "Proxy check interval (sec)",
+    proxyAutoCheck: "Enable proxy auto health-check",
+    proxyHealthNow: "Check now",
+    proxyHealthRunning: "Proxy health check running…",
+    proxyHealthDone: "Proxy health check finished",
+    localBackup: "Local backup",
+    localBackupDesc: "Export config JSON to data_dir/backups (password is integrity stamp only)",
+    createBackup: "Create backup",
+    backupPassword: "Backup password",
+    backupIncludeProfiles: "Include small files under profiles/",
+    backupCreated: "Backup created",
+    backupPasswordRequired: "Enter a backup password (min 4 chars)",
+    navigateSession: "Navigate",
+    probeFingerprint: "Probe fingerprint",
+    navigateUrlPrompt: "URL to open",
+    navigateDone: "Navigated",
+    probeDone: "Fingerprint probe done",
+    idleSeconds: "Idle",
+    resourceHint: "Resources",
+    sessionsCap: "Session cap",
+    fingerprintReport: "Fingerprint report",
   },
 };
 
@@ -1145,6 +1199,16 @@ function renderSettingsForm() {
   if (clear) clear.checked = false;
   const tokenInput = $("#githubTokenInput");
   if (tokenInput && !tokenInput.dataset.dirty) tokenInput.value = "";
+  const maxSessions = $("#maxConcurrentSessions");
+  if (maxSessions) maxSessions.value = String(settings.max_concurrent_sessions ?? 8);
+  const idleMin = $("#idleSessionMinutes");
+  if (idleMin) idleMin.value = String(settings.idle_session_minutes ?? 0);
+  const assignMode = $("#proxyAssignMode");
+  if (assignMode) assignMode.value = settings.proxy_assign_mode || "sticky";
+  const interval = $("#proxyCheckInterval");
+  if (interval) interval.value = String(settings.proxy_check_interval_sec ?? 300);
+  const autoCheck = $("#proxyAutoCheck");
+  if (autoCheck) autoCheck.checked = settings.proxy_auto_check !== false;
 }
 
 async function loadSystem() {
@@ -1160,6 +1224,11 @@ async function saveSettings() {
   const body = {
     update_mirror: mirror,
     clear_github_token: clear,
+    max_concurrent_sessions: Number($("#maxConcurrentSessions")?.value || 8),
+    idle_session_minutes: Number($("#idleSessionMinutes")?.value || 0),
+    proxy_assign_mode: $("#proxyAssignMode")?.value || "sticky",
+    proxy_check_interval_sec: Number($("#proxyCheckInterval")?.value || 300),
+    proxy_auto_check: Boolean($("#proxyAutoCheck")?.checked),
   };
   if (!clear && tokenRaw) body.github_token = tokenRaw;
   const result = await api("/api/settings", {
@@ -1180,6 +1249,52 @@ async function exportDiagnostics() {
   const result = await api("/api/system/diagnostics", { method: "POST", body: "{}" });
   toast(`${t("diagnosticsExported")}: ${result.path || ""}`);
   return result;
+}
+
+async function createBackup() {
+  const password = ($("#backupPasswordInput")?.value || "").trim();
+  if (password.length < 4) {
+    toast(t("backupPasswordRequired"));
+    return null;
+  }
+  const include = Boolean($("#backupIncludeProfiles")?.checked);
+  const result = await api("/api/system/backup", {
+    method: "POST",
+    body: JSON.stringify({ password, include_profiles_dirs: include }),
+  });
+  const hint = $("#backupHint");
+  if (hint) {
+    hint.textContent = `${result.path || ""}${result.warning ? ` · ${result.warning}` : ""}`;
+  }
+  toast(`${t("backupCreated")}: ${result.path || ""}`);
+  return result;
+}
+
+async function runProxyHealthNow() {
+  toast(t("proxyHealthRunning"));
+  const result = await api("/api/proxies/health-check", { method: "POST", body: "{}" });
+  const hint = $("#proxyHealthHint");
+  if (hint) {
+    hint.textContent = `${t("proxyHealthDone")}: ok=${result.passed ?? 0} fail=${result.failed ?? 0}`;
+  }
+  toast(`${t("proxyHealthDone")}: ${result.passed ?? 0}/${result.checked ?? 0}`);
+  await loadProxies();
+  return result;
+}
+
+async function loadSessionResources() {
+  const el = $("#sessionResourceHint");
+  if (!el) return null;
+  try {
+    const data = await api("/api/system/resources");
+    const mem = data.manager_memory_mb != null ? `${data.manager_memory_mb} MB` : "—";
+    const idle = data.idle_session_minutes ? `${data.idle_session_minutes}m` : "off";
+    el.textContent = `${t("resourceHint")}: ${data.running_sessions ?? 0}/${data.max_concurrent_sessions ?? "?"} · mem ${mem} · idle ${idle}`;
+    return data;
+  } catch (_) {
+    el.textContent = "";
+    return null;
+  }
 }
 
 async function startTask(name) {
@@ -1216,12 +1331,26 @@ function renderProcesses(selector, processes, stopLabel = t("stop"), isSession =
              <button class="button secondary copy-ws" data-ws="${escapeHtml(item.ws_endpoint)}" type="button" style="min-height:28px;font-size:12px">${t("copyEndpoint")}</button>
            </div>`
         : "";
+      const sessionActions =
+        isSession && running && (item.mode || "browser") !== "server"
+          ? `<div class="button-row" style="padding:0 0 6px;gap:6px">
+               <button class="button secondary session-navigate" data-process-id="${item.id}" type="button" style="min-height:28px;font-size:12px">${t("navigateSession")}</button>
+               <button class="button secondary session-probe" data-process-id="${item.id}" type="button" style="min-height:28px;font-size:12px">${t("probeFingerprint")}</button>
+             </div>`
+          : "";
+      const fpReport = item.fingerprint_report
+        ? `<pre class="log" style="max-height:140px">${escapeHtml(JSON.stringify(item.fingerprint_report, null, 2))}</pre>`
+        : "";
+      const idleStr =
+        isSession && item.idle_seconds != null
+          ? ` · ${t("idleSeconds")} ${Math.max(0, Number(item.idle_seconds) || 0)}s`
+          : "";
       return `
         <article class="process-row ${failed ? "has-error" : ""}" data-process-id="${item.id}" ${isSession ? 'style="cursor:pointer"' : ""}>
           <div class="row-main">
             <div>
               <div class="row-title">${escapeHtml(item.label)}</div>
-              <div class="row-meta">pid ${item.pid} · ${escapeHtml(item.status)} · ${uptimeStr}${item.mode ? ` · ${escapeHtml(item.mode)}` : ""}</div>
+              <div class="row-meta">pid ${item.pid} · ${escapeHtml(item.status)} · ${uptimeStr}${item.mode ? ` · ${escapeHtml(item.mode)}` : ""}${idleStr}</div>
             </div>
             <div style="display:flex;gap:6px;align-items:center">
               ${isSession ? `<button class="button secondary expand-detail icon-only" data-detail-id="${item.id}" type="button" title="Detail"><i data-lucide="chevron-down"></i></button>` : ""}
@@ -1233,6 +1362,7 @@ function renderProcesses(selector, processes, stopLabel = t("stop"), isSession =
           <div class="tagline">${statusTag}</div>
           ${errorBlock}
           ${wsBlock}
+          ${sessionActions}
           <div class="session-detail" id="detail-${item.id}">
             <div class="session-meta-grid">
               <dt>${t("startTime")}</dt>
@@ -1241,7 +1371,9 @@ function renderProcesses(selector, processes, stopLabel = t("stop"), isSession =
               <dd>${uptimeStr}</dd>
               ${item.ws_endpoint ? `<dt>${t("wsEndpoint")}</dt><dd><code>${escapeHtml(item.ws_endpoint)}</code></dd>` : ""}
               ${item.error_message ? `<dt>${t("sessionError")}</dt><dd style="color:var(--danger)">${escapeHtml(item.error_message)}</dd>` : ""}
+              ${item.fingerprint_report ? `<dt>${t("fingerprintReport")}</dt><dd>${t("ready")}</dd>` : ""}
             </div>
+            ${fpReport}
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
               <span style="font-size:13px;font-weight:650;color:var(--muted)">${t("logs")}</span>
               <button class="button secondary download-logs" data-log-id="${item.id}" type="button" style="min-height:28px;font-size:12px">
@@ -1300,6 +1432,38 @@ function renderProcesses(selector, processes, stopLabel = t("stop"), isSession =
       }
     });
   });
+  $$(".session-navigate").forEach((button) => {
+    button.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const url = prompt(t("navigateUrlPrompt"), "https://");
+      if (!url) return;
+      try {
+        const result = await api(`/api/sessions/${button.dataset.processId}/navigate`, {
+          method: "POST",
+          body: JSON.stringify({ url }),
+        });
+        toast(result.ok === false ? result.error || t("failed") : `${t("navigateDone")}: ${result.url || url}`);
+        await loadSessions();
+      } catch (err) {
+        toast(err.message);
+      }
+    });
+  });
+  $$(".session-probe").forEach((button) => {
+    button.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      try {
+        const result = await api(`/api/sessions/${button.dataset.processId}/fingerprint`, {
+          method: "POST",
+          body: "{}",
+        });
+        toast(result.ok === false ? result.error || t("failed") : t("probeDone"));
+        await loadSessions();
+      } catch (err) {
+        toast(err.message);
+      }
+    });
+  });
   renderIcons();
 }
 
@@ -1320,6 +1484,7 @@ async function loadSessions() {
   state.sessions = sessions;
   updateSessionBadge(sessions);
   renderProcesses("#sessionList", sessions, t("stop"), true);
+  loadSessionResources().catch(() => {});
   // Keep profile running badges fresh without full reload
   if ($("#profileList") && state.viewMode !== "table") {
     renderProfiles();
@@ -2404,6 +2569,8 @@ function bindEvents() {
   $("#checkUpdateBtn")?.addEventListener("click", () => checkForUpdates(false));
   $("#saveSettingsBtn")?.addEventListener("click", () => saveSettings().catch((e) => toast(e.message)));
   $("#exportDiagnosticsBtn")?.addEventListener("click", () => exportDiagnostics().catch((e) => toast(e.message)));
+  $("#createBackupBtn")?.addEventListener("click", () => createBackup().catch((e) => toast(e.message)));
+  $("#proxyHealthNowBtn")?.addEventListener("click", () => runProxyHealthNow().catch((e) => toast(e.message)));
   $("#githubTokenInput")?.addEventListener("input", (e) => {
     e.target.dataset.dirty = "1";
   });

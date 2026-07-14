@@ -2,7 +2,7 @@
 
 本地 Camoufox 指纹浏览器管理器 — 免费、开源、隐私优先。
 
-**当前版本：`1.2.0`（Stable）**
+**当前版本：`1.3.0`（Stable）**
 
 <p align="center">
   <img src="static/logo.png" width="120" alt="FoxDesk Logo">
@@ -11,23 +11,17 @@
 ## 功能特性
 
 - **Profile 管理** — 创建、编辑、克隆、导入导出、标签分组
-- **指纹控制** — 指纹参数编辑 + 一键随机生成（映射到 Camoufox config）
-- **指纹检测** — 静态一致性评分（0-100）
-- **代理池** — 统一管理 HTTP/SOCKS 代理，档案可引用；支持认证测试与批量导入
+- **指纹控制** — 参数编辑 + 随机生成 + 运行中探测报告 + 静态一致性评分
+- **会话控制** — 启动/停止/日志、**实时导航**、并发上限、空闲自动停止
+- **Server 模式** — 尽量捕获 `ws_endpoint`，便于外部 Playwright 连接
+- **代理池** — 健康巡检、粘性/轮询/随机健康分配；密码 DPAPI 加密
 - **Cookie 管理** — 导出 SQLite Cookie；导入 JSON / Netscape，下次启动注入
-- **会话管理** — 启动/停止/日志、错误展示、Server 模式、批量操作
-- **系统托盘** — 隐藏到托盘、停止全部会话、退出时清理
-- **档案模板** — 一键创建纯净 / 电商 / 自动化等预设
-- **傻瓜式首次引导** — 安装后自动检测并安装/下载 Camoufox 环境
-- **应用内一键更新** — 检测 GitHub Release，下载 Setup，**校验 SHA256** 后安装
-- **更新镜像 ghproxy** — 国内默认走 ghproxy，可选手动填 GitHub Token（环境变量优先）
-- **代理密码本机加密** — Windows DPAPI 存盘；数据目录迁移到 `%APPDATA%\FoxDesk`
+- **场景模板** — 纯净 / 电商 / 自动化 / 社媒 / 调研 / 移动窗口 等
+- **本地备份** — 配置导出到 `data_dir/backups`（密码作完整性标记）
+- **应用内更新** — GitHub Release + **ghproxy** + 可选 Token + SHA256
 - **诊断导出** — 系统页一键导出脱敏诊断包
-- **本机 API 令牌** — UI 注入 `X-FoxDesk-Token`，降低本机其它进程随意调用风险
-- **健康检查 & 运行时清理**
-- **下载源切换** — GitHub 官方 / 镜像 / 自定义
-- **深浅色模式 / 中英文双语 / 快捷键 / 右键菜单**
-- **Windows 安装包** — PyInstaller + Inno Setup + GitHub Actions
+- **本机 API 令牌** — UI 注入 `X-FoxDesk-Token`
+- **首次引导 / 托盘 / 双语 / 安装包**
 
 ## 快速开始
 
@@ -40,7 +34,7 @@ python desktop.py
 python -m uvicorn backend.app:app --host 127.0.0.1 --port 8765 --reload
 ```
 
-Windows 也可双击 `Start-CamoufoxManager.bat`。
+Windows 也可双击 `Start-FoxDesk.bat`（旧名 `Start-CamoufoxManager.bat` 仍可用）。
 
 ### 卸载 / 重装清理
 
@@ -62,13 +56,13 @@ build.bat
 产物：
 
 - 便携版：`dist/FoxDesk/FoxDesk.exe`
-- 安装包：`installer_output/FoxDesk-1.2.0-Setup.exe`
+- 安装包：`installer_output/FoxDesk-1.3.0-Setup.exe`
 
 ### CI/CD
 
 ```bash
-git tag v1.2.0
-git push origin v1.2.0
+git tag v1.3.0
+git push origin v1.3.0
 ```
 
 - Workflow：`.github/workflows/build.yml`
@@ -94,7 +88,7 @@ FoxDesk 是**本机桌面工具**：
 - Server 模式在部分 Camoufox 版本下可能无法自动捕获 `ws_endpoint`
 - 指纹检测为静态一致性评分，**不是**反检测保证
 - 无 Token 时仍可能遇到 GitHub 限流；1.2.0+ 会回退网页/Atom + ghproxy
-- 从旧版升级：建议直接装 1.2.0；Program Files 旧安装请先卸载
+- 从旧版升级：建议直接装 1.3.0；Program Files 旧安装请先卸载
 
 完整变更见 [CHANGELOG.md](CHANGELOG.md)。
 

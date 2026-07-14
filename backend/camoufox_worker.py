@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 import json
+import re
 import signal
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 
 running = True
+_page_holder: dict[str, Any] = {"page": None, "context": None}
+_cmd_lock = threading.RLock()
 
 
 def emit(event: str, **payload: Any) -> None:
@@ -47,9 +52,6 @@ def build_config(profile: dict[str, Any]) -> dict[str, Any]:
     platform = (profile.get("navigator_platform") or "").strip()
     if platform:
         config["navigator.platform"] = platform
-
-    vendor = (profile.get("navigator_vendor") or "").strip()
-    # navigator.vendor is not a first-class Camoufox property; keep only platform.
 
     width = int(profile.get("screen_width") or 0)
     height = int(profile.get("screen_height") or 0)
@@ -92,7 +94,6 @@ def build_config(profile: dict[str, Any]) -> dict[str, Any]:
 
     webgl_vendor = (profile.get("webgl_vendor") or "").strip()
     webgl_renderer = (profile.get("webgl_renderer") or "").strip()
-    # Prefer webgl_config tuple when OS is known; otherwise inject config keys.
     if webgl_vendor:
         config["webGl:vendor"] = webgl_vendor
     if webgl_renderer:
@@ -164,7 +165,6 @@ def build_kwargs(profile: dict[str, Any]) -> dict[str, Any]:
         try:
             from browserforge.fingerprints import Screen
 
-            # Screen constrains random fingerprint generation bounds.
             kwargs["screen"] = Screen(max_width=max(width, 800), max_height=max(height, 600))
         except Exception:
             pass
@@ -172,7 +172,6 @@ def build_kwargs(profile: dict[str, Any]) -> dict[str, Any]:
     webgl_vendor = (profile.get("webgl_vendor") or "").strip()
     webgl_renderer = (profile.get("webgl_renderer") or "").strip()
     if webgl_vendor and webgl_renderer and os_name and os_name != "auto":
-        # webgl_config requires OS; may still fail if pair not in sample DB — fall back to config.
         kwargs["webgl_config"] = (webgl_vendor, webgl_renderer)
 
     config = build_config(profile)
@@ -238,7 +237,6 @@ def apply_imported_cookies(context_or_page: Any, profile: dict[str, Any]) -> int
         cookies = playwright_cookies(raw)
         if not cookies:
             return 0
-        # BrowserContext or Page
         if hasattr(context_or_page, "add_cookies"):
             context_or_page.add_cookies(cookies)
         elif hasattr(context_or_page, "context"):
@@ -255,13 +253,10 @@ def apply_imported_cookies(context_or_page: Any, profile: dict[str, Any]) -> int
 def safe_launch_kwargs(profile: dict[str, Any]) -> dict[str, Any]:
     """Build kwargs; if webgl_config sampling fails, drop it and rely on config."""
     kwargs = build_kwargs(profile)
-    # Pre-validate via launch_options when available to catch invalid webgl pairs early.
     try:
         from camoufox.utils import launch_options
 
         probe = dict(kwargs)
-        # launch_options does not accept persistent_context / user_data_dir the same way;
-        # strip playwright-only keys for probe.
         probe.pop("persistent_context", None)
         probe.pop("user_data_dir", None)
         launch_options(**probe)
@@ -273,11 +268,160 @@ def safe_launch_kwargs(profile: dict[str, Any]) -> dict[str, Any]:
             kwargs = dict(kwargs)
             kwargs.pop("webgl_config", None)
             return kwargs
-        # Return kwargs anyway; actual launch will surface the error.
         return kwargs
 
 
-def run_browser(profile: dict[str, Any]) -> int:
+def command_path_for(profile_path: Path) -> Path:
+    return profile_path.with_suffix(".cmd.jsonl")
+
+
+def result_path_for(profile_path: Path) -> Path:
+    return profile_path.with_suffix(".result.jsonl")
+
+
+def write_result(profile_path: Path, payload: dict[str, Any]) -> None:
+    path = result_path_for(profile_path)
+    try:
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    except OSError as exc:
+        emit("warning", message=f"failed to write command result: {exc}")
+
+
+def validate_nav_url(url: str) -> str:
+    value = (url or "").strip()
+    if not value:
+        raise ValueError("url is required")
+    if value.startswith("about:"):
+        return value
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"}:
+        raise ValueError("url must be http(s) or about:")
+    return value
+
+
+def probe_fingerprint(page: Any) -> dict[str, Any]:
+    script = """
+    () => {
+      const nav = window.navigator || {};
+      const screenObj = window.screen || {};
+      let webglVendor = '';
+      let webglRenderer = '';
+      try {
+        const canvas = document.createElement('canvas');
+        const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+        if (gl) {
+          const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+          if (dbg) {
+            webglVendor = gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL) || '';
+            webglRenderer = gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) || '';
+          }
+        }
+      } catch (e) {}
+      let timezone = '';
+      try { timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) {}
+      return {
+        userAgent: nav.userAgent || '',
+        platform: nav.platform || '',
+        language: nav.language || '',
+        languages: Array.from(nav.languages || []),
+        hardwareConcurrency: nav.hardwareConcurrency || 0,
+        deviceMemory: nav.deviceMemory || 0,
+        screen: {
+          width: screenObj.width || 0,
+          height: screenObj.height || 0,
+          colorDepth: screenObj.colorDepth || 0,
+        },
+        timezone,
+        webglVendor,
+        webglRenderer,
+        href: location.href || '',
+      };
+    }
+    """
+    return page.evaluate(script)
+
+
+def handle_command(cmd: dict[str, Any], profile_path: Path) -> None:
+    req_id = cmd.get("id") or ""
+    action = (cmd.get("cmd") or cmd.get("action") or "").strip().lower()
+    page = _page_holder.get("page")
+
+    def reply(**payload: Any) -> None:
+        body = {"id": req_id, "cmd": action, "ok": payload.get("ok", True), **payload}
+        write_result(profile_path, body)
+        emit("command_result", **body)
+
+    try:
+        if action in {"stop", "quit", "exit"}:
+            global running
+            running = False
+            reply(ok=True, message="stopping")
+            return
+        if action == "navigate":
+            if page is None:
+                reply(ok=False, error="no active page (browser mode only)")
+                return
+            url = validate_nav_url(str(cmd.get("url") or ""))
+            emit("navigate", url=url, request_id=req_id)
+            page.goto(url, wait_until="domcontentloaded", timeout=45000)
+            reply(ok=True, url=url, href=getattr(page, "url", url))
+            return
+        if action in {"fingerprint", "fingerprint_probe", "probe"}:
+            if page is None:
+                reply(ok=False, error="no active page (browser mode only)")
+                return
+            data = probe_fingerprint(page)
+            reply(ok=True, report=data)
+            return
+        if action == "ping":
+            reply(ok=True, ready=page is not None)
+            return
+        reply(ok=False, error=f"unknown command: {action}")
+    except Exception as exc:
+        reply(ok=False, error=str(exc))
+
+
+def command_loop(profile_path: Path) -> None:
+    path = command_path_for(profile_path)
+    # Ensure empty command file exists.
+    try:
+        if not path.exists():
+            path.write_text("", encoding="utf-8")
+    except OSError:
+        pass
+    offset = 0
+    while running:
+        try:
+            if not path.exists():
+                time.sleep(0.3)
+                continue
+            data = path.read_bytes()
+            if len(data) < offset:
+                offset = 0
+            if len(data) == offset:
+                time.sleep(0.25)
+                continue
+            chunk = data[offset:].decode("utf-8", errors="replace")
+            offset = len(data)
+            for line in chunk.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    cmd = json.loads(line)
+                except Exception:
+                    emit("warning", message=f"invalid command line: {line[:120]}")
+                    continue
+                if isinstance(cmd, dict):
+                    with _cmd_lock:
+                        handle_command(cmd, profile_path)
+        except Exception as exc:
+            emit("warning", message=f"command loop error: {exc}")
+            time.sleep(0.5)
+
+
+def run_browser(profile: dict[str, Any], profile_path: Path) -> int:
     try:
         from camoufox.sync_api import Camoufox
     except Exception as exc:
@@ -288,31 +432,58 @@ def run_browser(profile: dict[str, Any]) -> int:
     startup_url = (profile.get("startup_url") or "").strip()
     emit("launching", kwargs={k: ("***" if k == "proxy" else v) for k, v in kwargs.items()})
 
+    cmd_thread = threading.Thread(target=command_loop, args=(profile_path,), daemon=True)
+    cmd_thread.start()
+
     try:
         with Camoufox(**kwargs) as browser_or_context:
-            # persistent_context returns BrowserContext; otherwise Browser
             if hasattr(browser_or_context, "new_page"):
                 page = browser_or_context.new_page()
                 apply_imported_cookies(browser_or_context, profile)
+                _page_holder["context"] = browser_or_context
             else:
                 page = browser_or_context.new_page()
                 apply_imported_cookies(page, profile)
+                _page_holder["context"] = getattr(page, "context", None)
+            _page_holder["page"] = page
 
             if startup_url:
                 emit("navigate", url=startup_url)
                 page.goto(startup_url, wait_until="domcontentloaded", timeout=45000)
-            emit("ready", mode="browser")
+            emit("ready", mode="browser", control="cmd.jsonl")
+            # Optional auto probe after ready
+            if profile.get("_auto_fingerprint_probe"):
+                try:
+                    report = probe_fingerprint(page)
+                    emit("fingerprint_report", report=report)
+                    write_result(profile_path, {"id": "auto", "cmd": "fingerprint", "ok": True, "report": report})
+                except Exception as exc:
+                    emit("warning", message=f"auto fingerprint probe failed: {exc}")
             while running:
                 time.sleep(0.5)
     except Exception as exc:
         emit("error", message=str(exc))
         return 1
     finally:
+        _page_holder["page"] = None
+        _page_holder["context"] = None
         emit("stopped")
     return 0
 
 
-def run_server(profile: dict[str, Any]) -> int:
+_WS_RE = re.compile(r"(wss?://[^\s\"'<>]+)", re.I)
+
+
+def _extract_ws_endpoint(text: str) -> str | None:
+    if not text:
+        return None
+    m = _WS_RE.search(text)
+    if not m:
+        return None
+    return m.group(1).rstrip(").,]}\"';")
+
+
+def run_server(profile: dict[str, Any], profile_path: Path) -> int:
     try:
         from camoufox.server import launch_server
     except Exception as exc:
@@ -320,19 +491,64 @@ def run_server(profile: dict[str, Any]) -> int:
         return 2
 
     kwargs = safe_launch_kwargs(profile)
-    # Server path does not use persistent_context the same way
     kwargs.pop("persistent_context", None)
     kwargs.pop("user_data_dir", None)
     emit("launching", mode="server")
-    # Upstream launch_server blocks and prints endpoint to stdout in some versions.
-    # We still emit a ready event first so the manager can mark the process as live.
-    emit("ready", mode="server", ws_endpoint=None, note="endpoint is printed by camoufox server when available")
+
+    # Mirror stdout/stderr from nested prints when possible.
+    # launch_server typically blocks and prints the endpoint.
+    class _StdoutTee:
+        def __init__(self, original):
+            self._original = original
+            self._buf = ""
+
+        def write(self, s: str) -> int:
+            if not isinstance(s, str):
+                s = str(s)
+            try:
+                self._original.write(s)
+                self._original.flush()
+            except Exception:
+                pass
+            self._buf += s
+            while True:
+                parts = re.split(r"\r\n|\n|\r", self._buf, maxsplit=1)
+                if len(parts) == 1:
+                    break
+                line, self._buf = parts[0], parts[1]
+                line = line.strip()
+                if not line:
+                    continue
+                ws = _extract_ws_endpoint(line)
+                if ws:
+                    emit("endpoint", ws_endpoint=ws, raw=line[:300])
+                    emit("ready", mode="server", ws_endpoint=ws)
+                else:
+                    emit("server_log", message=line[:500])
+            return len(s)
+
+        def flush(self) -> None:
+            try:
+                self._original.flush()
+            except Exception:
+                pass
+
+    old_out, old_err = sys.stdout, sys.stderr
+    tee = _StdoutTee(old_out)
+    # Keep emit working: emit writes to print -> tee -> original.
+    sys.stdout = tee  # type: ignore[assignment]
+    sys.stderr = tee  # type: ignore[assignment]
     try:
+        # Mark process live even before endpoint is known.
+        emit("ready", mode="server", ws_endpoint=None, note="waiting for camoufox server endpoint")
         launch_server(**kwargs)
     except Exception as exc:
+        # restore before emit error fully
+        sys.stdout, sys.stderr = old_out, old_err
         emit("error", message=str(exc))
         return 1
     finally:
+        sys.stdout, sys.stderr = old_out, old_err
         emit("stopped")
     return 0
 
@@ -356,8 +572,8 @@ def main() -> int:
         return 65
     mode = profile.get("mode", "browser")
     if mode == "server":
-        return run_server(profile)
-    return run_browser(profile)
+        return run_server(profile, profile_path)
+    return run_browser(profile, profile_path)
 
 
 if __name__ == "__main__":
