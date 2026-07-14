@@ -66,6 +66,7 @@ $candidates = @(
     "${env:ProgramFiles(x86)}\FoxDesk",
     "$env:USERPROFILE\AppData\Local\Programs\FoxDesk"
 ) | Select-Object -Unique
+# 1.1.0+ defaults to %LOCALAPPDATA%\Programs\FoxDesk; older betas may use Program Files.
 
 Write-Step "Removing leftover install directories"
 foreach ($dir in $candidates) {

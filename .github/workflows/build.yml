@@ -214,6 +214,11 @@ jobs:
             zip -r "../release/FoxDesk-windows-x64-${{ needs.build-windows.outputs.version }}.zip" .
             cd ..
           fi
+          # Publish checksums for in-app update verification
+          cd release
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+          cd ..
           ls -lah release
 
       - name: Create GitHub Release
@@ -228,13 +233,15 @@ jobs:
           body: |
             ## FoxDesk ${{ needs.build-windows.outputs.version }}
 
-            Local Camoufox fingerprint browser manager (Windows).
+            Local Camoufox fingerprint browser manager for Windows.
 
             ### Downloads
-            - **Installer**: `FoxDesk-*-Setup.exe`
+            - **Installer**: `FoxDesk-*-Setup.exe` (default install: `%LOCALAPPDATA%\Programs\FoxDesk`)
             - **Portable**: `FoxDesk-windows-x64-*.zip`
+            - **Checksums**: `SHA256SUMS` (one-click update verifies this)
 
             ### Notes
-            - First run may need Camoufox browser fetch from the System panel.
-            - Data directory: `%APPDATA%\CamoufoxManager`
-            - This build includes frozen worker launch (`FoxDesk.exe --worker`), offline icons, and fingerprint/cookie fixes.
+            - First run guided setup downloads the Camoufox browser automatically.
+            - Data directory (legacy name): `%APPDATA%\CamoufoxManager`
+            - Local API is bound to `127.0.0.1` and requires a per-process UI token.
+            - Do not expose the local server to the network.

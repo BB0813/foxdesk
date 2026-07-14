@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import shutil
 import socket
 import subprocess
@@ -14,10 +15,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
+from starlette.middleware.base import BaseHTTPMiddleware
 
 
 def get_app_data_dir() -> Path:
@@ -55,7 +57,7 @@ def migrate_legacy_data() -> None:
         shutil.copytree(legacy_profiles_dir, app_profiles_dir)
 
 
-APP_VERSION = "1.1.0-beta.6"
+APP_VERSION = "1.1.0"
 GITHUB_REPO = "BB0813/foxdesk"
 
 if getattr(sys, "frozen", False):
@@ -456,6 +458,50 @@ class ProcessRegistry:
 store = ProfileStore(DATA_DIR / "profiles.json")
 registry = ProcessRegistry()
 app = FastAPI(title="FoxDesk", version=APP_VERSION)
+
+# Localhost API token: blocks casual cross-process abuse on 127.0.0.1.
+# Token is generated per process and injected into the UI shell.
+API_TOKEN = secrets.token_urlsafe(32)
+API_TOKEN_HEADER = "X-FoxDesk-Token"
+
+
+class LocalApiTokenMiddleware(BaseHTTPMiddleware):
+    """Require token for /api/* except a tiny bootstrap endpoint."""
+
+    OPEN_PREFIXES = (
+        "/assets/",
+        "/favicon",
+    )
+    OPEN_EXACT = {
+        "/",
+        "/api/bootstrap",
+        "/api/system/ping",
+    }
+
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path or "/"
+        if path in self.OPEN_EXACT or any(path.startswith(p) for p in self.OPEN_PREFIXES):
+            return await call_next(request)
+        if path.startswith("/api/"):
+            provided = (
+                request.headers.get(API_TOKEN_HEADER)
+                or request.headers.get("x-foxdesk-token")
+                or ""
+            )
+            if not provided or not secrets.compare_digest(provided, API_TOKEN):
+                return JSONResponse(
+                    status_code=401,
+                    content={
+                        "detail": (
+                            "unauthorized: missing or invalid X-FoxDesk-Token "
+                            "(local API is protected; reload the FoxDesk UI)"
+                        )
+                    },
+                )
+        return await call_next(request)
+
+
+app.add_middleware(LocalApiTokenMiddleware)
 app.mount("/assets", StaticFiles(directory=STATIC_DIR), name="assets")
 
 from backend.proxy_pool import ProxyPoolStore  # noqa: E402
@@ -469,6 +515,7 @@ update_manager = UpdateManager(
     github_repo=GITHUB_REPO,
     download_dir=DATA_DIR / "updates",
     user_agent=f"FoxDesk/{APP_VERSION}",
+    require_checksum=False,  # verify when SHA256SUMS present; CI publishes it for 1.1.0+
 )
 
 
@@ -770,8 +817,38 @@ def apply_proxy_pool_to_profile(profile: Profile) -> Profile:
 
 
 @app.get("/")
-def index() -> FileResponse:
-    return FileResponse(STATIC_DIR / "index.html")
+def index() -> HTMLResponse:
+    """Serve UI shell with per-process API token injected."""
+    html_path = STATIC_DIR / "index.html"
+    html = html_path.read_text(encoding="utf-8")
+    bootstrap = (
+        "<script>"
+        f"window.__FOXDESK_BOOT__={json.dumps({'token': API_TOKEN, 'version': APP_VERSION})};"
+        "</script>"
+    )
+    if "</head>" in html:
+        html = html.replace("</head>", bootstrap + "\n  </head>", 1)
+    else:
+        html = bootstrap + html
+    return HTMLResponse(content=html)
+
+
+@app.get("/api/bootstrap")
+def api_bootstrap() -> dict[str, Any]:
+    """Public bootstrap metadata for UI clients."""
+    return {
+        "ok": True,
+        "app_name": "FoxDesk",
+        "app_version": APP_VERSION,
+        "token_header": API_TOKEN_HEADER,
+        "auth_required": True,
+        "note": "Use the token injected into index.html (window.__FOXDESK_BOOT__).",
+    }
+
+
+@app.get("/api/system/ping")
+def system_ping() -> dict[str, Any]:
+    return {"ok": True, "app_version": APP_VERSION}
 
 
 @app.get("/api/system")
@@ -834,6 +911,8 @@ def system() -> dict[str, Any]:
         "needs_setup": first_run or bool(setup.get("needs_setup")),
         "setup": setup,
         "github_repo": GITHUB_REPO,
+        "api_auth": True,
+        "api_token_header": API_TOKEN_HEADER,
         "proxy_pool_count": len(proxy_pool.all()),
         "profile_count": len(store.all()),
     }

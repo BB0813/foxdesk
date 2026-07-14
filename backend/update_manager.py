@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -49,6 +50,33 @@ def prefer_prereleases(current: str) -> bool:
     return bool(pre)
 
 
+def sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        while True:
+            chunk = fh.read(chunk_size)
+            if not chunk:
+                break
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def parse_sha256sums(text: str) -> dict[str, str]:
+    """Parse `SHA256  filename` or `SHA256 *filename` lines."""
+    mapping: dict[str, str] = {}
+    for line in (text or "").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        # GNU coreutils: "<hash>  <name>" or "<hash> *<name>"
+        m = re.match(r"^([A-Fa-f0-9]{64})\s+\*?(.+)$", line)
+        if not m:
+            continue
+        digest, name = m.group(1).lower(), m.group(2).strip().strip('"')
+        mapping[Path(name).name.lower()] = digest
+    return mapping
+
+
 @dataclass
 class UpdateState:
     status: str = "idle"  # idle | checking | available | downloading | ready | installing | failed | up_to_date
@@ -60,6 +88,10 @@ class UpdateState:
     asset_name: str | None = None
     asset_url: str | None = None
     asset_size: int | None = None
+    checksum_url: str | None = None
+    expected_sha256: str | None = None
+    actual_sha256: str | None = None
+    sha256_verified: bool | None = None
     downloaded_bytes: int = 0
     progress: int = 0
     local_path: str | None = None
@@ -78,6 +110,10 @@ class UpdateState:
             "asset_name": self.asset_name,
             "asset_url": self.asset_url,
             "asset_size": self.asset_size,
+            "checksum_url": self.checksum_url,
+            "expected_sha256": self.expected_sha256,
+            "actual_sha256": self.actual_sha256,
+            "sha256_verified": self.sha256_verified,
             "downloaded_bytes": self.downloaded_bytes,
             "progress": self.progress,
             "local_path": self.local_path,
@@ -98,11 +134,14 @@ class UpdateManager:
         github_repo: str,
         download_dir: Path,
         user_agent: str,
+        require_checksum: bool = False,
     ) -> None:
         self.app_version = app_version
         self.github_repo = github_repo
         self.download_dir = Path(download_dir)
         self.user_agent = user_agent
+        # When True, refuse install if SHA256SUMS is missing/mismatched.
+        self.require_checksum = require_checksum
         self.lock = threading.RLock()
         self.state = UpdateState(current=app_version)
         self._thread: threading.Thread | None = None
@@ -129,6 +168,17 @@ class UpdateManager:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return json.loads(resp.read().decode("utf-8"))
 
+    def _request_text(self, url: str, timeout: float = 12.0) -> str:
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": self.user_agent,
+                "Accept": "text/plain, application/octet-stream, */*",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.read().decode("utf-8", errors="replace")
+
     def _pick_setup_asset(self, assets: list[dict[str, Any]]) -> dict[str, Any] | None:
         preferred: list[dict[str, Any]] = []
         for asset in assets or []:
@@ -138,9 +188,17 @@ class UpdateManager:
             if "setup" in name or name.startswith("foxdesk"):
                 preferred.append(asset)
         if preferred:
-            # Prefer *Setup.exe names
             preferred.sort(key=lambda a: (0 if "setup" in (a.get("name") or "").lower() else 1, a.get("name") or ""))
             return preferred[0]
+        return None
+
+    def _pick_checksum_asset(self, assets: list[dict[str, Any]]) -> dict[str, Any] | None:
+        for asset in assets or []:
+            name = (asset.get("name") or "").lower()
+            if name in {"sha256sums", "sha256sums.txt", "checksums.txt", "checksums.sha256"}:
+                return asset
+            if name.endswith(".sha256") or name.endswith(".sha256.txt"):
+                return asset
         return None
 
     def _select_release(self, include_prerelease: bool) -> dict[str, Any] | None:
@@ -171,6 +229,10 @@ class UpdateManager:
             self.state.status = "checking"
             self.state.error = None
             self.state.current = self.app_version
+            self.state.expected_sha256 = None
+            self.state.actual_sha256 = None
+            self.state.sha256_verified = None
+            self.state.checksum_url = None
 
         use_pre = prefer_prereleases(self.app_version) if include_prerelease is None else include_prerelease
         try:
@@ -179,7 +241,22 @@ class UpdateManager:
                 raise RuntimeError("no releases found")
             tag = (data.get("tag_name") or "").lstrip("v")
             html_url = data.get("html_url") or f"https://github.com/{self.github_repo}/releases"
-            asset = self._pick_setup_asset(data.get("assets") or [])
+            assets = data.get("assets") or []
+            asset = self._pick_setup_asset(assets)
+            checksum_asset = self._pick_checksum_asset(assets)
+            expected = None
+            checksum_url = None
+            if checksum_asset and asset:
+                checksum_url = checksum_asset.get("browser_download_url")
+                try:
+                    text = self._request_text(checksum_url, timeout=15)
+                    mapping = parse_sha256sums(text)
+                    expected = mapping.get((asset.get("name") or "").lower())
+                    if not expected and len(mapping) == 1:
+                        expected = next(iter(mapping.values()))
+                    self._log(f"checksum asset loaded entries={len(mapping)}")
+                except Exception as exc:
+                    self._log(f"checksum fetch failed: {exc}")
             newer = version_is_newer(tag, self.app_version) if tag else False
             with self.lock:
                 self.state.latest = tag
@@ -187,6 +264,8 @@ class UpdateManager:
                 self.state.release_url = html_url
                 self.state.prerelease = bool(data.get("prerelease"))
                 self.state.checked_at = time.time()
+                self.state.checksum_url = checksum_url
+                self.state.expected_sha256 = expected
                 if asset:
                     self.state.asset_name = asset.get("name")
                     self.state.asset_url = asset.get("browser_download_url")
@@ -197,16 +276,24 @@ class UpdateManager:
                     self.state.asset_size = None
                 if newer:
                     self.state.status = "available"
-                    # Keep ready if already downloaded matching asset
                     if self.state.local_path and Path(self.state.local_path).exists() and self.state.asset_name:
                         if Path(self.state.local_path).name == self.state.asset_name:
-                            self.state.status = "ready"
-                            self.state.progress = 100
+                            # re-verify existing download if possible
+                            try:
+                                self._verify_local_file(Path(self.state.local_path))
+                                self.state.status = "ready"
+                                self.state.progress = 100
+                            except Exception as exc:
+                                self._log(f"existing download invalid: {exc}")
+                                self.state.local_path = None
                 else:
                     self.state.status = "up_to_date"
                     self.state.progress = 0
                     self.state.local_path = None
-                self._log(f"checked latest={tag} newer={newer} asset={self.state.asset_name}")
+                self._log(
+                    f"checked latest={tag} newer={newer} asset={self.state.asset_name} "
+                    f"sha256={'yes' if expected else 'no'}"
+                )
                 return self.state.view()
         except Exception as exc:
             with self.lock:
@@ -216,13 +303,32 @@ class UpdateManager:
                 self._log(f"check failed: {exc}")
                 return self.state.view()
 
+    def _verify_local_file(self, path: Path) -> None:
+        digest = sha256_file(path)
+        with self.lock:
+            self.state.actual_sha256 = digest
+            expected = self.state.expected_sha256
+        if expected:
+            if digest.lower() != expected.lower():
+                with self.lock:
+                    self.state.sha256_verified = False
+                raise RuntimeError(
+                    f"SHA256 mismatch for {path.name}: expected {expected}, got {digest}"
+                )
+            with self.lock:
+                self.state.sha256_verified = True
+            self._log(f"sha256 verified: {digest[:16]}…")
+        else:
+            with self.lock:
+                self.state.sha256_verified = None
+            if self.require_checksum:
+                raise RuntimeError("Release has no SHA256SUMS; refusing to install")
+            self._log("sha256: no checksum published for this release (skipped)")
+
     def start_download(self) -> dict[str, Any]:
         with self.lock:
             if self.state.status == "downloading":
                 return self.state.view()
-            if not self.state.asset_url:
-                # Ensure we have release metadata
-                pass
         info = self.check()
         if not info.get("update_available"):
             return info
@@ -238,6 +344,8 @@ class UpdateManager:
             self.state.progress = 0
             self.state.downloaded_bytes = 0
             self.state.error = None
+            self.state.actual_sha256 = None
+            self.state.sha256_verified = None
             self._thread = threading.Thread(target=self._download_worker, daemon=True)
             self._thread.start()
             return self.state.view()
@@ -273,6 +381,7 @@ class UpdateManager:
                         else:
                             self.state.progress = min(99, self.state.progress + 1)
             tmp.replace(target)
+            self._verify_local_file(target)
             with self.lock:
                 self.state.local_path = str(target)
                 self.state.progress = 100
@@ -284,22 +393,34 @@ class UpdateManager:
                 tmp.unlink(missing_ok=True)
             except OSError:
                 pass
+            try:
+                if target.exists():
+                    target.unlink(missing_ok=True)
+            except OSError:
+                pass
             with self.lock:
                 self.state.status = "failed"
                 self.state.error = str(exc)
+                self.state.local_path = None
             self._log(f"download failed: {exc}")
 
     def install(self, *, exit_after: bool = True) -> dict[str, Any]:
         with self.lock:
             path = self.state.local_path
             if not path or not Path(path).exists():
-                # try start download first path
                 return {
                     **self.state.view(),
                     "ok": False,
                     "error": self.state.error or "Installer not downloaded yet",
                 }
             installer = Path(path)
+            # Final integrity gate before exec
+            try:
+                self._verify_local_file(installer)
+            except Exception as exc:
+                self.state.status = "failed"
+                self.state.error = str(exc)
+                return {**self.state.view(), "ok": False}
             self.state.status = "installing"
             self._log(f"launching installer: {installer}")
 
@@ -310,8 +431,6 @@ class UpdateManager:
                 return {**self.state.view(), "ok": False}
 
         try:
-            # Launch installer detached so it survives app exit.
-            # /NORESTART keeps user session; UI remains visible for clarity.
             creationflags = 0x00000008 | 0x00000200  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
             subprocess.Popen(
                 [str(installer)],
@@ -324,7 +443,6 @@ class UpdateManager:
                 self.state.error = None
             result = {**self.status(), "ok": True, "exit_after": exit_after}
             if exit_after:
-                # Delay slightly so HTTP response can flush
                 threading.Thread(target=self._delayed_exit, daemon=True).start()
             return result
         except Exception as exc:

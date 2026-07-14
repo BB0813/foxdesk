@@ -2,7 +2,7 @@
 ; Requires: Inno Setup 6+
 
 #define MyAppName "FoxDesk"
-#define MyAppVersion "1.1.0-beta.6"
+#define MyAppVersion "1.1.0"
 #define MyAppPublisher "FoxDesk"
 #define MyAppURL "https://github.com/BB0813/foxdesk"
 #define MyAppExeName "FoxDesk.exe"
@@ -15,7 +15,8 @@ AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
-DefaultDirName={autopf}\{#MyAppName}
+; Per-user default avoids Program Files permission traps for uninstall/upgrade.
+DefaultDirName={localappdata}\Programs\{#MyAppName}
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 OutputDir=installer_output
@@ -34,8 +35,8 @@ SetupIconFile=static\logo.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 CloseApplications=force
 RestartApplications=no
-; Replace existing installs cleanly (same AppId).
-UsePreviousAppDir=yes
+; Prefer new per-user path even if an older Program Files install exists.
+UsePreviousAppDir=no
 CreateUninstallRegKey=yes
 UninstallDisplayName={#MyAppName}
 InfoBeforeFile=

@@ -547,10 +547,24 @@ function toast(message) {
   toast.timer = window.setTimeout(() => el.classList.remove("show"), 2800);
 }
 
+function apiToken() {
+  try {
+    return (window.__FOXDESK_BOOT__ && window.__FOXDESK_BOOT__.token) || "";
+  } catch (_) {
+    return "";
+  }
+}
+
 async function api(path, options = {}) {
+  const headers = {
+    "Content-Type": "application/json",
+    ...(options.headers || {}),
+  };
+  const token = apiToken();
+  if (token) headers["X-FoxDesk-Token"] = token;
   const response = await fetch(path, {
-    headers: { "Content-Type": "application/json" },
     ...options,
+    headers,
   });
   if (!response.ok) {
     let detail = response.statusText;
@@ -560,7 +574,14 @@ async function api(path, options = {}) {
     } catch (_) {}
     throw new Error(detail);
   }
-  return response.json();
+  if (response.status === 204) return null;
+  const text = await response.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch (_) {
+    return text;
+  }
 }
 
 function splitList(value) {

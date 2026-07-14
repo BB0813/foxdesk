@@ -5,13 +5,18 @@ installer_output/
 *.spec.bak
 __pycache__/
 *.pyc
+*.pyo
 
 # Data (user profiles)
 data/runtime/
 data/profiles/
+data/profiles.json
 
-# Claude
+# Local / agent scratch
 .claude/
+.marking/
+.zcode/
+tools/_purge_local.ps1
 
 # IDE
 .vscode/
@@ -24,5 +29,6 @@ Desktop.ini
 .DS_Store
 server.err.log
 server.out.log
-data/profiles.json
 artifacts/
+*.log
+.marking
