@@ -258,14 +258,20 @@ const i18n = {
     proxyHealthRunning: "代理巡检进行中…",
     proxyHealthDone: "代理巡检完成",
     localBackup: "本地备份",
-    localBackupDesc: "导出配置 JSON 到 data_dir/backups（密码仅作完整性标记）",
+    localBackupDesc: "密码加密备份到 data_dir/backups（.fdk），可一键恢复",
     createBackup: "创建备份",
     backupPassword: "备份密码",
     backupIncludeProfiles: "包含 profiles 目录小文件",
     backupCreated: "备份已创建",
     backupPasswordRequired: "请输入至少 4 位备份密码",
+    backupSelect: "选择备份恢复",
+    restoreBackup: "恢复所选备份",
+    restoreConfirm: "将覆盖当前配置（会先做 pre-restore 快照）。请先停止全部会话。继续？",
+    restoreDone: "备份已恢复",
+    noBackups: "暂无备份",
     navigateSession: "导航",
     probeFingerprint: "探测指纹",
+    refreshEndpoint: "刷新端点",
     navigateUrlPrompt: "输入要打开的网址",
     navigateDone: "已导航",
     probeDone: "指纹探测完成",
@@ -533,14 +539,20 @@ const i18n = {
     proxyHealthRunning: "Proxy health check running…",
     proxyHealthDone: "Proxy health check finished",
     localBackup: "Local backup",
-    localBackupDesc: "Export config JSON to data_dir/backups (password is integrity stamp only)",
+    localBackupDesc: "Password-encrypted backups under data_dir/backups (.fdk) with restore",
     createBackup: "Create backup",
     backupPassword: "Backup password",
     backupIncludeProfiles: "Include small files under profiles/",
     backupCreated: "Backup created",
     backupPasswordRequired: "Enter a backup password (min 4 chars)",
+    backupSelect: "Select backup to restore",
+    restoreBackup: "Restore selected",
+    restoreConfirm: "This overwrites current config (a pre-restore snapshot is saved first). Stop all sessions first. Continue?",
+    restoreDone: "Backup restored",
+    noBackups: "No backups yet",
     navigateSession: "Navigate",
     probeFingerprint: "Probe fingerprint",
+    refreshEndpoint: "Refresh endpoint",
     navigateUrlPrompt: "URL to open",
     navigateDone: "Navigated",
     probeDone: "Fingerprint probe done",
@@ -1267,6 +1279,57 @@ async function createBackup() {
     hint.textContent = `${result.path || ""}${result.warning ? ` · ${result.warning}` : ""}`;
   }
   toast(`${t("backupCreated")}: ${result.path || ""}`);
+  await loadBackups();
+  return result;
+}
+
+async function loadBackups() {
+  const sel = $("#backupSelect");
+  if (!sel) return null;
+  try {
+    const data = await api("/api/system/backups");
+    const items = data.items || [];
+    if (!items.length) {
+      sel.innerHTML = `<option value="">${t("noBackups")}</option>`;
+      return data;
+    }
+    sel.innerHTML = items
+      .map((item) => {
+        const sizeKb = item.size ? Math.round(item.size / 1024) : 0;
+        const label = `${item.name} (${item.kind || "file"}, ${sizeKb} KB)`;
+        return `<option value="${escapeHtml(item.path)}">${escapeHtml(label)}</option>`;
+      })
+      .join("");
+    return data;
+  } catch (err) {
+    sel.innerHTML = `<option value="">${t("noBackups")}</option>`;
+    return null;
+  }
+}
+
+async function restoreBackup() {
+  const password = ($("#backupPasswordInput")?.value || "").trim();
+  if (password.length < 4) {
+    toast(t("backupPasswordRequired"));
+    return null;
+  }
+  const path = ($("#backupSelect")?.value || "").trim();
+  if (!path) {
+    toast(t("noBackups"));
+    return null;
+  }
+  if (!confirm(t("restoreConfirm"))) return null;
+  const result = await api("/api/system/backup/restore", {
+    method: "POST",
+    body: JSON.stringify({ password, path, overwrite: true }),
+  });
+  const hint = $("#backupHint");
+  if (hint) {
+    hint.textContent = `${t("restoreDone")}: ${result.restored?.length || 0} files` +
+      (result.pre_restore_snapshot ? ` · snapshot ${result.pre_restore_snapshot}` : "");
+  }
+  toast(t("restoreDone"));
+  await Promise.all([loadSystem(), loadProfiles(), loadProxies(), loadBackups()]);
   return result;
 }
 
@@ -1331,11 +1394,16 @@ function renderProcesses(selector, processes, stopLabel = t("stop"), isSession =
              <button class="button secondary copy-ws" data-ws="${escapeHtml(item.ws_endpoint)}" type="button" style="min-height:28px;font-size:12px">${t("copyEndpoint")}</button>
            </div>`
         : "";
+      const isServer = (item.mode || "browser") === "server";
       const sessionActions =
-        isSession && running && (item.mode || "browser") !== "server"
+        isSession && running
           ? `<div class="button-row" style="padding:0 0 6px;gap:6px">
-               <button class="button secondary session-navigate" data-process-id="${item.id}" type="button" style="min-height:28px;font-size:12px">${t("navigateSession")}</button>
-               <button class="button secondary session-probe" data-process-id="${item.id}" type="button" style="min-height:28px;font-size:12px">${t("probeFingerprint")}</button>
+               ${
+                 isServer
+                   ? `<button class="button secondary session-endpoint" data-process-id="${item.id}" type="button" style="min-height:28px;font-size:12px">${t("refreshEndpoint")}</button>`
+                   : `<button class="button secondary session-navigate" data-process-id="${item.id}" type="button" style="min-height:28px;font-size:12px">${t("navigateSession")}</button>
+               <button class="button secondary session-probe" data-process-id="${item.id}" type="button" style="min-height:28px;font-size:12px">${t("probeFingerprint")}</button>`
+               }
              </div>`
           : "";
       const fpReport = item.fingerprint_report
@@ -1458,6 +1526,25 @@ function renderProcesses(selector, processes, stopLabel = t("stop"), isSession =
           body: "{}",
         });
         toast(result.ok === false ? result.error || t("failed") : t("probeDone"));
+        await loadSessions();
+      } catch (err) {
+        toast(err.message);
+      }
+    });
+  });
+  $$(".session-endpoint").forEach((button) => {
+    button.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      try {
+        const result = await api(`/api/sessions/${button.dataset.processId}/endpoint`, {
+          method: "POST",
+          body: "{}",
+        });
+        if (result.ws_endpoint) {
+          toast(`${t("wsEndpoint")}: ${result.ws_endpoint}`);
+        } else {
+          toast(result.error || t("failed"));
+        }
         await loadSessions();
       } catch (err) {
         toast(err.message);
@@ -2497,6 +2584,7 @@ async function refreshAll() {
     loadSessions(),
     loadTasks(),
     loadChannels(),
+    loadBackups(),
   ]);
   await maybeAutoSetup();
   // Skip update popup while first-run setup is blocking the UI
@@ -2570,6 +2658,8 @@ function bindEvents() {
   $("#saveSettingsBtn")?.addEventListener("click", () => saveSettings().catch((e) => toast(e.message)));
   $("#exportDiagnosticsBtn")?.addEventListener("click", () => exportDiagnostics().catch((e) => toast(e.message)));
   $("#createBackupBtn")?.addEventListener("click", () => createBackup().catch((e) => toast(e.message)));
+  $("#restoreBackupBtn")?.addEventListener("click", () => restoreBackup().catch((e) => toast(e.message)));
+  $("#refreshBackupsBtn")?.addEventListener("click", () => loadBackups().catch((e) => toast(e.message)));
   $("#proxyHealthNowBtn")?.addEventListener("click", () => runProxyHealthNow().catch((e) => toast(e.message)));
   $("#githubTokenInput")?.addEventListener("input", (e) => {
     e.target.dataset.dirty = "1";

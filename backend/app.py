@@ -91,7 +91,7 @@ def migrate_legacy_data() -> None:
                 pass
 
 
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.3.1"
 GITHUB_REPO = "BB0813/foxdesk"
 
 if getattr(sys, "frozen", False):
@@ -543,7 +543,12 @@ class ProcessRegistry:
         item.logs.append("[stop] done")
         if item.runtime_path:
             runtime = Path(item.runtime_path)
-            for path in (runtime, runtime.with_suffix(".cmd.jsonl"), runtime.with_suffix(".result.jsonl")):
+            for path in (
+                runtime,
+                runtime.with_suffix(".cmd.jsonl"),
+                runtime.with_suffix(".result.jsonl"),
+                runtime.with_suffix(".ws"),
+            ):
                 try:
                     path.unlink(missing_ok=True)
                 except OSError:
@@ -2430,6 +2435,55 @@ def session_fingerprint_probe(process_id: str) -> dict[str, Any]:
     return result
 
 
+@app.post("/api/sessions/{process_id}/endpoint")
+def session_refresh_endpoint(process_id: str) -> dict[str, Any]:
+    """Ask a server-mode session for its current ws_endpoint (if known)."""
+    try:
+        item = registry.get(process_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="session not found") from exc
+    if item.kind != "session":
+        raise HTTPException(status_code=400, detail="not a browser session")
+    if item.process.poll() is not None:
+        raise HTTPException(status_code=409, detail="session is not running")
+    if item.ws_endpoint:
+        item.touch()
+        return {"ok": True, "session_id": process_id, "ws_endpoint": item.ws_endpoint, "source": "registry"}
+    if item.runtime_path:
+        side = Path(item.runtime_path).with_suffix(".ws")
+        try:
+            if side.exists():
+                ws = side.read_text(encoding="utf-8").strip()
+                if ws:
+                    item.ws_endpoint = ws
+                    item.ready = True
+                    item.touch()
+                    return {"ok": True, "session_id": process_id, "ws_endpoint": ws, "source": "sidecar"}
+        except OSError:
+            pass
+    if item.runtime_path:
+        result = send_worker_command(item.runtime_path, "endpoint", timeout=10.0)
+        item.touch()
+        ws = result.get("ws_endpoint")
+        if result.get("ok") and ws:
+            item.ws_endpoint = str(ws)
+            item.ready = True
+            return {
+                "ok": True,
+                "session_id": process_id,
+                "ws_endpoint": item.ws_endpoint,
+                "source": "worker",
+            }
+        return {
+            "ok": bool(result.get("ok")),
+            "session_id": process_id,
+            "ws_endpoint": item.ws_endpoint,
+            "error": result.get("error") or "endpoint not available yet",
+            "source": "worker",
+        }
+    return {"ok": False, "session_id": process_id, "error": "no runtime control channel"}
+
+
 @app.get("/api/system/resources")
 def system_resources() -> dict[str, Any]:
     """Lightweight process resource snapshot for the manager UI."""
@@ -2479,70 +2533,230 @@ class BackupRequest(BaseModel):
     include_profiles_dirs: bool = False
 
 
+class BackupRestoreRequest(BaseModel):
+    password: str = Field(min_length=4, max_length=128)
+    path: str = Field(min_length=1, max_length=1024)
+    # When true, write restored files over current data_dir (after pre-restore snapshot).
+    overwrite: bool = True
+    # Restore only listed names; empty = all safe names in archive.
+    include: list[str] = Field(default_factory=list)
+
+
+_BACKUP_SAFE_ROOT_NAMES = {
+    "profiles.json",
+    "proxies.json",
+    "settings.json",
+    "channels.json",
+    "activity.json",
+}
+
+
+def _collect_backup_files(*, include_profiles_dirs: bool) -> dict[str, bytes]:
+    files: dict[str, bytes] = {}
+    for name in sorted(_BACKUP_SAFE_ROOT_NAMES):
+        p = DATA_DIR / name
+        if p.exists() and p.is_file():
+            files[name] = p.read_bytes()
+    if include_profiles_dirs and PROFILES_DIR.exists():
+        for p in PROFILES_DIR.rglob("*"):
+            if not p.is_file():
+                continue
+            if p.stat().st_size > 8 * 1024 * 1024:
+                continue
+            rel = p.relative_to(PROFILES_DIR)
+            if ".." in rel.parts:
+                continue
+            arc = str(Path("profiles") / rel).replace("\\", "/")
+            files[arc] = p.read_bytes()
+    return files
+
+
+def _safe_restore_target(arcname: str) -> Path | None:
+    """Map archive name to absolute path under DATA_DIR, or None if unsafe."""
+    name = (arcname or "").replace("\\", "/").lstrip("/")
+    if not name or name.startswith("../") or "/../" in f"/{name}/":
+        return None
+    if name in _BACKUP_SAFE_ROOT_NAMES:
+        return DATA_DIR / name
+    if name.startswith("profiles/"):
+        rel = name[len("profiles/") :]
+        if not rel or ".." in Path(rel).parts:
+            return None
+        return PROFILES_DIR / rel
+    return None
+
+
+@app.get("/api/system/backups")
+def list_backups() -> dict[str, Any]:
+    backups = DATA_DIR / "backups"
+    backups.mkdir(parents=True, exist_ok=True)
+    items: list[dict[str, Any]] = []
+    for p in sorted(backups.glob("foxdesk-backup-*"), reverse=True):
+        if not p.is_file():
+            continue
+        try:
+            st = p.stat()
+            kind = "encrypted" if p.suffix.lower() == ".fdk" else ("zip" if p.suffix.lower() == ".zip" else "file")
+            items.append(
+                {
+                    "name": p.name,
+                    "path": str(p),
+                    "size": st.st_size,
+                    "mtime": st.st_mtime,
+                    "kind": kind,
+                }
+            )
+        except OSError:
+            continue
+    return {"ok": True, "items": items[:100], "dir": str(backups)}
+
+
 @app.post("/api/system/backup")
 def create_encrypted_backup(request: BackupRequest) -> dict[str, Any]:
-    """Export core config JSON into a local zip under data_dir/backups.
-
-    Password is used to derive a lightweight integrity stamp (not strong crypto).
-    Prefer full-disk encryption for sensitive machines.
-    """
-    import hashlib
-    import zipfile
+    """Export core config into a password-encrypted `.fdk` package under data_dir/backups."""
+    from backend.backup_crypto import write_encrypted_backup
 
     backups = DATA_DIR / "backups"
     backups.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    out_path = backups / f"foxdesk-backup-{stamp}.zip"
-    pwd = request.password.encode("utf-8")
-    include_names = [
-        "profiles.json",
-        "proxies.json",
-        "settings.json",
-        "channels.json",
-        "activity.json",
-    ]
-    written: list[str] = []
-    hasher = hashlib.sha256()
-    hasher.update(pwd)
-    with zipfile.ZipFile(out_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for name in include_names:
-            path = DATA_DIR / name
-            if not path.exists():
-                continue
-            data = path.read_bytes()
-            hasher.update(data)
-            zf.writestr(name, data)
-            written.append(name)
-        if request.include_profiles_dirs and PROFILES_DIR.exists():
-            for path in PROFILES_DIR.rglob("*"):
-                if not path.is_file():
-                    continue
-                # Skip huge caches; keep small profile sidecars only.
-                if path.stat().st_size > 8 * 1024 * 1024:
-                    continue
-                arc = str(Path("profiles") / path.relative_to(PROFILES_DIR)).replace("\\", "/")
-                data = path.read_bytes()
-                hasher.update(data)
-                zf.writestr(arc, data)
-                written.append(arc)
-        meta = {
-            "app_version": APP_VERSION,
-            "created_at": now_iso(),
-            "files": written,
-            "password_sha256": hashlib.sha256(pwd).hexdigest(),
-            "content_fingerprint": hasher.hexdigest(),
-            "note": "Local backup. Password stamp is integrity-only; store the zip safely.",
-        }
-        zf.writestr("backup-meta.json", json.dumps(meta, ensure_ascii=False, indent=2))
+    out_path = backups / f"foxdesk-backup-{stamp}.fdk"
+    files = _collect_backup_files(include_profiles_dirs=request.include_profiles_dirs)
+    if not files:
+        raise HTTPException(status_code=400, detail="nothing to back up")
+    meta = {
+        "app_version": APP_VERSION,
+        "created_at": now_iso(),
+        "files": sorted(files.keys()),
+        "format": "foxdesk-backup-v1",
+        "note": "Password-based encrypt-then-MAC package (PBKDF2 + HMAC). Keep offline.",
+    }
+    try:
+        write_encrypted_backup(out_path, request.password, files, meta)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     activity.log("backup_create", str(out_path))
     return {
         "ok": True,
         "path": str(out_path),
-        "files": written,
-        "warning": (
-            "Backup is a local zip with password integrity stamp only "
-            "(not strong encryption). Keep the file offline / on encrypted disks."
-        ),
+        "files": meta["files"],
+        "format": "fdk",
+        "warning": "Store the password safely. Wrong password cannot recover this file.",
+    }
+
+
+@app.post("/api/system/backup/restore")
+def restore_encrypted_backup(request: BackupRestoreRequest) -> dict[str, Any]:
+    """Restore a password-encrypted `.fdk` backup (or legacy integrity zip) into data_dir.
+
+    Running sessions should be stopped first. Creates a pre-restore snapshot under backups/.
+    """
+    import hashlib
+    import zipfile
+
+    from backend.backup_crypto import read_encrypted_backup, write_encrypted_backup
+    from backend.storage_util import atomic_write_text
+
+    if registry.running_session_count() > 0:
+        raise HTTPException(
+            status_code=409,
+            detail="stop all running sessions before restoring a backup",
+        )
+
+    path = Path(request.path).expanduser()
+    if not path.is_absolute():
+        path = (DATA_DIR / "backups" / path.name).resolve()
+    else:
+        path = path.resolve()
+    backups_dir = (DATA_DIR / "backups").resolve()
+    try:
+        path.relative_to(DATA_DIR.resolve())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="backup path must be under data directory") from exc
+    if not path.exists() or not path.is_file():
+        raise HTTPException(status_code=404, detail="backup file not found")
+
+    files: dict[str, bytes] = {}
+    meta: dict[str, Any] = {}
+    try:
+        meta, files = read_encrypted_backup(path, request.password)
+    except ValueError as exc:
+        msg = str(exc)
+        if msg == "legacy_or_plain_zip" and path.suffix.lower() == ".zip":
+            try:
+                with zipfile.ZipFile(path, "r") as zf:
+                    names = zf.namelist()
+                    if "backup-meta.json" in names:
+                        meta = json.loads(zf.read("backup-meta.json").decode("utf-8"))
+                        stamp = str(meta.get("password_sha256") or "")
+                        if stamp and hashlib.sha256(request.password.encode("utf-8")).hexdigest() != stamp:
+                            raise HTTPException(status_code=400, detail="wrong password for legacy backup")
+                    for name in names:
+                        if name.endswith("/") or name == "backup-meta.json":
+                            continue
+                        files[name.replace("\\", "/")] = zf.read(name)
+            except HTTPException:
+                raise
+            except Exception as zip_exc:
+                raise HTTPException(status_code=400, detail=f"invalid legacy zip: {zip_exc}") from zip_exc
+        elif "wrong password" in msg or "corrupted" in msg:
+            raise HTTPException(status_code=400, detail="wrong password or corrupted backup") from exc
+        else:
+            raise HTTPException(status_code=400, detail=msg) from exc
+
+    if not files:
+        raise HTTPException(status_code=400, detail="backup contains no files")
+
+    wanted = {n.strip() for n in (request.include or []) if n and n.strip()}
+    restored: list[str] = []
+    skipped: list[str] = []
+
+    snap_path = None
+    try:
+        snap_files = _collect_backup_files(include_profiles_dirs=False)
+        if snap_files:
+            snap_path = backups_dir / f"pre-restore-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.fdk"
+            write_encrypted_backup(
+                snap_path,
+                request.password,
+                snap_files,
+                {"app_version": APP_VERSION, "created_at": now_iso(), "note": "auto pre-restore snapshot"},
+            )
+    except Exception:
+        snap_path = None
+
+    for arcname, data in files.items():
+        if wanted and arcname not in wanted and not any(arcname.startswith(w.rstrip("/") + "/") for w in wanted):
+            skipped.append(arcname)
+            continue
+        target = _safe_restore_target(arcname)
+        if target is None:
+            skipped.append(arcname)
+            continue
+        if not request.overwrite and target.exists():
+            skipped.append(arcname)
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.suffix.lower() == ".json":
+            try:
+                text_out = data.decode("utf-8")
+            except UnicodeDecodeError:
+                text_out = data.decode("utf-8", errors="replace")
+            atomic_write_text(target, text_out)
+        else:
+            tmp = target.with_name(f".{target.name}.{os.getpid()}.tmp")
+            tmp.write_bytes(data)
+            tmp.replace(target)
+        restored.append(arcname)
+
+    activity.log("backup_restore", f"path={path.name} restored={len(restored)} skipped={len(skipped)}")
+    return {
+        "ok": True,
+        "path": str(path),
+        "restored": restored,
+        "skipped": skipped,
+        "meta": meta,
+        "pre_restore_snapshot": str(snap_path) if snap_path else None,
+        "note": "JSON stores re-read on next API call; restart app if UI looks stale.",
     }
 
 

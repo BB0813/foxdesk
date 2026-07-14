@@ -10,7 +10,7 @@ Operators and developers who need to run multiple Camoufox browser profiles loca
 
 ## Product Purpose
 
-Camoufox Manager provides a local GUI for creating fingerprint profiles, launching and stopping Camoufox sessions, checking installation status, and running maintenance commands such as `fetch`, `test`, and `remove`. Success means a user can manage browser profiles without hand-editing launch scripts or remembering CLI flags.
+**FoxDesk** (local Camoufox fingerprint browser manager) provides a local GUI for creating fingerprint profiles, launching and stopping sessions, checking installation status, managing proxy pools, encrypted local backups, and in-app updates. Success means a user can manage browser profiles without hand-editing launch scripts or remembering CLI flags — and without a cloud control plane.
 
 ## Brand Personality
 
@@ -27,7 +27,14 @@ Avoid oversized landing-page hero layouts, decorative glass panels, generic SaaS
 3. Prefer compact panels, predictable forms, and clear action states over visual novelty.
 4. Treat logs as first-class output because launch failures are common during browser setup.
 5. Keep the GUI usable even before Camoufox is installed.
+6. Keep secrets local: DPAPI / encrypted backups; never ship cloud credentials in the package.
 
 ## Accessibility & Inclusion
 
 Target WCAG AA contrast, keyboard-accessible controls, visible focus states, reduced-motion support, and non-color-only status indicators.
+
+## Out of scope
+
+- Multi-tenant cloud control
+- Guaranteed anti-detect outcomes
+- Embedding third-party API tokens in the repository or installer

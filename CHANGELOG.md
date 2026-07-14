@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.3.1 — 2026-07-14
+
+Follow-up polish on 1.3.0 (still **no cloud control**).
+
+### Backup
+- Password-encrypted `.fdk` backups (PBKDF2 + encrypt-then-MAC, stdlib-only)
+- **Restore** API + UI (with pre-restore snapshot; legacy 1.3.0 zip still readable)
+- Backup list under System panel
+
+### Server mode
+- Stronger `ws_endpoint` scraping (labels, bare host:port fallback, incomplete buffer scan)
+- Sidecar `.ws` file + session **refresh endpoint** API/button
+- Server-mode worker commands: `ping` / `endpoint` / `stop`
+
+### Ops / docs
+- CI runs `pytest` (plugin autoload disabled for clean env)
+- Release notes data dir text: `%APPDATA%\FoxDesk` (+ legacy migrate)
+- Docs alignment for launcher / data dir naming
+
+
 ## 1.3.0 — 2026-07-14
 
 Local-only control plane improvements (still **no cloud control**).

@@ -472,15 +472,32 @@ def run_browser(profile: dict[str, Any], profile_path: Path) -> int:
 
 
 _WS_RE = re.compile(r"(wss?://[^\s\"'<>]+)", re.I)
+# Common Camoufox / Playwright server banners.
+_WS_LABEL_RE = re.compile(
+    r"(?:ws(?:s)?\s*endpoint|playwright\s*endpoint|listening\s+on|browser\s*server|cdp\s*endpoint)"
+    r"\s*[:=]\s*(wss?://[^\s\"'<>]+)",
+    re.I,
+)
+_HOSTPORT_RE = re.compile(r"(?:127\.0\.0\.1|localhost|0\.0\.0\.0):(\d{2,5})", re.I)
 
 
 def _extract_ws_endpoint(text: str) -> str | None:
     if not text:
         return None
+    m = _WS_LABEL_RE.search(text)
+    if m:
+        return m.group(1).rstrip(").,]}\"';")
     m = _WS_RE.search(text)
-    if not m:
-        return None
-    return m.group(1).rstrip(").,]}\"';")
+    if m:
+        return m.group(1).rstrip(").,]}\"';")
+    # Last-resort: bare host:port from server banners → assume ws://
+    if "endpoint" in text.lower() or "listening" in text.lower() or "playwright" in text.lower():
+        hp = _HOSTPORT_RE.search(text)
+        if hp:
+            port = hp.group(1)
+            host = "127.0.0.1"
+            return f"ws://{host}:{port}"
+    return None
 
 
 def run_server(profile: dict[str, Any], profile_path: Path) -> int:
@@ -494,6 +511,20 @@ def run_server(profile: dict[str, Any], profile_path: Path) -> int:
     kwargs.pop("persistent_context", None)
     kwargs.pop("user_data_dir", None)
     emit("launching", mode="server")
+
+    endpoint_holder: dict[str, str | None] = {"ws": None}
+    endpoint_path = profile_path.with_suffix(".ws")
+
+    def publish_endpoint(ws: str, raw: str = "") -> None:
+        if not ws or endpoint_holder.get("ws") == ws:
+            return
+        endpoint_holder["ws"] = ws
+        try:
+            endpoint_path.write_text(ws + "\n", encoding="utf-8")
+        except OSError:
+            pass
+        emit("endpoint", ws_endpoint=ws, raw=(raw or ws)[:300])
+        emit("ready", mode="server", ws_endpoint=ws)
 
     # Mirror stdout/stderr from nested prints when possible.
     # launch_server typically blocks and prints the endpoint.
@@ -521,10 +552,14 @@ def run_server(profile: dict[str, Any], profile_path: Path) -> int:
                     continue
                 ws = _extract_ws_endpoint(line)
                 if ws:
-                    emit("endpoint", ws_endpoint=ws, raw=line[:300])
-                    emit("ready", mode="server", ws_endpoint=ws)
+                    publish_endpoint(ws, raw=line)
                 else:
                     emit("server_log", message=line[:500])
+            # Also scan incomplete buffer for early endpoint prints without newline.
+            if endpoint_holder.get("ws") is None and len(self._buf) > 12:
+                ws = _extract_ws_endpoint(self._buf)
+                if ws:
+                    publish_endpoint(ws, raw=self._buf)
             return len(s)
 
         def flush(self) -> None:
@@ -532,6 +567,91 @@ def run_server(profile: dict[str, Any], profile_path: Path) -> int:
                 self._original.flush()
             except Exception:
                 pass
+
+        def isatty(self) -> bool:
+            try:
+                return bool(self._original.isatty())
+            except Exception:
+                return False
+
+        def fileno(self) -> int:
+            return self._original.fileno()
+
+    # Lightweight command loop for server mode: ping / stop / endpoint query.
+    def server_command_loop() -> None:
+        global running
+        path = command_path_for(profile_path)
+        try:
+            if not path.exists():
+                path.write_text("", encoding="utf-8")
+        except OSError:
+            pass
+        offset = 0
+        while running:
+            try:
+                if not path.exists():
+                    time.sleep(0.3)
+                    continue
+                data = path.read_bytes()
+                if len(data) < offset:
+                    offset = 0
+                if len(data) == offset:
+                    time.sleep(0.3)
+                    continue
+                chunk = data[offset:].decode("utf-8", errors="replace")
+                offset = len(data)
+                for line in chunk.splitlines():
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        cmd = json.loads(line)
+                    except Exception:
+                        continue
+                    if not isinstance(cmd, dict):
+                        continue
+                    req_id = cmd.get("id") or ""
+                    action = (cmd.get("cmd") or cmd.get("action") or "").strip().lower()
+                    if action in {"stop", "quit", "exit"}:
+                        running = False
+                        write_result(profile_path, {"id": req_id, "cmd": action, "ok": True, "message": "stopping"})
+                        emit("command_result", id=req_id, cmd=action, ok=True)
+                    elif action in {"ping", "endpoint", "ws"}:
+                        ws = endpoint_holder.get("ws")
+                        if ws is None:
+                            # Try sidecar file written earlier.
+                            try:
+                                if endpoint_path.exists():
+                                    ws = endpoint_path.read_text(encoding="utf-8").strip() or None
+                            except OSError:
+                                pass
+                        write_result(
+                            profile_path,
+                            {
+                                "id": req_id,
+                                "cmd": action,
+                                "ok": True,
+                                "ws_endpoint": ws,
+                                "ready": ws is not None,
+                            },
+                        )
+                        emit("command_result", id=req_id, cmd=action, ok=True, ws_endpoint=ws)
+                    else:
+                        write_result(
+                            profile_path,
+                            {
+                                "id": req_id,
+                                "cmd": action,
+                                "ok": False,
+                                "error": "command not supported in server mode (use browser mode for navigate/fingerprint)",
+                            },
+                        )
+            except Exception as exc:
+                emit("warning", message=f"server command loop error: {exc}")
+                time.sleep(0.5)
+
+    cmd_thread = threading.Thread(target=server_command_loop, daemon=True)
+    cmd_thread.start()
 
     old_out, old_err = sys.stdout, sys.stderr
     tee = _StdoutTee(old_out)
@@ -541,6 +661,7 @@ def run_server(profile: dict[str, Any], profile_path: Path) -> int:
     try:
         # Mark process live even before endpoint is known.
         emit("ready", mode="server", ws_endpoint=None, note="waiting for camoufox server endpoint")
+        # Some camoufox builds accept port=0; keep kwargs as-is for compatibility.
         launch_server(**kwargs)
     except Exception as exc:
         # restore before emit error fully
@@ -549,6 +670,10 @@ def run_server(profile: dict[str, Any], profile_path: Path) -> int:
         return 1
     finally:
         sys.stdout, sys.stderr = old_out, old_err
+        try:
+            endpoint_path.unlink(missing_ok=True)
+        except OSError:
+            pass
         emit("stopped")
     return 0
 

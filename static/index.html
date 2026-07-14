@@ -621,9 +621,13 @@
             <div class="panel-head">
               <div>
                 <h2 data-i18n="localBackup">本地备份</h2>
-                <p data-i18n="localBackupDesc">导出配置 JSON 到 data_dir/backups（密码仅作完整性标记）</p>
+                <p data-i18n="localBackupDesc">密码加密备份到 data_dir/backups（.fdk），可一键恢复</p>
               </div>
               <div class="button-row">
+                <button class="button secondary" id="refreshBackupsBtn" type="button">
+                  <i data-lucide="refresh-cw"></i>
+                  <span data-i18n="refresh">刷新</span>
+                </button>
                 <button class="button primary" id="createBackupBtn" type="button">
                   <i data-lucide="archive"></i>
                   <span data-i18n="createBackup">创建备份</span>
@@ -639,6 +643,16 @@
                 <input id="backupIncludeProfiles" type="checkbox" />
                 <span data-i18n="backupIncludeProfiles">包含 profiles 目录小文件</span>
               </label>
+              <label class="span-2">
+                <span data-i18n="backupSelect">选择备份恢复</span>
+                <select id="backupSelect"></select>
+              </label>
+              <div class="span-2 button-row" style="padding:0">
+                <button class="button danger" id="restoreBackupBtn" type="button">
+                  <i data-lucide="history"></i>
+                  <span data-i18n="restoreBackup">恢复所选备份</span>
+                </button>
+              </div>
               <p class="span-2" id="backupHint" style="margin:0;font-size:12px;color:var(--muted)"></p>
             </div>
           </div>

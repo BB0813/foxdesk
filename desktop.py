@@ -15,7 +15,7 @@ from pathlib import Path
 HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 APP_NAME = "FoxDesk"
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.3.1"
 LOCK_DIR = Path(tempfile.gettempdir()) / APP_NAME
 LOCK_FILE = LOCK_DIR / "instance.lock"
 MUTEX_NAME = "Local\\FoxDesk_SingleInstance_Mutex"
