@@ -347,7 +347,14 @@ def main() -> int:
     signal.signal(signal.SIGINT, stop_handler)
 
     profile_path = Path(sys.argv[1])
-    profile = json.loads(profile_path.read_text(encoding="utf-8"))
+    if not profile_path.exists():
+        emit("error", message=f"runtime profile not found: {profile_path}")
+        return 66
+    try:
+        profile = json.loads(profile_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        emit("error", message=f"invalid runtime profile: {exc}")
+        return 65
     mode = profile.get("mode", "browser")
     if mode == "server":
         return run_server(profile)

@@ -103,9 +103,14 @@ jobs:
         run: |
           $exe = "dist/FoxDesk/FoxDesk.exe"
           if (-not (Test-Path $exe)) { throw "Missing $exe" }
-          # --worker with missing file should exit non-zero quickly / usage path
-          $p = Start-Process -FilePath $exe -ArgumentList @('--worker', 'missing-runtime.json') -PassThru -Wait -WindowStyle Hidden
+          # Missing runtime should fail fast (no GUI hang).
+          $p = Start-Process -FilePath $exe -ArgumentList @('--worker', 'missing-runtime.json') -PassThru -WindowStyle Hidden
+          if (-not $p.WaitForExit(30000)) {
+            try { $p.Kill() } catch {}
+            throw "worker smoke test timed out after 30s"
+          }
           Write-Host "worker missing exit=$($p.ExitCode)"
+          if ($p.ExitCode -eq 0) { throw "expected non-zero exit for missing runtime" }
 
       - name: Install Inno Setup
         run: choco install innosetup -y --no-progress

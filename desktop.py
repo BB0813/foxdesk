@@ -175,9 +175,17 @@ def run_worker_mode(runtime_path: str) -> int:
     """Run camoufox worker inside the same frozen binary or source tree."""
     # Make worker main() see a single runtime json argument
     sys.argv = [sys.argv[0], runtime_path]
-    from backend.camoufox_worker import main as worker_main
+    try:
+        from backend.camoufox_worker import main as worker_main
 
-    return int(worker_main())
+        return int(worker_main())
+    except Exception as exc:
+        # Avoid hanging windowed frozen builds on unexpected import/runtime errors.
+        try:
+            sys.stderr.write(f"worker failed: {exc}\n")
+        except Exception:
+            pass
+        return 1
 
 
 def run_serve_mode(port: int) -> int:
