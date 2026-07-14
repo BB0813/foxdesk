@@ -2,7 +2,7 @@
 ; Requires: Inno Setup 6+
 
 #define MyAppName "FoxDesk"
-#define MyAppVersion "1.1.0-beta.1"
+#define MyAppVersion "1.1.0-beta.2"
 #define MyAppPublisher "FoxDesk"
 #define MyAppURL "https://github.com/BB0813/foxdesk"
 #define MyAppExeName "FoxDesk.exe"

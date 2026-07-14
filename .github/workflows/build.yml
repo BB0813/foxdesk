@@ -65,7 +65,9 @@ jobs:
           foreach ($file in @('desktop.py', 'backend/app.py', 'README.md')) {
             if (Test-Path $file) {
               $content = Get-Content $file -Raw
-              $content = $content -replace '1\.1\.0-beta\.1', $version
+              $content = $content -replace 'APP_VERSION\s*=\s*"[^"]+"', "APP_VERSION = `"$version`""
+              $content = $content -replace '1\.1\.0-beta\.\d+', $version
+              $content = $content -replace '(?m)\*\*当前版本：`[^`]+`\*\*', "**当前版本：``$version``**"
               Set-Content -Path $file -Value $content -NoNewline
             }
           }

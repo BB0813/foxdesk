@@ -95,6 +95,7 @@ const i18n = {
     darkMode: "深色模式",
     tabProfiles: "配置档案",
     tabSessions: "运行会话",
+    tabProxies: "代理池",
     tabSystem: "系统",
     searchProfiles: "搜索档案...",
     stopAll: "全部停止",
@@ -106,6 +107,42 @@ const i18n = {
     importCookies: "导入 Cookie",
     activityLog: "操作日志",
     delete: "删除",
+    proxyPool: "代理池",
+    proxyPoolDesc: "统一管理代理，档案可引用代理 ID",
+    proxyPoolSelect: "代理池引用",
+    proxyManual: "手动填写 / 不使用池",
+    healthCheck: "健康检查",
+    cleanupRuntime: "清理运行时",
+    checkUpdate: "检查更新",
+    firstRunTitle: "首次使用",
+    firstRunDesc: "检测到 Camoufox 尚未就绪。请先安装包并下载浏览器文件。",
+    goSetup: "去配置",
+    updateAvailable: "发现新版本",
+    openRelease: "打开发布页",
+    templates: "模板",
+    createFromTemplate: "从模板创建",
+    unsavedChanges: "有未保存的修改，确定离开？",
+    discardChanges: "放弃修改",
+    keepEditing: "继续编辑",
+    sessionError: "启动错误",
+    wsEndpoint: "WebSocket 端点",
+    copyEndpoint: "复制端点",
+    copied: "已复制",
+    ready: "就绪",
+    failed: "失败",
+    lastTest: "上次测试",
+    neverTested: "未测试",
+    assignProxy: "分配到所选档案",
+    noProxies: "暂无代理。在上方添加或导入。",
+    proxyCreated: "代理已创建",
+    proxyDeleted: "代理已删除",
+    proxyImported: "代理已导入",
+    healthOk: "健康检查通过",
+    healthFail: "健康检查未通过",
+    runtimeCleaned: "运行时已清理",
+    upToDate: "已是最新版本",
+    templateCreated: "已从模板创建档案",
+    runningBadge: "运行中",
     navigatorPlatform: "平台",
     navigatorVendor: "厂商",
     screenWidth: "屏幕宽度",
@@ -267,6 +304,7 @@ const i18n = {
     darkMode: "Dark Mode",
     tabProfiles: "Profiles",
     tabSessions: "Sessions",
+    tabProxies: "Proxies",
     tabSystem: "System",
     searchProfiles: "Search profiles...",
     stopAll: "Stop All",
@@ -278,6 +316,42 @@ const i18n = {
     importCookies: "Import Cookies",
     activityLog: "Activity Log",
     delete: "Delete",
+    proxyPool: "Proxy Pool",
+    proxyPoolDesc: "Manage proxies and reference them from profiles",
+    proxyPoolSelect: "Proxy pool ref",
+    proxyManual: "Manual / none",
+    healthCheck: "Health Check",
+    cleanupRuntime: "Cleanup Runtime",
+    checkUpdate: "Check Updates",
+    firstRunTitle: "First Run",
+    firstRunDesc: "Camoufox is not ready yet. Install the package and fetch browser files.",
+    goSetup: "Go Setup",
+    updateAvailable: "Update available",
+    openRelease: "Open Release",
+    templates: "Templates",
+    createFromTemplate: "Create from template",
+    unsavedChanges: "You have unsaved changes. Leave anyway?",
+    discardChanges: "Discard",
+    keepEditing: "Keep editing",
+    sessionError: "Launch error",
+    wsEndpoint: "WebSocket endpoint",
+    copyEndpoint: "Copy endpoint",
+    copied: "Copied",
+    ready: "Ready",
+    failed: "Failed",
+    lastTest: "Last test",
+    neverTested: "Never tested",
+    assignProxy: "Assign to selected",
+    noProxies: "No proxies yet. Add or import above.",
+    proxyCreated: "Proxy created",
+    proxyDeleted: "Proxy deleted",
+    proxyImported: "Proxies imported",
+    healthOk: "Health check passed",
+    healthFail: "Health check failed",
+    runtimeCleaned: "Runtime cleaned",
+    upToDate: "Already up to date",
+    templateCreated: "Profile created from template",
+    runningBadge: "Running",
     navigatorPlatform: "Platform",
     navigatorVendor: "Vendor",
     screenWidth: "Screen Width",
@@ -338,6 +412,14 @@ const state = {
   selectedProfiles: new Set(),
   tagFilter: null,
   allTags: [],
+  proxies: [],
+  templates: [],
+  sessions: [],
+  formSnapshot: "",
+  formDirty: false,
+  firstRunDismissed: localStorage.getItem("cm-first-run-dismissed") === "1",
+  updateDismissedTag: localStorage.getItem("cm-update-dismissed") || "",
+  viewMode: localStorage.getItem("cm-view-mode") || "list",
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -360,6 +442,9 @@ function setLanguage(lang) {
   });
   renderSystem();
   renderProfiles();
+  renderTemplates();
+  renderProxyPool();
+  fillProxySelect($("#proxyPoolSelect")?.value || "");
   loadProfile(state.profiles.find((item) => item.id === state.selectedId) || null, false);
   renderIcons();
 }
@@ -424,6 +509,7 @@ function formToProfile() {
     humanize: Boolean(data.get("humanize")),
     geoip: Boolean(data.get("geoip")),
     locale,
+    proxy_id: data.get("proxy_id") || "",
     proxy: {
       server: data.get("proxy_server") || "",
       username: data.get("proxy_username") || "",
@@ -457,6 +543,52 @@ function formToProfile() {
   };
 }
 
+function captureFormSnapshot() {
+  try {
+    state.formSnapshot = JSON.stringify(formToProfile());
+    state.formDirty = false;
+  } catch (_) {
+    state.formSnapshot = "";
+    state.formDirty = false;
+  }
+}
+
+function markFormDirty() {
+  try {
+    const current = JSON.stringify(formToProfile());
+    state.formDirty = Boolean(state.formSnapshot) && current !== state.formSnapshot;
+  } catch (_) {
+    state.formDirty = true;
+  }
+}
+
+function confirmDiscardIfDirty() {
+  if (!state.formDirty) return true;
+  return window.confirm(t("unsavedChanges"));
+}
+
+function runningProfileIds() {
+  return new Set(
+    (state.sessions || [])
+      .filter((s) => String(s.status || "").startsWith("running") || s.status === "running")
+      .map((s) => s.profile_id)
+      .filter(Boolean),
+  );
+}
+
+function fillProxySelect(selectedId = "") {
+  const select = $("#proxyPoolSelect");
+  if (!select) return;
+  const options = [`<option value="">${t("proxyManual")}</option>`].concat(
+    (state.proxies || []).map((p) => {
+      const label = `${p.name || p.server || p.id}${p.last_ok === true ? " ✓" : p.last_ok === false ? " ✗" : ""}`;
+      return `<option value="${escapeHtml(p.id)}">${escapeHtml(label)}</option>`;
+    }),
+  );
+  select.innerHTML = options.join("");
+  select.value = selectedId || "";
+}
+
 function setCheckbox(form, name, value) {
   form.elements[name].checked = Boolean(value);
 }
@@ -475,6 +607,7 @@ function defaultProfile() {
     humanize: true,
     geoip: false,
     locale: "",
+    proxy_id: "",
     proxy: {},
     block_images: false,
     block_webrtc: true,
@@ -489,6 +622,7 @@ function defaultProfile() {
 }
 
 function loadProfile(profile, fillForm = true) {
+  if (fillForm && state.formDirty && !confirmDiscardIfDirty()) return;
   state.selectedId = profile?.id || null;
   const form = $("#profileForm");
   const value = profile || defaultProfile();
@@ -501,6 +635,7 @@ function loadProfile(profile, fillForm = true) {
     form.elements.os.value = value.os || "auto";
     form.elements.user_data_dir.value = value.user_data_dir || "";
     form.elements.locale.value = value.locale || "";
+    fillProxySelect(value.proxy_id || "");
     form.elements.proxy_server.value = value.proxy?.server || "";
     form.elements.proxy_username.value = value.proxy?.username || "";
     form.elements.proxy_password.value = value.proxy?.password || "";
@@ -545,6 +680,7 @@ function loadProfile(profile, fillForm = true) {
     // Clear proxy test result
     const proxyResult = $("#proxyResult");
     if (proxyResult) proxyResult.innerHTML = "";
+    captureFormSnapshot();
   }
 
   $("#editorHint").textContent = state.selectedId ? `${t("editing")} ${value.name}` : t("unsaved");
@@ -555,7 +691,7 @@ function loadProfile(profile, fillForm = true) {
 
 function profileTags(profile) {
   const tags = [profile.mode, profile.os, profile.headless ? "headless" : "visible"];
-  if (profile.proxy?.server) tags.push("proxy");
+  if (profile.proxy?.server || profile.proxy_id) tags.push("proxy");
   if (profile.geoip) tags.push("geoip");
   if (profile.persistent_context) tags.push("persistent");
   return tags;
@@ -642,6 +778,7 @@ function renderProfiles() {
     updateBatchBar();
     return;
   }
+  const running = runningProfileIds();
   list.innerHTML = profiles
     .map(
       (profile) => `
@@ -649,7 +786,7 @@ function renderProfiles() {
           <input type="checkbox" class="batch-check" data-batch-id="${profile.id}" ${state.selectedProfiles.has(profile.id) ? "checked" : ""} />
           <div class="row-main">
             <div>
-              <div class="row-title">${escapeHtml(profile.name)}</div>
+              <div class="row-title">${escapeHtml(profile.name)}${running.has(profile.id) ? ` <span class="live-dot" title="${t("runningBadge")}"></span>` : ""}</div>
               <div class="row-meta">${escapeHtml(profile.startup_url || "about:blank")}</div>
             </div>
             <button class="button secondary delete-profile icon-only" data-delete-id="${profile.id}" type="button" title="Delete">
@@ -657,6 +794,7 @@ function renderProfiles() {
             </button>
           </div>
           <div class="tagline">
+            ${running.has(profile.id) ? `<span class="tag running">${t("runningBadge")}</span>` : ""}
             ${profileTags(profile).map((tag) => `<span class="tag">${escapeHtml(translateTag(tag))}</span>`).join("")}
             ${(profile.tags || []).map((tag) => `<span class="tag" style="background:var(--accent);color:white">${escapeHtml(tag)}</span>`).join("")}
           </div>
@@ -727,6 +865,7 @@ async function saveProfile() {
   const method = state.selectedId ? "PUT" : "POST";
   const saved = await api(path, { method, body: JSON.stringify(payload) });
   state.selectedId = saved.id;
+  state.formDirty = false;
   await loadProfiles();
   loadProfile(saved);
   toast(t("profileSaved"));
@@ -861,6 +1000,7 @@ function renderSystem() {
 async function loadSystem() {
   state.system = await api("/api/system");
   renderSystem();
+  updateFirstRunBanner();
 }
 
 async function startTask(name) {
@@ -878,16 +1018,31 @@ function renderProcesses(selector, processes, stopLabel = t("stop"), isSession =
   list.innerHTML = processes
     .map((item) => {
       const running = item.status === "running";
+      const failed = Boolean(item.failed || item.error_message);
       const started = new Date(item.started_at * 1000);
       const uptimeMs = Date.now() - item.started_at * 1000;
       const uptimeSec = Math.floor(uptimeMs / 1000);
       const uptimeStr = `${Math.floor(uptimeSec / 3600)}h ${Math.floor((uptimeSec % 3600) / 60)}m ${uptimeSec % 60}s`;
+      const statusTag = failed
+        ? `<span class="tag failed">${t("failed")}</span>`
+        : running
+          ? `<span class="tag running">${item.ready ? t("ready") : t("running")}</span>`
+          : `<span class="tag failed">${t("stoppedTag")}</span>`;
+      const errorBlock = item.error_message
+        ? `<div class="session-error"><strong>${t("sessionError")}:</strong> ${escapeHtml(item.error_message)}</div>`
+        : "";
+      const wsBlock = item.ws_endpoint
+        ? `<div class="session-ws">
+             <span>${t("wsEndpoint")}: <code>${escapeHtml(item.ws_endpoint)}</code></span>
+             <button class="button secondary copy-ws" data-ws="${escapeHtml(item.ws_endpoint)}" type="button" style="min-height:28px;font-size:12px">${t("copyEndpoint")}</button>
+           </div>`
+        : "";
       return `
-        <article class="process-row" data-process-id="${item.id}" ${isSession ? 'style="cursor:pointer"' : ""}>
+        <article class="process-row ${failed ? "has-error" : ""}" data-process-id="${item.id}" ${isSession ? 'style="cursor:pointer"' : ""}>
           <div class="row-main">
             <div>
               <div class="row-title">${escapeHtml(item.label)}</div>
-              <div class="row-meta">pid ${item.pid} · ${escapeHtml(item.status)} · ${uptimeStr}</div>
+              <div class="row-meta">pid ${item.pid} · ${escapeHtml(item.status)} · ${uptimeStr}${item.mode ? ` · ${escapeHtml(item.mode)}` : ""}</div>
             </div>
             <div style="display:flex;gap:6px;align-items:center">
               ${isSession ? `<button class="button secondary expand-detail icon-only" data-detail-id="${item.id}" type="button" title="Detail"><i data-lucide="chevron-down"></i></button>` : ""}
@@ -896,15 +1051,17 @@ function renderProcesses(selector, processes, stopLabel = t("stop"), isSession =
               </button>
             </div>
           </div>
-          <div class="tagline">
-            <span class="tag ${running ? "running" : "failed"}">${running ? t("running") : t("stoppedTag")}</span>
-          </div>
+          <div class="tagline">${statusTag}</div>
+          ${errorBlock}
+          ${wsBlock}
           <div class="session-detail" id="detail-${item.id}">
             <div class="session-meta-grid">
               <dt>${t("startTime")}</dt>
               <dd>${started.toLocaleString()}</dd>
               <dt>${t("uptime")}</dt>
               <dd>${uptimeStr}</dd>
+              ${item.ws_endpoint ? `<dt>${t("wsEndpoint")}</dt><dd><code>${escapeHtml(item.ws_endpoint)}</code></dd>` : ""}
+              ${item.error_message ? `<dt>${t("sessionError")}</dt><dd style="color:var(--danger)">${escapeHtml(item.error_message)}</dd>` : ""}
             </div>
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
               <span style="font-size:13px;font-weight:650;color:var(--muted)">${t("logs")}</span>
@@ -953,12 +1110,41 @@ function renderProcesses(selector, processes, stopLabel = t("stop"), isSession =
       }
     });
   });
+  $$(".copy-ws").forEach((button) => {
+    button.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      try {
+        await navigator.clipboard.writeText(button.dataset.ws || "");
+        toast(t("copied"));
+      } catch (_) {
+        toast(button.dataset.ws || "");
+      }
+    });
+  });
   renderIcons();
+}
+
+function updateSessionBadge(sessions) {
+  const badge = $("#sessionBadge");
+  if (!badge) return;
+  const running = (sessions || []).filter((s) => s.status === "running").length;
+  if (running > 0) {
+    badge.textContent = String(running);
+    badge.classList.remove("hidden");
+  } else {
+    badge.classList.add("hidden");
+  }
 }
 
 async function loadSessions() {
   const sessions = await api("/api/sessions");
+  state.sessions = sessions;
+  updateSessionBadge(sessions);
   renderProcesses("#sessionList", sessions, t("stop"), true);
+  // Keep profile running badges fresh without full reload
+  if ($("#profileList") && state.viewMode !== "table") {
+    renderProfiles();
+  }
 }
 
 async function loadTasks() {
@@ -1101,24 +1287,268 @@ async function importCookies() {
   if (!state.selectedId) return;
   const input = document.createElement("input");
   input.type = "file";
-  input.accept = ".json";
+  input.accept = ".json,.txt,.cookies";
   input.onchange = async () => {
     const file = input.files[0];
     if (!file) return;
     try {
       const text = await file.text();
-      const data = JSON.parse(text);
-      const cookies = Array.isArray(data) ? data : data.cookies || [];
-      await api(`/api/profiles/${state.selectedId}/cookies`, {
+      let body;
+      const name = (file.name || "").toLowerCase();
+      if (name.endsWith(".json") || text.trim().startsWith("[") || text.trim().startsWith("{")) {
+        const data = JSON.parse(text);
+        const cookies = Array.isArray(data) ? data : data.cookies || [];
+        body = { cookies };
+      } else {
+        body = { text, format: "netscape" };
+      }
+      const result = await api(`/api/profiles/${state.selectedId}/cookies`, {
         method: "POST",
-        body: JSON.stringify({ cookies }),
+        body: JSON.stringify(body),
       });
-      toast(`${t("imported")} ${cookies.length} ${t("cookies")}`);
+      toast(`${t("imported")} ${result.count ?? 0} ${t("cookies")}`);
     } catch (err) {
       toast(err.message);
     }
   };
   input.click();
+}
+
+// --- Proxy Pool ---
+async function loadProxies() {
+  try {
+    state.proxies = await api("/api/proxies");
+  } catch (_) {
+    state.proxies = [];
+  }
+  fillProxySelect($("#proxyPoolSelect")?.value || "");
+  renderProxyPool();
+}
+
+function renderProxyPool() {
+  const list = $("#proxyPoolList");
+  if (!list) return;
+  if (!state.proxies.length) {
+    list.innerHTML = `<div class="empty">${t("noProxies")}</div>`;
+    return;
+  }
+  list.innerHTML = state.proxies
+    .map((p) => {
+      const testTag =
+        p.last_ok === true
+          ? `<span class="tag running">${t("proxyOk")}${p.last_exit_ip ? ` · ${escapeHtml(p.last_exit_ip)}` : ""}</span>`
+          : p.last_ok === false
+            ? `<span class="tag failed">${t("proxyFailed")}</span>`
+            : `<span class="tag">${t("neverTested")}</span>`;
+      return `
+        <article class="process-row" data-proxy-id="${escapeHtml(p.id)}">
+          <div class="row-main">
+            <div>
+              <div class="row-title">${escapeHtml(p.name || p.server || p.id)}</div>
+              <div class="row-meta">${escapeHtml(p.server || "")}${p.username ? ` · ${escapeHtml(p.username)}` : ""}</div>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <button class="button secondary proxy-test" data-proxy-id="${escapeHtml(p.id)}" type="button">${t("testProxy")}</button>
+              <button class="button secondary proxy-assign" data-proxy-id="${escapeHtml(p.id)}" type="button">${t("assignProxy")}</button>
+              <button class="button danger proxy-delete icon-only" data-proxy-id="${escapeHtml(p.id)}" type="button" title="Delete"><i data-lucide="trash-2"></i></button>
+            </div>
+          </div>
+          <div class="tagline">${testTag}</div>
+        </article>
+      `;
+    })
+    .join("");
+
+  $$(".proxy-test").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      try {
+        const result = await api(`/api/proxies/${btn.dataset.proxyId}/test`, { method: "POST", body: "{}" });
+        toast(result.ok ? `${t("proxyOk")} ${result.exit_ip || ""}` : `${t("proxyFailed")}: ${result.error || ""}`);
+        await loadProxies();
+      } catch (err) {
+        toast(err.message);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  });
+  $$(".proxy-delete").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      if (!confirm(t("delete") + "?")) return;
+      await api(`/api/proxies/${btn.dataset.proxyId}`, { method: "DELETE" });
+      toast(t("proxyDeleted"));
+      await loadProxies();
+    });
+  });
+  $$(".proxy-assign").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const ids = [...state.selectedProfiles];
+      if (!ids.length && state.selectedId) ids.push(state.selectedId);
+      if (!ids.length) {
+        toast(t("choose"));
+        return;
+      }
+      await api("/api/proxies/assign", {
+        method: "POST",
+        body: JSON.stringify({ profile_ids: ids, proxy_id: btn.dataset.proxyId }),
+      });
+      toast(t("profileSaved"));
+      await loadProfiles();
+    });
+  });
+  renderIcons();
+}
+
+async function addProxyFromForm() {
+  const name = $("#proxyNameInput")?.value?.trim() || "";
+  const server = $("#proxyServerInput")?.value?.trim() || "";
+  const username = $("#proxyUserInput")?.value?.trim() || "";
+  const password = $("#proxyPassInput")?.value || "";
+  if (!server) {
+    toast(t("proxyFailed"));
+    return;
+  }
+  await api("/api/proxies", {
+    method: "POST",
+    body: JSON.stringify({ name, server, username, password }),
+  });
+  $("#proxyNameInput").value = "";
+  $("#proxyServerInput").value = "";
+  $("#proxyUserInput").value = "";
+  $("#proxyPassInput").value = "";
+  toast(t("proxyCreated"));
+  await loadProxies();
+}
+
+async function importProxyPool() {
+  const textarea = $("#proxyPoolImportInput");
+  if (!textarea) return;
+  const lines = textarea.value.split("\n").map((l) => l.trim()).filter(Boolean);
+  if (!lines.length) return;
+  const result = await api("/api/proxies/import", {
+    method: "POST",
+    body: JSON.stringify({ lines, replace: false }),
+  });
+  textarea.value = "";
+  toast(`${t("proxyImported")}: ${result.count}`);
+  await loadProxies();
+}
+
+// --- Templates ---
+async function loadTemplates() {
+  try {
+    state.templates = await api("/api/templates");
+  } catch (_) {
+    state.templates = [];
+  }
+  renderTemplates();
+}
+
+function renderTemplates() {
+  const bar = $("#templateBar");
+  if (!bar) return;
+  if (!state.templates.length) {
+    bar.innerHTML = "";
+    bar.style.display = "none";
+    return;
+  }
+  bar.style.display = "flex";
+  bar.innerHTML = state.templates
+    .map((tpl) => {
+      const name = typeof tpl.name === "object" ? tpl.name[state.lang] || tpl.name.en || tpl.id : tpl.name;
+      const desc = typeof tpl.description === "object" ? tpl.description[state.lang] || tpl.description.en || "" : tpl.description || "";
+      return `<button type="button" class="template-chip" data-template-id="${escapeHtml(tpl.id)}" title="${escapeHtml(desc)}">${escapeHtml(name)}</button>`;
+    })
+    .join("");
+  bar.querySelectorAll("[data-template-id]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      try {
+        const created = await api(`/api/templates/${btn.dataset.templateId}/create`, { method: "POST", body: "{}" });
+        toast(t("templateCreated"));
+        await loadProfiles();
+        loadProfile(created);
+      } catch (err) {
+        toast(err.message);
+      }
+    });
+  });
+}
+
+// --- Health / Cleanup / Updates / First-run ---
+function updateFirstRunBanner() {
+  const banner = $("#firstRunBanner");
+  if (!banner) return;
+  const missing = state.system && !state.system.camoufox_installed;
+  if (missing && !state.firstRunDismissed) banner.classList.remove("hidden");
+  else banner.classList.add("hidden");
+}
+
+async function runHealthCheck() {
+  const el = $("#healthResult");
+  try {
+    if (el) el.textContent = t("checking") + "...";
+    const result = await api("/api/system/health", { method: "POST", body: "{}" });
+    const ok = Boolean(result.ok);
+    const detail = result.error
+      || (result.checks ? `path=${result.checks.path_value || "?"} · ${result.checks.version || ""}` : "")
+      || result.detail
+      || "";
+    if (el) {
+      el.innerHTML = ok
+        ? `<span style="color:var(--success)">${t("healthOk")}</span> · ${escapeHtml(detail)}`
+        : `<span style="color:var(--danger)">${t("healthFail")}</span> · ${escapeHtml(detail || JSON.stringify(result.checks || result))}`;
+    }
+    toast(ok ? t("healthOk") : t("healthFail"));
+    await loadSystem();
+  } catch (err) {
+    if (el) el.innerHTML = `<span style="color:var(--danger)">${escapeHtml(err.message)}</span>`;
+    toast(err.message);
+  }
+}
+
+async function runCleanupRuntime() {
+  try {
+    const result = await api("/api/system/cleanup-runtime", { method: "POST", body: "{}" });
+    toast(`${t("runtimeCleaned")}: ${result.removed ?? 0}`);
+  } catch (err) {
+    toast(err.message);
+  }
+}
+
+async function checkForUpdates(silent = false) {
+  try {
+    const result = await api("/api/system/updates");
+    const banner = $("#updateBanner");
+    const text = $("#updateBannerText");
+    const link = $("#updateBannerLink");
+    const releaseUrl = result.release_url || result.url || "https://github.com/BB0813/foxdesk/releases";
+    if (result.update_available && result.latest && result.latest !== state.updateDismissedTag) {
+      if (text) text.textContent = `${result.current || ""} → ${result.latest}`;
+      if (link) link.href = releaseUrl;
+      if (banner) banner.classList.remove("hidden");
+      if (!silent) toast(`${t("updateAvailable")}: ${result.latest}`);
+    } else {
+      if (banner) banner.classList.add("hidden");
+      if (!silent) toast(result.ok === false ? (result.error || t("upToDate")) : t("upToDate"));
+    }
+  } catch (err) {
+    if (!silent) toast(err.message);
+  }
+}
+
+function onProxyPoolSelectChange() {
+  const select = $("#proxyPoolSelect");
+  if (!select) return;
+  const proxy = state.proxies.find((p) => p.id === select.value);
+  const form = $("#profileForm");
+  if (!form) return;
+  if (proxy) {
+    form.elements.proxy_server.value = proxy.server || "";
+    form.elements.proxy_username.value = proxy.username || "";
+    form.elements.proxy_password.value = proxy.password || "";
+  }
+  markFormDirty();
 }
 
 // --- Context Menu ---
@@ -1359,7 +1789,17 @@ async function stopAllSessions() {
 }
 
 async function refreshAll() {
-  await Promise.all([loadSystem(), loadProfiles(), loadSessions(), loadTasks(), loadChannels()]);
+  await Promise.all([
+    loadSystem(),
+    loadProxies(),
+    loadTemplates(),
+    loadProfiles(),
+    loadSessions(),
+    loadTasks(),
+    loadChannels(),
+  ]);
+  updateFirstRunBanner();
+  checkForUpdates(true).catch(() => {});
   renderIcons();
 }
 
@@ -1387,7 +1827,13 @@ function switchPage(page) {
   if (btn) btn.classList.add("active");
   if (target) target.classList.add("active");
   if (page === "sessions") loadSessions();
-  if (page === "system") { loadSystem(); loadTasks(); loadChannels(); }
+  if (page === "proxies") loadProxies();
+  if (page === "system") {
+    loadSystem();
+    loadTasks();
+    loadChannels();
+    loadActivity();
+  }
   renderIcons();
 }
 
@@ -1406,6 +1852,34 @@ function bindEvents() {
   $("#checkFpBtn")?.addEventListener("click", checkFingerprint);
   $("#bulkProxyBtn")?.addEventListener("click", bulkProxyImport);
   $("#stopAllBtn")?.addEventListener("click", stopAllSessions);
+  $("#proxyAddBtn")?.addEventListener("click", () => addProxyFromForm().catch((e) => toast(e.message)));
+  $("#proxyImportBtn")?.addEventListener("click", () => importProxyPool().catch((e) => toast(e.message)));
+  $("#templateBtn")?.addEventListener("click", () => {
+    const bar = $("#templateBar");
+    if (!bar) return;
+    bar.classList.toggle("open");
+    if (!state.templates.length) loadTemplates();
+    else renderTemplates();
+  });
+  $("#healthCheckBtn")?.addEventListener("click", runHealthCheck);
+  $("#cleanupRuntimeBtn")?.addEventListener("click", runCleanupRuntime);
+  $("#checkUpdateBtn")?.addEventListener("click", () => checkForUpdates(false));
+  $("#firstRunHealthBtn")?.addEventListener("click", runHealthCheck);
+  $("#firstRunSetupBtn")?.addEventListener("click", () => switchPage("system"));
+  $("#firstRunDismissBtn")?.addEventListener("click", () => {
+    state.firstRunDismissed = true;
+    localStorage.setItem("cm-first-run-dismissed", "1");
+    updateFirstRunBanner();
+  });
+  $("#updateDismissBtn")?.addEventListener("click", () => {
+    const text = $("#updateBannerText")?.textContent || "";
+    const tag = text.split("→").pop()?.trim() || "";
+    state.updateDismissedTag = tag;
+    localStorage.setItem("cm-update-dismissed", tag);
+    $("#updateBanner")?.classList.add("hidden");
+  });
+  $("#proxyPoolSelect")?.addEventListener("change", onProxyPoolSelectChange);
+
   // Context menu
   document.addEventListener("click", hideContextMenu);
   $$(".ctx-item").forEach((item) => {
@@ -1472,18 +1946,7 @@ function bindEvents() {
   });
   // Page tab switching
   $$(".tab-nav button[data-page]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const page = btn.dataset.page;
-      $$(".tab-nav button").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      $$(".tab-page").forEach((p) => p.classList.remove("active"));
-      const target = $(`.tab-page[data-page="${page}"]`);
-      if (target) target.classList.add("active");
-      // Load data for the activated page
-      if (page === "sessions") loadSessions();
-      if (page === "system") { loadSystem(); loadTasks(); loadChannels(); loadActivity(); }
-      renderIcons();
-    });
+    btn.addEventListener("click", () => switchPage(btn.dataset.page));
   });
   // Tab switching
   $$(".tab-bar button").forEach((btn) => {
@@ -1506,13 +1969,17 @@ function bindEvents() {
   }
   // Keep locale fields mirrored across Basic / Fingerprint tabs
   const form = $("#profileForm");
-  if (form?.elements?.locale && form?.elements?.fp_locale) {
-    form.elements.locale.addEventListener("input", () => {
-      form.elements.fp_locale.value = form.elements.locale.value;
-    });
-    form.elements.fp_locale.addEventListener("input", () => {
-      form.elements.locale.value = form.elements.fp_locale.value;
-    });
+  if (form) {
+    form.addEventListener("input", markFormDirty);
+    form.addEventListener("change", markFormDirty);
+    if (form.elements.locale && form.elements.fp_locale) {
+      form.elements.locale.addEventListener("input", () => {
+        form.elements.fp_locale.value = form.elements.locale.value;
+      });
+      form.elements.fp_locale.addEventListener("input", () => {
+        form.elements.locale.value = form.elements.fp_locale.value;
+      });
+    }
   }
   // Keyboard shortcuts
   document.addEventListener("keydown", (e) => {
@@ -1520,9 +1987,15 @@ function bindEvents() {
     const ctrl = e.ctrlKey || e.metaKey;
     if (ctrl && e.key === "1") { e.preventDefault(); switchPage("profiles"); }
     if (ctrl && e.key === "2") { e.preventDefault(); switchPage("sessions"); }
-    if (ctrl && e.key === "3") { e.preventDefault(); switchPage("system"); }
+    if (ctrl && e.key === "3") { e.preventDefault(); switchPage("proxies"); }
+    if (ctrl && e.key === "4") { e.preventDefault(); switchPage("system"); }
     if (ctrl && e.key === "n") { e.preventDefault(); loadProfile(null); }
     if (ctrl && e.key === "s") { e.preventDefault(); saveProfile().catch((err) => toast(err.message)); }
+  });
+  window.addEventListener("beforeunload", (e) => {
+    if (!state.formDirty) return;
+    e.preventDefault();
+    e.returnValue = "";
   });
 }
 

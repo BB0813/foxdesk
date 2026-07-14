@@ -6,6 +6,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import webbrowser
 from pathlib import Path
@@ -14,11 +15,12 @@ from pathlib import Path
 HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 APP_NAME = "FoxDesk"
-APP_VERSION = "1.1.0-beta.1"
+APP_VERSION = "1.1.0-beta.2"
 LOCK_DIR = Path(tempfile.gettempdir()) / APP_NAME
 LOCK_FILE = LOCK_DIR / "instance.lock"
 MUTEX_NAME = "Local\\FoxDesk_SingleInstance_Mutex"
 _mutex_handle = None
+_tray_icon = None
 
 
 def app_root() -> Path:
@@ -108,7 +110,6 @@ def acquire_single_instance_lock() -> bool:
             pass
 
     try:
-        # Exclusive create when possible
         fd = os.open(str(LOCK_FILE), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             fh.write(str(os.getpid()))
@@ -173,14 +174,12 @@ def start_server(port: int) -> subprocess.Popen[str]:
 
 def run_worker_mode(runtime_path: str) -> int:
     """Run camoufox worker inside the same frozen binary or source tree."""
-    # Make worker main() see a single runtime json argument
     sys.argv = [sys.argv[0], runtime_path]
     try:
         from backend.camoufox_worker import main as worker_main
 
         return int(worker_main())
     except Exception as exc:
-        # Avoid hanging windowed frozen builds on unexpected import/runtime errors.
         try:
             sys.stderr.write(f"worker failed: {exc}\n")
         except Exception:
@@ -191,11 +190,90 @@ def run_worker_mode(runtime_path: str) -> int:
 def run_serve_mode(port: int) -> int:
     import uvicorn
 
-    # Ensure backend imports resolve in frozen builds
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
     uvicorn.run("backend.app:app", host=HOST, port=port, log_level="error")
     return 0
+
+
+def _stop_all_sessions(port: int) -> None:
+    try:
+        import urllib.request
+
+        req = urllib.request.Request(
+            f"http://{HOST}:{port}/api/sessions/stop-all",
+            data=b"{}",
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        urllib.request.urlopen(req, timeout=5).read()
+    except Exception:
+        pass
+
+
+def start_tray(port: int, window=None) -> None:
+    """Optional system tray (pystray). Fail silently if unavailable."""
+    global _tray_icon
+    try:
+        import pystray
+        from PIL import Image
+    except Exception:
+        return
+
+    icon_path = ROOT / "static" / "logo.png"
+    try:
+        image = Image.open(icon_path)
+    except Exception:
+        image = Image.new("RGB", (64, 64), color=(6, 182, 212))
+
+    url = f"http://{HOST}:{port}"
+
+    def on_show(icon, item):  # noqa: ARG001
+        try:
+            if window is not None:
+                window.show()
+                window.restore()
+        except Exception:
+            webbrowser.open(url)
+
+    def on_open_ui(icon, item):  # noqa: ARG001
+        webbrowser.open(url)
+
+    def on_stop_sessions(icon, item):  # noqa: ARG001
+        _stop_all_sessions(port)
+
+    def on_quit(icon, item):  # noqa: ARG001
+        try:
+            _stop_all_sessions(port)
+        except Exception:
+            pass
+        try:
+            icon.stop()
+        except Exception:
+            pass
+        try:
+            if window is not None:
+                window.destroy()
+        except Exception:
+            pass
+        os._exit(0)
+
+    menu = pystray.Menu(
+        pystray.MenuItem(f"FoxDesk {APP_VERSION}", on_show, default=True),
+        pystray.MenuItem("Open UI", on_open_ui),
+        pystray.MenuItem("Stop All Sessions", on_stop_sessions),
+        pystray.Menu.SEPARATOR,
+        pystray.MenuItem("Quit", on_quit),
+    )
+    _tray_icon = pystray.Icon("FoxDesk", image, f"FoxDesk {APP_VERSION}", menu)
+
+    def run_icon() -> None:
+        try:
+            _tray_icon.run()
+        except Exception:
+            pass
+
+    threading.Thread(target=run_icon, daemon=True).start()
 
 
 def main() -> int:
@@ -227,21 +305,45 @@ def main() -> int:
                 text_select=True,
                 background_color="#0a0e17",
             )
+            start_tray(port, window)
+
+            def on_closing() -> bool:
+                # Minimize-like behavior: keep process if tray is active
+                if _tray_icon is not None:
+                    try:
+                        window.hide()
+                        return False
+                    except Exception:
+                        return True
+                return True
+
+            try:
+                window.events.closing += on_closing
+            except Exception:
+                pass
             webview.start()
-            _ = window
         except ImportError:
+            start_tray(port, None)
             webbrowser.open(url)
             print(f"FoxDesk {APP_VERSION}: {url}")
             server.wait()
     except KeyboardInterrupt:
         return 130
     finally:
+        try:
+            if _tray_icon is not None:
+                _tray_icon.stop()
+        except Exception:
+            pass
         if server.poll() is None:
-            server.terminate()
+            # Ask backend to stop sessions then terminate server tree
             try:
-                server.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                server.kill()
+                _stop_all_sessions(port)
+            except Exception:
+                pass
+            from backend.process_utils import stop_popen
+
+            stop_popen(server, grace=5)
     return 0
 
 

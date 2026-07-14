@@ -55,7 +55,8 @@ def migrate_legacy_data() -> None:
         shutil.copytree(legacy_profiles_dir, app_profiles_dir)
 
 
-APP_VERSION = "1.1.0-beta.1"
+APP_VERSION = "1.1.0-beta.2"
+GITHUB_REPO = "BB0813/foxdesk"
 
 if getattr(sys, "frozen", False):
     ROOT = Path(sys._MEIPASS)
@@ -116,6 +117,7 @@ class ProfileIn(BaseModel):
     geoip: bool = False
     locale: str = ""
     proxy: ProxyConfig = Field(default_factory=ProxyConfig)
+    proxy_id: str = ""
     block_images: bool = False
     block_webrtc: bool = True
     block_webgl: bool = False
@@ -215,6 +217,7 @@ class ProfileStore:
             geoip=False,
             locale="",
             proxy=ProxyConfig(),
+            proxy_id="",
             block_images=False,
             block_webrtc=True,
             block_webgl=False,
@@ -322,11 +325,21 @@ class ManagedProcess:
     started_at: float = field(default_factory=time.time)
     logs: list[str] = field(default_factory=list)
     timeout: float | None = None
+    profile_id: str | None = None
+    runtime_id: str | None = None
+    runtime_path: str | None = None
+    mode: str | None = None
+    last_event: str | None = None
+    error_message: str | None = None
+    ws_endpoint: str | None = None
+    ready: bool = False
 
     def status(self) -> str:
         return "running" if self.process.poll() is None else f"exited:{self.process.returncode}"
 
     def view(self) -> dict[str, Any]:
+        code = self.process.returncode
+        failed = code not in (None, 0)
         return {
             "id": self.id,
             "kind": self.kind,
@@ -336,6 +349,16 @@ class ManagedProcess:
             "pid": self.process.pid,
             "started_at": self.started_at,
             "logs": self.logs[-300:],
+            "profile_id": self.profile_id,
+            "runtime_id": self.runtime_id,
+            "mode": self.mode,
+            "last_event": self.last_event,
+            "error_message": self.error_message,
+            "ws_endpoint": self.ws_endpoint,
+            "ready": self.ready,
+            "failed": failed or bool(self.error_message and self.process.poll() is not None),
+            "returncode": code,
+            "recent_errors": [line for line in self.logs if "error" in line.lower() or line.startswith('{"event": "error"') or '"event":"error"' in line][-8:],
         }
 
 
@@ -362,6 +385,8 @@ class ProcessRegistry:
             self._monitor_thread.start()
 
     def _monitor_timeouts(self) -> None:
+        from backend.process_utils import stop_popen
+
         while self._monitor_running:
             time.sleep(1)
             with self.lock:
@@ -371,15 +396,12 @@ class ProcessRegistry:
                     if time.time() - item.started_at > item.timeout:
                         if item.process.poll() is None:
                             item.logs.append(f"[TIMEOUT] Process exceeded {item.timeout}s timeout, terminating...")
-                            item.process.terminate()
-                            try:
-                                item.process.wait(timeout=5)
-                            except subprocess.TimeoutExpired:
-                                item.process.kill()
-                                item.process.wait(timeout=2)
+                            stop_popen(item.process, grace=3)
                             item.logs.append("[TIMEOUT] Process killed")
 
     def _capture(self, item: ManagedProcess) -> None:
+        from backend.process_utils import parse_worker_event
+
         assert item.process.stdout is not None
         for line in item.process.stdout:
             line = line.rstrip()
@@ -387,6 +409,20 @@ class ProcessRegistry:
                 item.logs.append(line)
                 if len(item.logs) > 1000:
                     item.logs = item.logs[-1000:]
+                event = parse_worker_event(line)
+                if not event:
+                    continue
+                item.last_event = str(event.get("event") or item.last_event)
+                if event.get("event") == "ready":
+                    item.ready = True
+                    if event.get("ws_endpoint"):
+                        item.ws_endpoint = str(event.get("ws_endpoint"))
+                    if event.get("mode"):
+                        item.mode = str(event.get("mode"))
+                if event.get("event") == "error":
+                    item.error_message = str(event.get("message") or "worker error")
+                if event.get("event") == "endpoint" and event.get("ws_endpoint"):
+                    item.ws_endpoint = str(event.get("ws_endpoint"))
 
     def list(self, kind: str | None = None) -> list[dict[str, Any]]:
         with self.lock:
@@ -402,21 +438,30 @@ class ProcessRegistry:
             return self.items[item_id]
 
     def stop(self, item_id: str) -> None:
+        from backend.process_utils import stop_popen
+
         item = self.get(item_id)
         if item.process.poll() is not None:
             return
-        item.process.terminate()
-        try:
-            item.process.wait(timeout=8)
-        except subprocess.TimeoutExpired:
-            item.process.kill()
-            item.process.wait(timeout=5)
+        item.logs.append("[stop] terminating process tree...")
+        stop_popen(item.process, grace=8)
+        item.logs.append("[stop] done")
+        if item.runtime_path:
+            try:
+                Path(item.runtime_path).unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 store = ProfileStore(DATA_DIR / "profiles.json")
 registry = ProcessRegistry()
 app = FastAPI(title="FoxDesk", version=APP_VERSION)
 app.mount("/assets", StaticFiles(directory=STATIC_DIR), name="assets")
+
+from backend.proxy_pool import ProxyPoolStore  # noqa: E402
+from backend.templates_data import profile_templates  # noqa: E402
+
+proxy_pool = ProxyPoolStore(DATA_DIR / "proxies.json")
 
 
 # --- Channel Store ---
@@ -502,20 +547,96 @@ def worker_command(runtime_path: Path) -> list[str]:
     return [sys.executable, str(WORKER), str(runtime_path)]
 
 
-def start_process(kind: str, label: str, command: list[str], timeout: float | None = None) -> ManagedProcess:
+def start_process(
+    kind: str,
+    label: str,
+    command: list[str],
+    timeout: float | None = None,
+    *,
+    profile_id: str | None = None,
+    runtime_id: str | None = None,
+    runtime_path: str | None = None,
+    mode: str | None = None,
+) -> ManagedProcess:
     item_id = str(uuid.uuid4())
-    process = subprocess.Popen(
-        command,
-        cwd=ROOT,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        bufsize=1,
-        creationflags=CREATE_NO_WINDOW,
+    # On POSIX start a new session so we can signal the process group.
+    kwargs: dict[str, Any] = {
+        "args": command,
+        "cwd": ROOT,
+        "text": True,
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.STDOUT,
+        "bufsize": 1,
+        "creationflags": CREATE_NO_WINDOW,
+    }
+    if os.name != "nt":
+        kwargs["start_new_session"] = True
+    process = subprocess.Popen(**kwargs)
+    item = ManagedProcess(
+        id=item_id,
+        kind=kind,
+        label=label,
+        command=command,
+        process=process,
+        timeout=timeout,
+        profile_id=profile_id,
+        runtime_id=runtime_id,
+        runtime_path=runtime_path,
+        mode=mode,
     )
-    item = ManagedProcess(id=item_id, kind=kind, label=label, command=command, process=process, timeout=timeout)
     registry.add(item)
     return item
+
+
+def cleanup_runtime_files(max_age_hours: float = 24.0, keep_active: bool = True) -> dict[str, int]:
+    cutoff = time.time() - max_age_hours * 3600
+    active_paths: set[str] = set()
+    if keep_active:
+        for item in registry.list("session"):
+            # view doesn't include runtime_path; inspect registry items
+            pass
+    with registry.lock:
+        for item in registry.items.values():
+            if item.runtime_path and item.process.poll() is None:
+                active_paths.add(str(Path(item.runtime_path).resolve()))
+    removed = 0
+    kept = 0
+    for path in RUNTIME_DIR.glob("*.json"):
+        try:
+            resolved = str(path.resolve())
+            if resolved in active_paths:
+                kept += 1
+                continue
+            if path.stat().st_mtime < cutoff or not keep_active:
+                path.unlink(missing_ok=True)
+                removed += 1
+            else:
+                # also remove orphaned finished runtimes older than 1h even if under max_age
+                if path.stat().st_mtime < time.time() - 3600:
+                    path.unlink(missing_ok=True)
+                    removed += 1
+                else:
+                    kept += 1
+        except OSError:
+            continue
+    return {"removed": removed, "kept": kept}
+
+
+def apply_proxy_pool_to_profile(profile: Profile) -> Profile:
+    proxy_id = (profile.proxy_id or "").strip()
+    if not proxy_id:
+        return profile
+    try:
+        item = proxy_pool.get(proxy_id)
+    except KeyError:
+        return profile
+    data = profile.model_dump()
+    data["proxy"] = {
+        "server": item.get("server") or "",
+        "username": item.get("username") or "",
+        "password": item.get("password") or "",
+    }
+    return Profile(**data)
 
 
 @app.get("/")
@@ -528,6 +649,9 @@ def system() -> dict[str, Any]:
     installed = import_available("camoufox")
     version = run_short(camoufox_command("version"), timeout=8) if installed else None
     path = run_short(camoufox_command("path"), timeout=8) if installed else None
+    path_ok = bool(path and path.get("ok") and (path.get("stdout") or "").strip())
+    sessions = registry.list("session")
+    running_sessions = sum(1 for s in sessions if s.get("status") == "running")
     install_flow = [
         {
             "task": "install",
@@ -538,16 +662,17 @@ def system() -> dict[str, Any]:
         {
             "task": "fetch",
             "label": "Fetch browser binary",
-            "done": bool(path and path.get("ok")),
+            "done": path_ok,
             "command": camoufox_command("fetch"),
         },
         {
-            "task": "test",
-            "label": "Run Camoufox self test",
-            "done": False,
-            "command": camoufox_command("test"),
+            "task": "health",
+            "label": "Lightweight health check",
+            "done": path_ok,
+            "command": ["foxdesk", "health"],
         },
     ]
+    first_run = (not installed) or (not path_ok)
     return {
         "app_name": "FoxDesk",
         "app_version": APP_VERSION,
@@ -559,7 +684,81 @@ def system() -> dict[str, Any]:
         "camoufox_version": version,
         "camoufox_path": path,
         "install_flow": install_flow,
+        "running_sessions": running_sessions,
+        "first_run": first_run,
+        "github_repo": GITHUB_REPO,
+        "proxy_pool_count": len(proxy_pool.all()),
+        "profile_count": len(store.all()),
     }
+
+
+@app.post("/api/system/health")
+def system_health() -> dict[str, Any]:
+    """Lightweight Camoufox health check (no full self-test hang)."""
+    started = time.time()
+    installed = import_available("camoufox")
+    if not installed:
+        return {
+            "ok": False,
+            "checks": {"import": False, "path": False},
+            "error": "camoufox package not installed",
+            "latency_ms": int((time.time() - started) * 1000),
+        }
+    path = run_short(camoufox_command("path"), timeout=8)
+    path_text = (path.get("stdout") or "").strip()
+    path_exists = bool(path.get("ok") and path_text and Path(path_text).exists())
+    version = run_short(camoufox_command("version"), timeout=8)
+    ok = path_exists and bool(version.get("ok") or version.get("stdout"))
+    return {
+        "ok": ok,
+        "checks": {
+            "import": True,
+            "path": path_exists,
+            "path_value": path_text,
+            "version": version.get("stdout") or version.get("stderr") or "",
+        },
+        "error": None if ok else "browser binary missing; run fetch",
+        "latency_ms": int((time.time() - started) * 1000),
+    }
+
+
+@app.post("/api/system/cleanup-runtime")
+def system_cleanup_runtime(max_age_hours: float = 24.0) -> dict[str, Any]:
+    result = cleanup_runtime_files(max_age_hours=max_age_hours)
+    activity.log("runtime_cleanup", f"removed={result['removed']} kept={result['kept']}")
+    return {"ok": True, **result}
+
+
+@app.get("/api/system/updates")
+def system_updates() -> dict[str, Any]:
+    """Check GitHub Releases for a newer version (best-effort)."""
+    import urllib.request
+
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": f"FoxDesk/{APP_VERSION}", "Accept": "application/vnd.github+json"})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        tag = (data.get("tag_name") or "").lstrip("v")
+        html_url = data.get("html_url") or f"https://github.com/{GITHUB_REPO}/releases"
+        return {
+            "ok": True,
+            "current": APP_VERSION,
+            "latest": tag,
+            "update_available": bool(tag and tag != APP_VERSION and not tag.startswith(APP_VERSION)),
+            "release_url": html_url,
+            "name": data.get("name") or tag,
+            "prerelease": bool(data.get("prerelease")),
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "current": APP_VERSION,
+            "latest": None,
+            "update_available": False,
+            "error": str(exc),
+            "release_url": f"https://github.com/{GITHUB_REPO}/releases",
+        }
 
 
 @app.post("/api/tasks/{name}")
@@ -693,23 +892,34 @@ def launch_session(request: LaunchRequest) -> dict[str, Any]:
     except KeyError:
         raise HTTPException(status_code=404, detail="profile not found") from None
 
+    profile = apply_proxy_pool_to_profile(profile)
+    profile = normalize_profile_paths(profile)
+
     # Pre-launch validation
     errors = validate_profile_for_launch(profile)
     if errors:
         raise HTTPException(status_code=400, detail="; ".join(errors))
 
-    profile = normalize_profile_paths(profile)
     if profile.persistent_context and profile.user_data_dir:
         Path(profile.user_data_dir).expanduser().mkdir(parents=True, exist_ok=True)
 
+    cleanup_runtime_files(max_age_hours=24.0)
     runtime_id = str(uuid.uuid4())
     runtime_path = RUNTIME_DIR / f"{runtime_id}.json"
     payload = profile.model_dump()
     payload["_runtime_id"] = runtime_id
+    payload["_profile_id"] = profile.id
     runtime_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     command = worker_command(runtime_path)
-    item = start_process("session", profile.name, command)
-    # Attach runtime metadata for accurate session detail lookup
+    item = start_process(
+        "session",
+        profile.name,
+        command,
+        profile_id=profile.id,
+        runtime_id=runtime_id,
+        runtime_path=str(runtime_path),
+        mode=profile.mode,
+    )
     with registry.lock:
         item.logs.append(f"[runtime] {runtime_path.name}")
     activity.log("session_launch", f"{profile.name} (pid {item.process.pid})")
@@ -806,16 +1016,40 @@ def stop_process(process_id: str) -> dict[str, Any]:
 
 
 # --- Proxy Test ---
-def _socks5_connect(proxy_host: str, proxy_port: int, target_host: str, target_port: int, timeout: float = 10.0) -> socket.socket:
-    """Raw SOCKS5 CONNECT handshake."""
+def _socks5_connect(
+    proxy_host: str,
+    proxy_port: int,
+    target_host: str,
+    target_port: int,
+    timeout: float = 10.0,
+    username: str = "",
+    password: str = "",
+) -> socket.socket:
+    """Raw SOCKS5 CONNECT handshake with optional username/password auth."""
     import socket as _sock
+
     sock = _sock.create_connection((proxy_host, proxy_port), timeout=timeout)
-    # Greeting: version 5, no auth
-    sock.sendall(b"\x05\x01\x00")
+    if username:
+        # Offer user/pass auth
+        sock.sendall(b"\x05\x02\x00\x02")
+    else:
+        sock.sendall(b"\x05\x01\x00")
     resp = sock.recv(2)
-    if len(resp) < 2 or resp[0] != 0x05 or resp[1] != 0x00:
+    if len(resp) < 2 or resp[0] != 0x05:
         sock.close()
-        raise ConnectionError("SOCKS5 proxy auth negotiation failed")
+        raise ConnectionError("SOCKS5 proxy greeting failed")
+    method = resp[1]
+    if method == 0x02:
+        u = username.encode("utf-8")[:255]
+        p = password.encode("utf-8")[:255]
+        sock.sendall(b"\x01" + bytes([len(u)]) + u + bytes([len(p)]) + p)
+        auth_resp = sock.recv(2)
+        if len(auth_resp) < 2 or auth_resp[1] != 0x00:
+            sock.close()
+            raise ConnectionError("SOCKS5 username/password authentication failed")
+    elif method != 0x00:
+        sock.close()
+        raise ConnectionError(f"SOCKS5 proxy auth negotiation failed (method={method})")
     # CONNECT request
     addr = target_host.encode("ascii")
     req = b"\x05\x01\x00\x03" + bytes([len(addr)]) + addr + target_port.to_bytes(2, "big")
@@ -824,6 +1058,16 @@ def _socks5_connect(proxy_host: str, proxy_port: int, target_host: str, target_p
     if len(resp) < 4 or resp[1] != 0x00:
         sock.close()
         raise ConnectionError(f"SOCKS5 CONNECT failed: error code {resp[1] if len(resp) > 1 else 'unknown'}")
+    # Drain bind addr
+    atyp = resp[3] if len(resp) > 3 else 1
+    if atyp == 1:
+        sock.recv(4 + 2)
+    elif atyp == 3:
+        ln = sock.recv(1)
+        if ln:
+            sock.recv(ln[0] + 2)
+    elif atyp == 4:
+        sock.recv(16 + 2)
     return sock
 
 
@@ -849,28 +1093,32 @@ def _socks4_connect(proxy_host: str, proxy_port: int, target_host: str, target_p
 def _test_proxy_connection(proxy_url: str, username: str = "", password: str = "", timeout: float = 10.0) -> dict[str, Any]:
     """Test proxy by connecting through it to an IP-check endpoint."""
     import time as _time
-    from urllib.parse import urlparse
-    from urllib.request import Request, urlopen
+    from urllib.parse import quote, urlparse
+    from urllib.request import ProxyHandler, Request, build_opener
 
     parsed = urlparse(proxy_url)
     scheme = parsed.scheme.lower()
     host = parsed.hostname or ""
     port = parsed.port or (1080 if "socks" in scheme else 8080)
+    user = username or (parsed.username or "")
+    pwd = password if password is not None else (parsed.password or "")
 
     start = _time.monotonic()
     try:
         if scheme in ("http", "https"):
-            proxy_handler = __import__("urllib.request", fromlist=["ProxyHandler"]).ProxyHandler({
-                "http": proxy_url,
-                "https": proxy_url,
-            })
-            opener = __import__("urllib.request", fromlist=["build_opener"]).build_opener(proxy_handler)
+            if user:
+                auth = f"{quote(user, safe='')}:{quote(pwd or '', safe='')}@"
+            else:
+                auth = ""
+            proxy_with_auth = f"{scheme}://{auth}{host}:{port}"
+            proxy_handler = ProxyHandler({"http": proxy_with_auth, "https": proxy_with_auth})
+            opener = build_opener(proxy_handler)
             req = Request("http://httpbin.org/ip")
             resp = opener.open(req, timeout=timeout)
             data = json.loads(resp.read())
             ip = data.get("origin", "unknown")
         elif scheme == "socks5":
-            sock = _socks5_connect(host, port, "httpbin.org", 80, timeout=timeout)
+            sock = _socks5_connect(host, port, "httpbin.org", 80, timeout=timeout, username=user, password=pwd or "")
             sock.sendall(b"GET /ip HTTP/1.1\r\nHost: httpbin.org\r\nConnection: close\r\n\r\n")
             response = b""
             while True:
@@ -1017,21 +1265,31 @@ def batch_launch(request: BatchLaunchRequest) -> dict[str, Any]:
             results.append({"profile_id": profile_id, "ok": False, "error": "profile not found"})
             failed += 1
             continue
+        profile = apply_proxy_pool_to_profile(profile)
+        profile = normalize_profile_paths(profile)
         errors = validate_profile_for_launch(profile)
         if errors:
             results.append({"profile_id": profile_id, "ok": False, "error": "; ".join(errors)})
             failed += 1
             continue
-        profile = normalize_profile_paths(profile)
         if profile.persistent_context and profile.user_data_dir:
             Path(profile.user_data_dir).expanduser().mkdir(parents=True, exist_ok=True)
         runtime_id = str(uuid.uuid4())
         runtime_path = RUNTIME_DIR / f"{runtime_id}.json"
         payload = profile.model_dump()
         payload["_runtime_id"] = runtime_id
+        payload["_profile_id"] = profile.id
         runtime_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         command = worker_command(runtime_path)
-        item = start_process("session", profile.name, command)
+        item = start_process(
+            "session",
+            profile.name,
+            command,
+            profile_id=profile.id,
+            runtime_id=runtime_id,
+            runtime_path=str(runtime_path),
+            mode=profile.mode,
+        )
         results.append({"profile_id": profile_id, "ok": True, "process_id": item.id, "runtime_id": runtime_id})
         started += 1
     skipped = len(request.profile_ids) - available
@@ -1222,6 +1480,34 @@ def export_cookies(profile_id: str):
         raise HTTPException(status_code=500, detail=f"Failed to read cookies: {exc}") from None
 
 
+def _parse_netscape_cookies(text: str) -> list[dict[str, Any]]:
+    cookies: list[dict[str, Any]] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split("\t")
+        if len(parts) < 7:
+            continue
+        domain, _flag, path, secure, expires, name, value = parts[:7]
+        cookie: dict[str, Any] = {
+            "domain": domain,
+            "host": domain,
+            "path": path or "/",
+            "secure": str(secure).upper() == "TRUE",
+            "expires": int(float(expires)) if expires not in ("", "0") else None,
+            "name": name,
+            "value": value,
+            "httpOnly": domain.startswith("#HttpOnly_") or domain.startswith("."),
+        }
+        if cookie["domain"].startswith("#HttpOnly_"):
+            cookie["domain"] = cookie["domain"].replace("#HttpOnly_", "", 1)
+            cookie["host"] = cookie["domain"]
+            cookie["httpOnly"] = True
+        cookies.append(cookie)
+    return cookies
+
+
 @app.post("/api/profiles/{profile_id}/cookies")
 def import_cookies(profile_id: str, request: dict[str, Any]):
     try:
@@ -1230,9 +1516,22 @@ def import_cookies(profile_id: str, request: dict[str, Any]):
         raise HTTPException(status_code=404, detail="profile not found") from None
     if not profile.user_data_dir:
         raise HTTPException(status_code=409, detail="profile has no user_data_dir")
+
     cookies = request.get("cookies", [])
+    raw_text = request.get("raw_text") or request.get("text") or ""
+    if raw_text and not cookies:
+        text = str(raw_text)
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, list):
+                cookies = parsed
+            elif isinstance(parsed, dict):
+                cookies = parsed.get("cookies") or []
+        except Exception:
+            cookies = _parse_netscape_cookies(text)
     if not isinstance(cookies, list):
-        raise HTTPException(status_code=400, detail="cookies must be a list")
+        raise HTTPException(status_code=400, detail="cookies must be a list or Netscape/JSON text")
+
     cookies_dir = Path(profile.user_data_dir).expanduser()
     cookies_dir.mkdir(parents=True, exist_ok=True)
     cookies_file = cookies_dir / "imported_cookies.json"
@@ -1244,6 +1543,135 @@ def import_cookies(profile_id: str, request: dict[str, Any]):
         "path": str(cookies_file),
         "note": "Cookies are applied on next session launch via Playwright add_cookies.",
     }
+
+
+# --- Proxy Pool ---
+class ProxyPoolIn(BaseModel):
+    name: str = "Proxy"
+    server: str
+    username: str = ""
+    password: str = ""
+    tags: list[str] = Field(default_factory=list)
+    notes: str = ""
+
+
+class ProxyPoolImportRequest(BaseModel):
+    lines: list[str]
+    replace: bool = False
+
+
+class ProxyAssignRequest(BaseModel):
+    profile_ids: list[str]
+    proxy_id: str = ""
+
+
+@app.get("/api/proxies")
+def list_proxies() -> list[dict[str, Any]]:
+    return proxy_pool.all()
+
+
+@app.post("/api/proxies")
+def create_proxy(item: ProxyPoolIn) -> dict[str, Any]:
+    try:
+        created = proxy_pool.create(item.model_dump())
+        activity.log("proxy_create", created.get("name") or created.get("server") or "")
+        return created
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+
+
+@app.put("/api/proxies/{proxy_id}")
+def update_proxy(proxy_id: str, item: ProxyPoolIn) -> dict[str, Any]:
+    try:
+        return proxy_pool.update(proxy_id, item.model_dump())
+    except KeyError:
+        raise HTTPException(status_code=404, detail="proxy not found") from None
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+
+
+@app.delete("/api/proxies/{proxy_id}")
+def delete_proxy(proxy_id: str) -> dict[str, bool]:
+    try:
+        proxy_pool.delete(proxy_id)
+        activity.log("proxy_delete", proxy_id)
+        return {"ok": True}
+    except KeyError:
+        raise HTTPException(status_code=404, detail="proxy not found") from None
+
+
+@app.post("/api/proxies/import")
+def import_proxy_pool(request: ProxyPoolImportRequest) -> dict[str, Any]:
+    imported = proxy_pool.import_lines(request.lines, replace=request.replace)
+    activity.log("proxy_import", f"count={len(imported)}")
+    return {"ok": True, "count": len(imported), "proxies": imported}
+
+
+@app.post("/api/proxies/{proxy_id}/test")
+def test_proxy_pool_item(proxy_id: str) -> dict[str, Any]:
+    try:
+        item = proxy_pool.get(proxy_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="proxy not found") from None
+    result = _test_proxy_connection(item.get("server") or "", item.get("username") or "", item.get("password") or "")
+    try:
+        proxy_pool.mark_test_result(proxy_id, result)
+    except KeyError:
+        pass
+    return result
+
+
+@app.post("/api/proxies/assign")
+def assign_proxy_to_profiles(request: ProxyAssignRequest) -> dict[str, Any]:
+    if request.proxy_id:
+        try:
+            proxy_pool.get(request.proxy_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="proxy not found") from None
+    profiles = store.all()
+    updated = 0
+    for idx, profile in enumerate(profiles):
+        if profile.id not in request.profile_ids:
+            continue
+        dump = profile.model_dump()
+        dump["proxy_id"] = request.proxy_id
+        if request.proxy_id:
+            item = proxy_pool.get(request.proxy_id)
+            dump["proxy"] = {
+                "server": item.get("server") or "",
+                "username": item.get("username") or "",
+                "password": item.get("password") or "",
+            }
+        dump["updated_at"] = now_iso()
+        profiles[idx] = Profile(**dump)
+        updated += 1
+    store.save_all(profiles)
+    activity.log("proxy_assign", f"updated={updated}")
+    return {"ok": True, "updated": updated}
+
+
+# --- Templates ---
+@app.get("/api/templates")
+def list_templates() -> list[dict[str, Any]]:
+    return profile_templates()
+
+
+@app.post("/api/templates/{template_id}/create")
+def create_from_template(template_id: str) -> Profile:
+    template = next((t for t in profile_templates() if t["id"] == template_id), None)
+    if not template:
+        raise HTTPException(status_code=404, detail="template not found")
+    data = dict(template["profile"])
+    slug = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in data.get("name", "template")).strip("-")
+    data["user_data_dir"] = str(PROFILES_DIR / f"{slug}-{uuid.uuid4().hex[:6]}")
+    data.setdefault("proxy", {"server": "", "username": "", "password": ""})
+    data.setdefault("proxy_id", "")
+    data.setdefault("addons", [])
+    data.setdefault("extra_args", [])
+    data.setdefault("fonts", [])
+    created = store.create(ProfileIn(**data))
+    activity.log("template_create", f"{template_id} -> {created.name}")
+    return created
 
 
 # --- Bulk Proxy Import ---

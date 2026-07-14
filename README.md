@@ -2,7 +2,7 @@
 
 本地 Camoufox 指纹浏览器管理器 — 免费、开源、隐私优先。
 
-**当前版本：`1.1.0-beta.1`**
+**当前版本：`1.1.0-beta.2`**
 
 <p align="center">
   <img src="static/logo.png" width="120" alt="FoxDesk Logo">
@@ -13,13 +13,16 @@
 - **Profile 管理** — 创建、编辑、克隆、导入导出、标签分组
 - **指纹控制** — 指纹参数编辑 + 一键随机生成（映射到 Camoufox config）
 - **指纹检测** — 静态一致性评分（0-100）
-- **代理支持** — HTTP/HTTPS/SOCKS4/SOCKS5，内置测试 + 批量导入
-- **Cookie 管理** — 导出 SQLite Cookie；导入 JSON，并在下次启动时注入
-- **会话管理** — 启动/停止/日志查看/批量操作（含 frozen worker）
+- **代理池** — 统一管理 HTTP/SOCKS 代理，档案可引用；支持认证测试与批量导入
+- **Cookie 管理** — 导出 SQLite Cookie；导入 JSON / Netscape，下次启动注入
+- **会话管理** — 启动/停止/日志、错误展示、Server 模式端点复制、批量操作
+- **系统托盘** — 隐藏到托盘、停止全部会话、退出时清理
+- **档案模板** — 一键创建纯净 / 电商 / 自动化等预设
+- **健康检查 & 运行时清理** — 轻量自检、过期 runtime 清理、更新检查
 - **下载源切换** — GitHub 官方 / 镜像 / 自定义
 - **深浅色模式** — 一键切换，自动保存
 - **中英文双语** — 完整 i18n 支持
-- **键盘快捷键** — Ctrl+1/2/3 切换标签，Ctrl+N 新建，Ctrl+S 保存
+- **键盘快捷键** — Ctrl+1/2/3/4 切换标签，Ctrl+N 新建，Ctrl+S 保存
 - **右键菜单** — 档案右键快速操作
 - **Windows 安装包** — PyInstaller + Inno Setup + GitHub Actions 自动构建
 
@@ -60,15 +63,15 @@ iscc installer.iss
 产物：
 
 - 便携版：`dist/FoxDesk/FoxDesk.exe`
-- 安装包：`installer_output/FoxDesk-1.1.0-beta.1-Setup.exe`
+- 安装包：`installer_output/FoxDesk-1.1.0-beta.2-Setup.exe`
 
 ### CI/CD
 
 推送 tag 或手动触发 workflow 会自动构建并发布 Release：
 
 ```bash
-git tag v1.1.0-beta.1
-git push origin v1.1.0-beta.1
+git tag v1.1.0-beta.2
+git push origin v1.1.0-beta.2
 ```
 
 - Workflow：`.github/workflows/build.yml`

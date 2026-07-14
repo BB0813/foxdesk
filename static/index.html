@@ -22,6 +22,11 @@
         <button type="button" data-page="sessions">
           <i data-lucide="monitor-play"></i>
           <span data-i18n="tabSessions">运行会话</span>
+          <span class="nav-badge hidden" id="sessionBadge">0</span>
+        </button>
+        <button type="button" data-page="proxies">
+          <i data-lucide="globe"></i>
+          <span data-i18n="tabProxies">代理池</span>
         </button>
         <button type="button" data-page="system">
           <i data-lucide="settings-2"></i>
@@ -42,6 +47,28 @@
         </button>
       </div>
     </header>
+
+    <div class="banner hidden" id="firstRunBanner">
+      <div>
+        <strong data-i18n="firstRunTitle">首次使用</strong>
+        <span data-i18n="firstRunDesc">检测到 Camoufox 尚未就绪。请先安装包并下载浏览器文件。</span>
+      </div>
+      <div class="button-row">
+        <button class="button secondary" id="firstRunHealthBtn" type="button" data-i18n="healthCheck">健康检查</button>
+        <button class="button primary" id="firstRunSetupBtn" type="button" data-i18n="goSetup">去配置</button>
+        <button class="button secondary icon-only" id="firstRunDismissBtn" type="button" title="Dismiss"><i data-lucide="x"></i></button>
+      </div>
+    </div>
+    <div class="banner update hidden" id="updateBanner">
+      <div>
+        <strong data-i18n="updateAvailable">发现新版本</strong>
+        <span id="updateBannerText"></span>
+      </div>
+      <div class="button-row">
+        <a class="button primary" id="updateBannerLink" href="#" target="_blank" rel="noreferrer" data-i18n="openRelease">打开发布页</a>
+        <button class="button secondary icon-only" id="updateDismissBtn" type="button" title="Dismiss"><i data-lucide="x"></i></button>
+      </div>
+    </div>
 
     <!-- ═══ Tab: Profiles ═══ -->
     <div class="workspace">
@@ -64,6 +91,9 @@
                 <button class="button secondary icon-only" id="viewToggleBtn" type="button" title="Toggle view">
                   <i data-lucide="list"></i>
                 </button>
+                <button class="button secondary icon-only" id="templateBtn" type="button" title="Templates">
+                  <i data-lucide="layout-template"></i>
+                </button>
                 <button class="button icon-only" id="newProfileBtn" type="button" title="New">
                   <i data-lucide="plus"></i>
                 </button>
@@ -72,6 +102,7 @@
             <div class="profile-search">
               <input id="profileSearch" type="text" data-i18n-placeholder="searchProfiles" placeholder="搜索档案..." />
             </div>
+            <div class="template-bar" id="templateBar"></div>
             <div class="tag-filter-bar" id="tagFilterBar"></div>
             <div class="profile-list-wrap">
               <div class="profile-list" id="profileList" aria-live="polite"></div>
@@ -183,6 +214,12 @@
 
               <div class="tab-content" data-tab-content="proxy">
                 <div class="form-grid">
+                  <label class="span-2">
+                    <span data-i18n="proxyPoolSelect">代理池引用</span>
+                    <select name="proxy_id" id="proxyPoolSelect">
+                      <option value="" data-i18n-option="proxyManual">手动填写 / 不使用池</option>
+                    </select>
+                  </label>
                   <label>
                     <span data-i18n="proxyServer">代理地址</span>
                     <input name="proxy_server" placeholder="http://127.0.0.1:8080 / socks5://127.0.0.1:20170" />
@@ -348,6 +385,53 @@
         </div>
       </div>
 
+      <!-- ═══ Tab: Proxies ═══ -->
+      <div class="tab-page" data-page="proxies">
+        <div class="system-layout">
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h2 data-i18n="proxyPool">代理池</h2>
+                <p data-i18n="proxyPoolDesc">统一管理代理，档案可引用代理 ID</p>
+              </div>
+              <div class="button-row">
+                <button class="button secondary" id="proxyImportBtn" type="button">
+                  <i data-lucide="upload"></i>
+                  <span data-i18n="import">导入</span>
+                </button>
+                <button class="button primary" id="proxyAddBtn" type="button">
+                  <i data-lucide="plus"></i>
+                  <span data-i18n="new">新建</span>
+                </button>
+              </div>
+            </div>
+            <div class="form-grid" style="padding:12px 16px;border-bottom:1px solid var(--border)">
+              <label>
+                <span data-i18n="name">名称</span>
+                <input id="proxyNameInput" placeholder="US-1" />
+              </label>
+              <label>
+                <span data-i18n="proxyServer">代理地址</span>
+                <input id="proxyServerInput" placeholder="socks5://127.0.0.1:1080" />
+              </label>
+              <label>
+                <span data-i18n="proxyUsername">代理用户名</span>
+                <input id="proxyUserInput" />
+              </label>
+              <label>
+                <span data-i18n="proxyPassword">代理密码</span>
+                <input id="proxyPassInput" type="password" autocomplete="off" />
+              </label>
+              <label class="span-2">
+                <span data-i18n="bulkProxyImport">批量导入代理（每行一个）</span>
+                <textarea id="proxyPoolImportInput" rows="3" placeholder="socks5://user:pass@1.2.3.4:1080&#10;host:port:user:pass"></textarea>
+              </label>
+            </div>
+            <div class="process-list" id="proxyPoolList"></div>
+          </div>
+        </div>
+      </div>
+
       <!-- ═══ Tab: System ═══ -->
       <div class="tab-page" data-page="system">
         <div class="system-layout">
@@ -361,10 +445,13 @@
                 <button class="button secondary" data-task="install" type="button"><span data-i18n="taskInstall">安装</span></button>
                 <button class="button secondary" data-task="version" type="button"><span data-i18n="taskVersion">版本</span></button>
                 <button class="button secondary" data-task="path" type="button"><span data-i18n="taskPath">路径</span></button>
-                <button class="button secondary" data-task="test" type="button"><span data-i18n="taskTest">自检</span></button>
+                <button class="button secondary" id="healthCheckBtn" type="button"><span data-i18n="healthCheck">健康检查</span></button>
+                <button class="button secondary" id="cleanupRuntimeBtn" type="button"><span data-i18n="cleanupRuntime">清理运行时</span></button>
+                <button class="button secondary" id="checkUpdateBtn" type="button"><span data-i18n="checkUpdate">检查更新</span></button>
                 <button class="button primary" data-task="fetch" type="button"><span data-i18n="taskFetch">下载</span></button>
               </div>
             </div>
+            <div id="healthResult" style="padding:0 16px 12px;font-size:12px;color:var(--muted)"></div>
             <div class="install-flow" id="installFlow"></div>
             <div class="channel-bar" id="channelBar">
               <span data-i18n="downloadSource">下载源</span>

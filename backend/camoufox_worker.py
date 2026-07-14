@@ -324,12 +324,11 @@ def run_server(profile: dict[str, Any]) -> int:
     kwargs.pop("persistent_context", None)
     kwargs.pop("user_data_dir", None)
     emit("launching", mode="server")
+    # Upstream launch_server blocks and prints endpoint to stdout in some versions.
+    # We still emit a ready event first so the manager can mark the process as live.
+    emit("ready", mode="server", ws_endpoint=None, note="endpoint is printed by camoufox server when available")
     try:
-        # launch_server is blocking / NoReturn in upstream; still guard for failures
         launch_server(**kwargs)
-        emit("ready", mode="server")
-        while running:
-            time.sleep(0.5)
     except Exception as exc:
         emit("error", message=str(exc))
         return 1
