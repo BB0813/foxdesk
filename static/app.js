@@ -132,6 +132,11 @@ const i18n = {
     setupStepPackage: "安装组件",
     setupStepFetch: "下载浏览器",
     setupStepVerify: "安装校验",
+    stepPending: "等待中",
+    stepRunning: "进行中",
+    stepDone: "已完成",
+    stepSkipped: "已跳过",
+    stepFailed: "失败",
     updateAvailable: "发现新版本",
     openRelease: "打开发布页",
     oneClickUpdate: "一键更新",
@@ -370,6 +375,11 @@ const i18n = {
     setupStepPackage: "Install package",
     setupStepFetch: "Download browser",
     setupStepVerify: "Verify install",
+    stepPending: "Pending",
+    stepRunning: "Running",
+    stepDone: "Done",
+    stepSkipped: "Skipped",
+    stepFailed: "Failed",
     updateAvailable: "Update available",
     openRelease: "Open Release",
     oneClickUpdate: "Update Now",
@@ -1581,20 +1591,28 @@ function renderSetupWizard() {
   if (statusText) statusText.textContent = setupStatusLabel(setup.status, setup.current_step);
 
   if (stepsEl) {
+    const statusLabel = (st) => {
+      if (st === "done") return t("stepDone");
+      if (st === "skipped") return t("stepSkipped");
+      if (st === "failed") return t("stepFailed");
+      if (st === "running") return t("stepRunning");
+      return t("stepPending");
+    };
     stepsEl.innerHTML = steps
       .map((step) => {
+        const st = step.status || "pending";
         const icon =
-          step.status === "done" || step.status === "skipped"
+          st === "done" || st === "skipped"
             ? "✓"
-            : step.status === "failed"
+            : st === "failed"
               ? "!"
-              : step.status === "running"
+              : st === "running"
                 ? "…"
                 : "·";
-        return `<li class="${escapeHtml(step.status || "pending")}">
+        return `<li class="${escapeHtml(st)}">
           <span class="step-icon">${icon}</span>
           <span>${escapeHtml(setupStepLabel(step.id) || step.label || step.id)}</span>
-          <span style="font-size:11px;color:var(--subtle)">${escapeHtml(step.status || "")}</span>
+          <span class="step-status" data-status="${escapeHtml(st)}">${escapeHtml(statusLabel(st))}</span>
           ${step.detail ? `<div class="step-detail">${escapeHtml(step.detail)}</div>` : ""}
         </li>`;
       })

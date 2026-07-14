@@ -55,7 +55,7 @@ def migrate_legacy_data() -> None:
         shutil.copytree(legacy_profiles_dir, app_profiles_dir)
 
 
-APP_VERSION = "1.1.0-beta.4"
+APP_VERSION = "1.1.0-beta.5"
 GITHUB_REPO = "BB0813/foxdesk"
 
 if getattr(sys, "frozen", False):
@@ -506,9 +506,17 @@ channel_store = ChannelStore(DATA_DIR / "channels.json")
 
 
 def camoufox_command(*args: str) -> list[str]:
+    """Build a CLI command for camoufox.
+
+    Frozen builds cannot use `FoxDesk.exe -m camoufox`; callers that need
+    path/version/fetch should prefer the in-process helpers below.
+    """
     executable = shutil.which("camoufox")
     if executable:
         return [executable, *args]
+    if getattr(sys, "frozen", False):
+        # No valid CLI entry in frozen mode — return a marker command that will fail fast.
+        return [str(APP_EXECUTABLE), "--camoufox-cli", *args]
     return [sys.executable, "-m", "camoufox", *args]
 
 
@@ -541,19 +549,94 @@ def run_short(command: list[str], timeout: int = 10) -> dict[str, Any]:
 
 
 def import_available(module: str) -> bool:
-    # In frozen builds, sys.executable is the app binary and cannot run -c reliably.
+    # Always try direct import first (works in frozen + source).
+    try:
+        __import__(module)
+        return True
+    except Exception:
+        pass
     if getattr(sys, "frozen", False):
-        try:
-            __import__(module)
-            return True
-        except Exception:
-            return False
+        return False
     return subprocess.run(
         [sys.executable, "-c", f"import {module}"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         creationflags=CREATE_NO_WINDOW,
     ).returncode == 0
+
+
+def camoufox_path_info() -> dict[str, Any]:
+    """Resolve Camoufox install directory without shelling out."""
+    try:
+        from camoufox.pkgman import INSTALL_DIR, LAUNCH_FILE, OS_NAME, Version
+
+        if not INSTALL_DIR.exists() or not any(INSTALL_DIR.iterdir()):
+            return {
+                "ok": False,
+                "returncode": 1,
+                "stdout": "",
+                "stderr": f"not installed ({INSTALL_DIR})",
+            }
+        launch = INSTALL_DIR / LAUNCH_FILE[OS_NAME]
+        if OS_NAME == "mac":
+            launch = INSTALL_DIR / "Camoufox.app" / "Contents" / "MacOS" / "camoufox"
+        if not Path(launch).exists():
+            return {
+                "ok": False,
+                "returncode": 1,
+                "stdout": str(INSTALL_DIR),
+                "stderr": f"binary missing: {launch}",
+            }
+        try:
+            Version.from_path(INSTALL_DIR)
+        except Exception as exc:
+            return {
+                "ok": False,
+                "returncode": 1,
+                "stdout": str(INSTALL_DIR),
+                "stderr": str(exc),
+            }
+        return {
+            "ok": True,
+            "returncode": 0,
+            "stdout": str(INSTALL_DIR),
+            "stderr": "",
+        }
+    except Exception as exc:
+        if getattr(sys, "frozen", False):
+            return {"ok": False, "returncode": 1, "stdout": "", "stderr": str(exc)}
+        return run_short(camoufox_command("path"), timeout=8)
+
+
+def camoufox_version_info() -> dict[str, Any]:
+    """Resolve Camoufox package + binary version without shelling out."""
+    lines: list[str] = []
+    try:
+        from importlib.metadata import PackageNotFoundError, version as pkg_version
+
+        try:
+            lines.append(f"Pip package:\tv{pkg_version('camoufox')}")
+        except PackageNotFoundError:
+            # Frozen builds often lack dist-info; import success is enough.
+            if import_available("camoufox"):
+                lines.append("Pip package:\tbundled")
+            else:
+                lines.append("Pip package:\tNot installed!")
+    except Exception as exc:
+        lines.append(f"Pip package:\t{exc}")
+    try:
+        from camoufox.pkgman import installed_verstr
+
+        lines.append(f"Camoufox:\tv{installed_verstr()}")
+        return {"ok": True, "returncode": 0, "stdout": "\n".join(lines), "stderr": ""}
+    except Exception as exc:
+        lines.append(f"Camoufox:\tNot downloaded! ({exc})")
+        if getattr(sys, "frozen", False):
+            return {"ok": False, "returncode": 1, "stdout": "\n".join(lines), "stderr": str(exc)}
+        cli = run_short(camoufox_command("version"), timeout=8)
+        if cli.get("stdout") or cli.get("stderr"):
+            return cli
+        return {"ok": False, "returncode": 1, "stdout": "\n".join(lines), "stderr": str(exc)}
 
 
 setup_manager = SetupManager(
@@ -675,8 +758,18 @@ def index() -> FileResponse:
 @app.get("/api/system")
 def system() -> dict[str, Any]:
     installed = import_available("camoufox")
-    version = run_short(camoufox_command("version"), timeout=8) if installed else None
-    path = run_short(camoufox_command("path"), timeout=8) if installed else None
+    version = camoufox_version_info() if installed else {
+        "ok": False,
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "camoufox not installed",
+    }
+    path = camoufox_path_info() if installed else {
+        "ok": False,
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "camoufox not installed",
+    }
     path_ok = bool(path and path.get("ok") and (path.get("stdout") or "").strip())
     sessions = registry.list("session")
     running_sessions = sum(1 for s in sessions if s.get("status") == "running")
@@ -685,7 +778,11 @@ def system() -> dict[str, Any]:
             "task": "install",
             "label": "Install Python package",
             "done": installed,
-            "command": [sys.executable, "-m", "pip", "install", "camoufox"],
+            "command": (
+                ["bundled"]
+                if getattr(sys, "frozen", False)
+                else [sys.executable, "-m", "pip", "install", "camoufox"]
+            ),
         },
         {
             "task": "fetch",
@@ -762,10 +859,10 @@ def system_health() -> dict[str, Any]:
             "error": "camoufox package not installed",
             "latency_ms": int((time.time() - started) * 1000),
         }
-    path = run_short(camoufox_command("path"), timeout=8)
+    path = camoufox_path_info()
     path_text = (path.get("stdout") or "").strip()
     path_exists = bool(path.get("ok") and path_text and Path(path_text).exists())
-    version = run_short(camoufox_command("version"), timeout=8)
+    version = camoufox_version_info()
     ok = path_exists and bool(version.get("ok") or version.get("stdout"))
     return {
         "ok": ok,
@@ -775,7 +872,7 @@ def system_health() -> dict[str, Any]:
             "path_value": path_text,
             "version": version.get("stdout") or version.get("stderr") or "",
         },
-        "error": None if ok else "browser binary missing; run fetch",
+        "error": None if ok else "browser binary missing; run setup/fetch",
         "latency_ms": int((time.time() - started) * 1000),
     }
 
@@ -842,6 +939,62 @@ def start_task(name: str, request: TaskRequest | None = None) -> dict[str, Any]:
     if name not in allowed:
         raise HTTPException(status_code=404, detail="unknown task")
     args = request.args if request else []
+
+    # Frozen builds cannot run `python -m camoufox` against FoxDesk.exe.
+    # Use in-process helpers / guided setup instead of a broken subprocess.
+    if getattr(sys, "frozen", False) and name in {"install", "fetch", "version", "path", "remove"}:
+        if name == "install":
+            ok = import_available("camoufox")
+            return {
+                "id": f"inline-{int(time.time() * 1000)}",
+                "kind": "task",
+                "label": "install (bundled)",
+                "status": "exited" if ok else "failed",
+                "returncode": 0 if ok else 1,
+                "logs": ["camoufox bundled" if ok else "camoufox missing from application bundle"],
+                "ok": ok,
+            }
+        if name in {"path", "version"}:
+            info = camoufox_path_info() if name == "path" else camoufox_version_info()
+            text = (info.get("stdout") or info.get("stderr") or "").strip()
+            return {
+                "id": f"inline-{int(time.time() * 1000)}",
+                "kind": "task",
+                "label": f"camoufox {name}",
+                "status": "exited" if info.get("ok") else "failed",
+                "returncode": 0 if info.get("ok") else 1,
+                "logs": text.splitlines() or [info.get("stderr") or ""],
+                "ok": bool(info.get("ok")),
+            }
+        if name == "fetch":
+            result = setup_manager.start(channel="github", auto=True, force=True)
+            return {
+                "id": f"setup-{int(time.time() * 1000)}",
+                "kind": "task",
+                "label": "camoufox fetch (guided)",
+                "status": "running" if result.get("status") == "running" else result.get("status"),
+                "returncode": None,
+                "logs": result.get("logs") or ["started guided setup fetch"],
+                "ok": result.get("status") != "failed",
+                "setup": result,
+            }
+        if name == "remove":
+            try:
+                from camoufox.pkgman import CamoufoxFetcher
+
+                removed = CamoufoxFetcher.cleanup()
+                return {
+                    "id": f"inline-{int(time.time() * 1000)}",
+                    "kind": "task",
+                    "label": "camoufox remove",
+                    "status": "exited",
+                    "returncode": 0,
+                    "logs": ["removed" if removed else "nothing to remove"],
+                    "ok": True,
+                }
+            except Exception as exc:
+                raise HTTPException(status_code=500, detail=str(exc)) from exc
+
     if name == "install":
         command = [sys.executable, "-m", "pip", "install", "camoufox", *args]
         label = "pip install camoufox"
@@ -1033,9 +1186,9 @@ def validate_profile_for_launch(profile: Profile) -> list[str]:
 
     # 1. Check Camoufox browser binary exists
     try:
-        path_result = run_short(camoufox_command("path"), timeout=5)
+        path_result = camoufox_path_info()
         if not path_result.get("ok") or not path_result.get("stdout", "").strip():
-            errors.append("Camoufox browser binary not found. Run 'fetch' task first.")
+            errors.append("Camoufox browser binary not found. Complete first-run setup / fetch first.")
         else:
             browser_path = Path(path_result["stdout"].strip())
             if not browser_path.exists():
@@ -1256,16 +1409,18 @@ def channel_fetch(channel_id: str, request: TaskRequest | None = None) -> dict[s
     channel = next((ch for ch in channels if ch["id"] == channel_id), None)
     if not channel:
         raise HTTPException(status_code=404, detail="channel not found")
-    args = request.args if request else []
-    if channel_id == "custom" and channel.get("prefix"):
-        command = camoufox_command("fetch", "-u", channel["prefix"], *args)
-    elif channel.get("prefix"):
-        command = camoufox_command("fetch", "-u", channel["prefix"], *args)
-    else:
-        command = camoufox_command("fetch", *args)
-    label = f"fetch ({channel['name']})"
-    item = start_process("task", label, command, timeout=180.0)
-    return item.view()
+    # Prefer guided/in-process fetch — works for frozen builds and mirror selection.
+    result = setup_manager.start(channel=channel_id or "github", auto=True, force=True)
+    return {
+        "id": f"setup-{int(time.time() * 1000)}",
+        "kind": "task",
+        "label": f"fetch ({channel['name']})",
+        "status": "running" if result.get("status") == "running" else result.get("status"),
+        "returncode": None,
+        "logs": result.get("logs") or [f"started guided fetch via {channel_id}"],
+        "ok": result.get("status") != "failed",
+        "setup": result,
+    }
 
 
 # --- Session Detail ---

@@ -2,7 +2,7 @@
 
 本地 Camoufox 指纹浏览器管理器 — 免费、开源、隐私优先。
 
-**当前版本：`1.1.0-beta.4`**
+**当前版本：`1.1.0-beta.5`**
 
 <p align="center">
   <img src="static/logo.png" width="120" alt="FoxDesk Logo">
@@ -65,15 +65,15 @@ iscc installer.iss
 产物：
 
 - 便携版：`dist/FoxDesk/FoxDesk.exe`
-- 安装包：`installer_output/FoxDesk-1.1.0-beta.4-Setup.exe`
+- 安装包：`installer_output/FoxDesk-1.1.0-beta.5-Setup.exe`
 
 ### CI/CD
 
 推送 tag 或手动触发 workflow 会自动构建并发布 Release：
 
 ```bash
-git tag v1.1.0-beta.4
-git push origin v1.1.0-beta.4
+git tag v1.1.0-beta.5
+git push origin v1.1.0-beta.5
 ```
 
 - Workflow：`.github/workflows/build.yml`

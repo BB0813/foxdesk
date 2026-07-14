@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import shutil
+import os
 import subprocess
 import sys
 import threading
@@ -97,12 +97,8 @@ class SetupManager:
     def needs_setup(self) -> bool:
         if not self.import_available("camoufox"):
             return True
-        path_cmd = self.camoufox_command("path")
-        result = self._run(path_cmd, timeout=12)
-        path_text = (result.get("stdout") or "").strip()
-        if not result.get("ok") or not path_text:
-            return True
-        return not Path(path_text).exists()
+        ready, _ = self._browser_ready()
+        return not ready
 
     def _marker_done(self) -> bool:
         if not self.marker_path:
@@ -165,6 +161,18 @@ class SetupManager:
                         step.detail = detail
                     break
 
+    def _fail_current(self, exc: Exception | str) -> None:
+        message = str(exc)
+        with self.lock:
+            self.state.status = "failed"
+            self.state.error = message
+            self.state.finished_at = time.time()
+            for step in self.state.steps:
+                if step.id == self.state.current_step and step.status == "running":
+                    step.status = "failed"
+                    step.detail = message
+                    break
+
     def _run(self, command: list[str], timeout: int = 300) -> dict[str, Any]:
         self._log(f"$ {' '.join(command)}")
         try:
@@ -210,10 +218,7 @@ class SetupManager:
             self.mark_completed()
             self._log("[done] setup completed")
         except Exception as exc:
-            with self.lock:
-                self.state.status = "failed"
-                self.state.error = str(exc)
-                self.state.finished_at = time.time()
+            self._fail_current(exc)
             self._log(f"[failed] {exc}")
 
     def _step_check(self) -> None:
@@ -226,12 +231,21 @@ class SetupManager:
     def _step_package(self) -> None:
         self._set_step("package", "running")
         if self.is_frozen:
-            # Bundled app already ships camoufox; pip against FoxDesk.exe is invalid.
+            # Bundled app must ship camoufox; pip against FoxDesk.exe is invalid.
             if self.import_available("camoufox"):
                 self._set_step("package", "skipped", "bundled in app")
                 self._log("package: camoufox already bundled (frozen)")
                 return
-            raise RuntimeError("Camoufox package missing from application bundle")
+            # One more direct import attempt for better error detail
+            try:
+                __import__("camoufox")
+                self._set_step("package", "skipped", "bundled in app")
+                return
+            except Exception as exc:
+                raise RuntimeError(
+                    "安装包缺少 Camoufox 组件。请重新安装最新版 FoxDesk，或改用源码模式运行。"
+                    f" ({exc})"
+                ) from exc
 
         if self.import_available("camoufox"):
             self._set_step("package", "skipped", "already installed")
@@ -244,39 +258,132 @@ class SetupManager:
             raise RuntimeError(result.get("stderr") or "pip install camoufox failed")
         self._set_step("package", "done", "installed")
 
-    def _fetch_commands(self, channel: str) -> list[list[str]]:
-        commands: list[list[str]] = []
+    def _mirror_prefix(self, channel: str) -> str | None:
         prefix = self.channel_prefix(channel)
         if prefix:
-            commands.append(self.camoufox_command("fetch", "-u", prefix))
-        # Always keep official as fallback
-        official = self.camoufox_command("fetch")
-        if not commands or commands[0] != official:
-            commands.append(official)
-        # Common GitHub mirror fallback for restricted networks
-        if channel != "ghproxy":
-            commands.append(self.camoufox_command("fetch", "-u", "https://ghproxy.com/"))
-        # de-dup while preserving order
-        seen: set[tuple[str, ...]] = set()
-        unique: list[list[str]] = []
-        for cmd in commands:
-            key = tuple(cmd)
-            if key in seen:
-                continue
-            seen.add(key)
-            unique.append(cmd)
-        return unique
+            return prefix.rstrip("/") + "/"
+        if channel == "ghproxy":
+            return "https://mirror.ghproxy.com/"
+        return None
+
+    def _with_github_mirror(self, prefix: str | None):
+        """Temporarily rewrite GitHub URLs for restricted networks."""
+        if not prefix:
+            class _Noop:
+                def __enter__(self_inner):
+                    return None
+
+                def __exit__(self_inner, *args):
+                    return False
+
+            return _Noop()
+
+        class _Mirror:
+            def __enter__(self_inner):
+                import requests
+                from camoufox import pkgman
+
+                self_inner._requests_get = requests.get
+                self_inner._webdl = getattr(pkgman, "webdl", None)
+
+                def rewrite(url: str) -> str:
+                    if not isinstance(url, str):
+                        return url
+                    if url.startswith(prefix):
+                        return url
+                    if "github.com" in url or "githubusercontent.com" in url:
+                        return prefix + url
+                    return url
+
+                def get_wrapped(url, *args, **kwargs):
+                    return self_inner._requests_get(rewrite(url), *args, **kwargs)
+
+                requests.get = get_wrapped  # type: ignore[assignment]
+                if self_inner._webdl is not None:
+                    def webdl_wrapped(url, *args, **kwargs):
+                        return self_inner._webdl(rewrite(url), *args, **kwargs)
+
+                    pkgman.webdl = webdl_wrapped  # type: ignore[assignment]
+                return rewrite
+
+            def __exit__(self_inner, *args):
+                import requests
+                from camoufox import pkgman
+
+                requests.get = self_inner._requests_get  # type: ignore[assignment]
+                if self_inner._webdl is not None:
+                    pkgman.webdl = self_inner._webdl  # type: ignore[assignment]
+                return False
+
+        return _Mirror()
 
     def _browser_ready(self) -> tuple[bool, str]:
+        # Prefer in-process path checks — works in frozen builds where
+        # `FoxDesk.exe -m camoufox` is not a valid Python CLI.
+        if self.import_available("camoufox") or self.is_frozen:
+            try:
+                from camoufox.pkgman import INSTALL_DIR, LAUNCH_FILE, OS_NAME, Version
+
+                if not INSTALL_DIR.exists() or not any(INSTALL_DIR.iterdir()):
+                    return False, f"not installed ({INSTALL_DIR})"
+                try:
+                    ver = Version.from_path(INSTALL_DIR)
+                    if not ver.is_supported():
+                        return False, f"unsupported version {ver.full_string}"
+                    ver_text = ver.full_string
+                except Exception as exc:
+                    return False, f"version check failed: {exc}"
+                launch = INSTALL_DIR / LAUNCH_FILE[OS_NAME]
+                if OS_NAME == "mac":
+                    launch = INSTALL_DIR / "Camoufox.app" / "Contents" / "MacOS" / "camoufox"
+                if not Path(launch).exists():
+                    return False, f"binary missing: {launch}"
+                return True, f"{INSTALL_DIR} (v{ver_text})"
+            except Exception as exc:
+                self._log(f"in-process path check failed: {exc}")
+
         if not self.import_available("camoufox"):
             return False, "camoufox import failed"
+        if self.is_frozen:
+            return False, "camoufox binary not found"
         result = self._run(self.camoufox_command("path"), timeout=20)
         path_text = (result.get("stdout") or "").strip()
+        # click may colorize; take last non-empty token-like line
+        if path_text:
+            path_text = path_text.splitlines()[-1].strip()
         if not path_text:
             return False, result.get("stderr") or "empty path"
         if not Path(path_text).exists():
             return False, f"path missing: {path_text}"
         return True, path_text
+
+    def _fetch_inprocess(self, channel: str) -> None:
+        prefix = self._mirror_prefix(channel)
+        if prefix:
+            self._log(f"using download mirror: {prefix}")
+        with self._with_github_mirror(prefix):
+            from camoufox.__main__ import CamoufoxUpdate
+            from camoufox.addons import DefaultAddons, maybe_download_addons
+            from camoufox.locale import ALLOW_GEOIP, download_mmdb
+
+            self._log("fetch: CamoufoxUpdate().update()")
+            CamoufoxUpdate().update()
+            if ALLOW_GEOIP:
+                self._log("fetch: download GeoIP mmdb")
+                try:
+                    download_mmdb()
+                except Exception as exc:
+                    self._log(f"geoip download skipped: {exc}")
+            try:
+                maybe_download_addons(list(DefaultAddons))
+            except Exception as exc:
+                self._log(f"addons download skipped: {exc}")
+
+    def _fetch_commands(self, channel: str) -> list[list[str]]:
+        commands: list[list[str]] = []
+        # Official CLI has no stable -u mirror flag across versions; keep simple fetch.
+        commands.append(self.camoufox_command("fetch"))
+        return commands
 
     def _step_fetch(self) -> None:
         self._set_step("fetch", "running")
@@ -288,14 +395,44 @@ class SetupManager:
 
         channel = self.state.channel or "github"
         last_error = "fetch failed"
-        for cmd in self._fetch_commands(channel):
-            self._log(f"trying fetch via: {' '.join(cmd)}")
-            result = self._run(cmd, timeout=600)
-            ready, detail = self._browser_ready()
-            if ready:
-                self._set_step("fetch", "done", detail)
-                return
-            last_error = result.get("stderr") or detail or last_error
+
+        # Frozen / preferred path: call camoufox APIs in-process.
+        if self.is_frozen or self.import_available("camoufox"):
+            try:
+                self._fetch_inprocess(channel)
+                ready, detail = self._browser_ready()
+                if ready:
+                    self._set_step("fetch", "done", detail)
+                    return
+                last_error = detail or last_error
+            except Exception as exc:
+                last_error = str(exc)
+                self._log(f"in-process fetch failed: {exc}")
+
+        # Source mode fallback: subprocess CLI (and retry with alternate channel).
+        if not self.is_frozen:
+            for cmd in self._fetch_commands(channel):
+                self._log(f"trying fetch via: {' '.join(cmd)}")
+                result = self._run(cmd, timeout=600)
+                ready, detail = self._browser_ready()
+                if ready:
+                    self._set_step("fetch", "done", detail)
+                    return
+                last_error = result.get("stderr") or detail or last_error
+
+            # Retry once with the other channel if first failed.
+            alt = "ghproxy" if channel != "ghproxy" else "github"
+            if alt != channel:
+                self._log(f"retry fetch with channel={alt}")
+                try:
+                    self._fetch_inprocess(alt)
+                    ready, detail = self._browser_ready()
+                    if ready:
+                        self._set_step("fetch", "done", detail)
+                        return
+                except Exception as exc:
+                    last_error = str(exc)
+
         raise RuntimeError(last_error)
 
     def _step_verify(self) -> None:
@@ -303,7 +440,14 @@ class SetupManager:
         ready, detail = self._browser_ready()
         if not ready:
             raise RuntimeError(detail or "verification failed")
-        version = self._run(self.camoufox_command("version"), timeout=20)
-        ver = (version.get("stdout") or version.get("stderr") or "").strip()
+        ver = detail
+        try:
+            from camoufox.pkgman import installed_verstr
+
+            ver = installed_verstr()
+        except Exception:
+            if not self.is_frozen:
+                version = self._run(self.camoufox_command("version"), timeout=20)
+                ver = (version.get("stdout") or version.get("stderr") or detail).strip()
         self._set_step("verify", "done", ver or detail)
         self._log(f"verify ok: {ver or detail}")

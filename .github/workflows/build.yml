@@ -123,6 +123,32 @@ jobs:
           Write-Host "worker missing exit=$($p.ExitCode)"
           if ($p.ExitCode -eq 0) { throw "expected non-zero exit for missing runtime" }
 
+          # Ensure camoufox package is actually bundled (first-run setup depends on this).
+          $probe = @'
+import sys
+try:
+    import camoufox
+    from camoufox.pkgman import INSTALL_DIR
+    print("camoufox_ok", getattr(camoufox, "__file__", "?"))
+    print("install_dir", INSTALL_DIR)
+    sys.exit(0)
+except Exception as exc:
+    print("camoufox_import_failed", exc)
+    sys.exit(2)
+'@
+          $probePath = Join-Path $env:TEMP "foxdesk_camoufox_probe.py"
+          Set-Content -Path $probePath -Value $probe -Encoding UTF8
+          # Use PyInstaller internal python via --worker is wrong; instead inspect collected tree.
+          $camoufoxDir = Get-ChildItem -Path "dist/FoxDesk" -Recurse -Directory -Filter "camoufox" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $camoufoxDir) {
+            throw "camoufox package directory missing from dist/FoxDesk — packaging failed"
+          }
+          $pkgman = Join-Path $camoufoxDir.FullName "pkgman.py"
+          if (-not (Test-Path $pkgman)) {
+            throw "camoufox/pkgman.py missing from bundle: $($camoufoxDir.FullName)"
+          }
+          Write-Host "bundled camoufox at $($camoufoxDir.FullName)"
+
       - name: Install Inno Setup
         run: choco install innosetup -y --no-progress
 

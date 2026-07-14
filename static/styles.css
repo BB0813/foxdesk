@@ -935,6 +935,16 @@ textarea { resize: vertical; min-height: 60px; }
 }
 .setup-steps li.done .step-icon { background: var(--success-glow); color: var(--success); border-color: transparent; }
 .setup-steps li.failed .step-icon { background: var(--danger-glow); color: var(--danger); border-color: transparent; }
+.setup-steps .step-status {
+  font-size: 11px;
+  color: var(--subtle);
+  justify-self: end;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.setup-steps li.done .step-status { color: var(--success); }
+.setup-steps li.failed .step-status { color: var(--danger); }
+.setup-steps li.running .step-status { color: var(--primary); }
 .setup-steps li.running .step-icon {
   border-color: var(--primary);
   color: var(--primary);
