@@ -152,6 +152,24 @@ class UpdateState:
         }
 
 
+# Common China-friendly reverse proxies for github.com / api.github.com.
+GHPROXY_PREFIXES = (
+    "https://ghproxy.net/",
+    "https://mirror.ghproxy.com/",
+    "https://gh.ddlc.top/",
+)
+
+
+def via_ghproxy(url: str, prefix: str | None = None) -> str:
+    """Prefix a GitHub URL with a ghproxy-style mirror."""
+    if not url:
+        return url
+    if "ghproxy" in url or "ddlc.top" in url:
+        return url
+    base = (prefix or GHPROXY_PREFIXES[0]).rstrip("/") + "/"
+    return base + url
+
+
 class UpdateManager:
     # Avoid hammering api.github.com (unauthenticated limit is ~60/hour/IP).
     CHECK_CACHE_SECONDS = 120
@@ -164,6 +182,10 @@ class UpdateManager:
         download_dir: Path,
         user_agent: str,
         require_checksum: bool = False,
+        github_token: str | None = None,
+        mirror: str = "ghproxy",
+        token_provider: Any | None = None,
+        mirror_provider: Any | None = None,
     ) -> None:
         self.app_version = app_version
         self.github_repo = github_repo
@@ -171,6 +193,10 @@ class UpdateManager:
         self.user_agent = user_agent
         # When True, refuse install if SHA256SUMS is missing/mismatched.
         self.require_checksum = require_checksum
+        self._github_token = (github_token or "").strip()
+        self._mirror = (mirror or "ghproxy").strip().lower()
+        self._token_provider = token_provider
+        self._mirror_provider = mirror_provider
         self.lock = threading.RLock()
         self.state = UpdateState(current=app_version)
         self._thread: threading.Thread | None = None
@@ -179,9 +205,48 @@ class UpdateManager:
         self._check_cache_pre: bool | None = None
         self.download_dir.mkdir(parents=True, exist_ok=True)
 
+    def configure(self, *, github_token: str | None = None, mirror: str | None = None) -> None:
+        with self.lock:
+            if github_token is not None:
+                self._github_token = (github_token or "").strip()
+            if mirror is not None:
+                m = (mirror or "ghproxy").strip().lower()
+                self._mirror = m if m in {"official", "ghproxy"} else "ghproxy"
+            # Settings change invalidates check cache.
+            self._check_cache = None
+            self._check_cache_at = 0.0
+
+    def _effective_token(self) -> str:
+        if self._token_provider:
+            try:
+                value = self._token_provider()
+                if value:
+                    return str(value).strip()
+            except Exception:
+                pass
+        return self._github_token
+
+    def _effective_mirror(self) -> str:
+        if self._mirror_provider:
+            try:
+                value = str(self._mirror_provider() or "").strip().lower()
+                if value in {"official", "ghproxy"}:
+                    return value
+            except Exception:
+                pass
+        return self._mirror if self._mirror in {"official", "ghproxy"} else "ghproxy"
+
+    def _mirror_url(self, url: str) -> str:
+        if self._effective_mirror() != "ghproxy":
+            return url
+        return via_ghproxy(url)
+
     def status(self) -> dict[str, Any]:
         with self.lock:
-            return self.state.view()
+            view = self.state.view()
+            view["mirror"] = self._effective_mirror()
+            view["github_token_set"] = bool(self._effective_token())
+            return view
 
     def _log(self, line: str) -> None:
         with self.lock:
@@ -189,48 +254,84 @@ class UpdateManager:
             if len(self.state.logs) > 200:
                 self.state.logs = self.state.logs[-200:]
 
-    def _open_url(self, url: str, *, accept: str, timeout: float = 12.0):
-        req = urllib.request.Request(
-            url,
-            headers={
-                "User-Agent": self.user_agent,
-                "Accept": accept,
-            },
-        )
+    def _open_url(self, url: str, *, accept: str, timeout: float = 12.0, auth: bool = False):
+        headers = {
+            "User-Agent": self.user_agent,
+            "Accept": accept,
+        }
+        token = self._effective_token() if auth else ""
+        if token and "api.github.com" in url:
+            headers["Authorization"] = f"Bearer {token}"
+            headers["X-GitHub-Api-Version"] = "2022-11-28"
+        req = urllib.request.Request(url, headers=headers)
         return urllib.request.urlopen(req, timeout=timeout)
 
-    def _request_json(self, url: str, timeout: float = 12.0, *, accept: str | None = None) -> Any:
-        try:
-            with self._open_url(
-                url,
-                accept=accept or "application/vnd.github+json, application/json",
-                timeout=timeout,
-            ) as resp:
-                return json.loads(resp.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            raise RuntimeError(format_http_error(exc)) from exc
-        except urllib.error.URLError as exc:
-            raise RuntimeError(format_http_error(exc)) from exc
+    def _request_json(
+        self,
+        url: str,
+        timeout: float = 12.0,
+        *,
+        accept: str | None = None,
+        auth: bool = False,
+        use_mirror: bool = True,
+    ) -> Any:
+        urls = [url]
+        if use_mirror and self._effective_mirror() == "ghproxy":
+            # Try each known ghproxy first, then original.
+            urls = [via_ghproxy(url, p) for p in GHPROXY_PREFIXES] + [url]
+        last_err: Exception | None = None
+        for candidate in urls:
+            try:
+                with self._open_url(
+                    candidate,
+                    accept=accept or "application/vnd.github+json, application/json",
+                    timeout=timeout,
+                    auth=auth and "api.github.com" in candidate,
+                ) as resp:
+                    return json.loads(resp.read().decode("utf-8"))
+            except urllib.error.HTTPError as exc:
+                last_err = RuntimeError(format_http_error(exc))
+            except urllib.error.URLError as exc:
+                last_err = RuntimeError(format_http_error(exc))
+            except Exception as exc:
+                last_err = RuntimeError(str(exc))
+        raise last_err or RuntimeError("request failed")
 
-    def _request_text(self, url: str, timeout: float = 12.0) -> str:
-        try:
-            with self._open_url(
-                url,
-                accept="text/plain, application/octet-stream, application/atom+xml, */*",
-                timeout=timeout,
-            ) as resp:
-                return resp.read().decode("utf-8", errors="replace")
-        except urllib.error.HTTPError as exc:
-            raise RuntimeError(format_http_error(exc)) from exc
-        except urllib.error.URLError as exc:
-            raise RuntimeError(format_http_error(exc)) from exc
+    def _request_text(
+        self,
+        url: str,
+        timeout: float = 12.0,
+        *,
+        auth: bool = False,
+        use_mirror: bool = True,
+    ) -> str:
+        urls = [url]
+        if use_mirror and self._effective_mirror() == "ghproxy":
+            urls = [via_ghproxy(url, p) for p in GHPROXY_PREFIXES] + [url]
+        last_err: Exception | None = None
+        for candidate in urls:
+            try:
+                with self._open_url(
+                    candidate,
+                    accept="text/plain, application/octet-stream, application/atom+xml, */*",
+                    timeout=timeout,
+                    auth=auth and "api.github.com" in candidate,
+                ) as resp:
+                    return resp.read().decode("utf-8", errors="replace")
+            except urllib.error.HTTPError as exc:
+                last_err = RuntimeError(format_http_error(exc))
+            except urllib.error.URLError as exc:
+                last_err = RuntimeError(format_http_error(exc))
+            except Exception as exc:
+                last_err = RuntimeError(str(exc))
+        raise last_err or RuntimeError("request failed")
 
     def _synthetic_assets(self, tag: str) -> list[dict[str, Any]]:
         """Build download URLs without api.github.com asset metadata."""
         version = tag.lstrip("v")
         base = f"https://github.com/{self.github_repo}/releases/download/v{version}"
         setup = f"FoxDesk-{version}-Setup.exe"
-        return [
+        assets = [
             {
                 "name": setup,
                 "browser_download_url": f"{base}/{setup}",
@@ -242,6 +343,22 @@ class UpdateManager:
                 "size": 0,
             },
         ]
+        if self._effective_mirror() == "ghproxy":
+            for asset in assets:
+                asset["browser_download_url"] = via_ghproxy(asset["browser_download_url"])
+        return assets
+
+    def _maybe_mirror_asset_urls(self, assets: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if self._effective_mirror() != "ghproxy":
+            return assets
+        out: list[dict[str, Any]] = []
+        for asset in assets or []:
+            item = dict(asset)
+            url = item.get("browser_download_url") or ""
+            if url and "github.com" in url:
+                item["browser_download_url"] = via_ghproxy(url)
+            out.append(item)
+        return out
 
     def _release_from_web_latest(self) -> dict[str, Any] | None:
         # github.com/.../releases/latest with Accept: application/json returns tag_name
@@ -249,6 +366,7 @@ class UpdateManager:
         data = self._request_json(
             f"https://github.com/{self.github_repo}/releases/latest",
             accept="application/json",
+            auth=False,
         )
         if not isinstance(data, dict):
             return None
@@ -321,9 +439,11 @@ class UpdateManager:
         return None
 
     def _select_release_api(self, include_prerelease: bool) -> dict[str, Any] | None:
+        auth = bool(self._effective_token())
         if include_prerelease:
             releases = self._request_json(
-                f"https://api.github.com/repos/{self.github_repo}/releases?per_page=15"
+                f"https://api.github.com/repos/{self.github_repo}/releases?per_page=15",
+                auth=auth,
             )
             if not isinstance(releases, list):
                 return None
@@ -340,50 +460,49 @@ class UpdateManager:
                     best_tag = tag
             if best is not None:
                 best = dict(best)
+                best["assets"] = self._maybe_mirror_asset_urls(best.get("assets") or [])
                 best["_source"] = "github_api"
             return best
-        data = self._request_json(f"https://api.github.com/repos/{self.github_repo}/releases/latest")
+        data = self._request_json(
+            f"https://api.github.com/repos/{self.github_repo}/releases/latest",
+            auth=auth,
+        )
         if isinstance(data, dict):
             data = dict(data)
+            data["assets"] = self._maybe_mirror_asset_urls(data.get("assets") or [])
             data["_source"] = "github_api"
         return data
 
     def _select_release(self, include_prerelease: bool) -> dict[str, Any] | None:
         errors: list[str] = []
+        mirror = self._effective_mirror()
+        self._log(f"update mirror={mirror} token={'yes' if self._effective_token() else 'no'}")
 
-        # 1) Official API (rich asset metadata)
-        try:
-            data = self._select_release_api(include_prerelease)
-            if data:
-                self._log(f"release source=github_api tag={data.get('tag_name')}")
-                return data
-        except Exception as exc:
-            msg = format_http_error(exc)
-            errors.append(f"api: {msg}")
-            self._log(f"api release lookup failed: {msg}")
+        # Prefer lightweight web/atom when no token (avoids 60/h API bucket).
+        # With token, API first for rich assets + higher quota.
+        order: list[str]
+        if self._effective_token():
+            order = ["api", "web", "atom"]
+        else:
+            order = ["web", "atom", "api"]
 
-        # 2) github.com web JSON (latest stable; avoids API rate limit)
-        if not include_prerelease:
+        for source in order:
             try:
-                data = self._release_from_web_latest()
+                if source == "api":
+                    data = self._select_release_api(include_prerelease)
+                elif source == "web":
+                    if include_prerelease:
+                        continue
+                    data = self._release_from_web_latest()
+                else:
+                    data = self._release_from_atom(include_prerelease=include_prerelease)
                 if data:
-                    self._log(f"release source=github_web_latest tag={data.get('tag_name')}")
+                    self._log(f"release source={data.get('_source') or source} tag={data.get('tag_name')}")
                     return data
             except Exception as exc:
                 msg = format_http_error(exc)
-                errors.append(f"web: {msg}")
-                self._log(f"web latest lookup failed: {msg}")
-
-        # 3) Atom feed (works for stable + prerelease tags)
-        try:
-            data = self._release_from_atom(include_prerelease=include_prerelease)
-            if data:
-                self._log(f"release source=github_atom tag={data.get('tag_name')}")
-                return data
-        except Exception as exc:
-            msg = format_http_error(exc)
-            errors.append(f"atom: {msg}")
-            self._log(f"atom lookup failed: {msg}")
+                errors.append(f"{source}: {msg}")
+                self._log(f"{source} release lookup failed: {msg}")
 
         if errors:
             raise RuntimeError("；".join(errors))
@@ -493,7 +612,7 @@ class UpdateManager:
                     f"checked latest={tag} newer={newer} asset={self.state.asset_name} "
                     f"sha256={'yes' if expected else 'no'} source={data.get('_source')}"
                 )
-                view = self.state.view()
+                view = self.status()
                 self._check_cache = view
                 self._check_cache_at = time.time()
                 self._check_cache_pre = use_pre
@@ -504,7 +623,7 @@ class UpdateManager:
                 self.state.error = format_http_error(exc)
                 self.state.checked_at = time.time()
                 self._log(f"check failed: {self.state.error}")
-                return self.state.view()
+                return self.status()
 
     def _verify_local_file(self, path: Path) -> None:
         digest = sha256_file(path)
@@ -566,23 +685,57 @@ class UpdateManager:
         target = self.download_dir / name
         tmp = target.with_suffix(target.suffix + ".part")
         try:
-            self._log(f"downloading {url}")
-            req = urllib.request.Request(url, headers={"User-Agent": self.user_agent})
-            with urllib.request.urlopen(req, timeout=60) as resp, open(tmp, "wb") as fh:
-                total = expected or int(resp.headers.get("Content-Length") or 0) or None
-                downloaded = 0
-                while True:
-                    chunk = resp.read(1024 * 256)
-                    if not chunk:
+            # Prefer mirrored URL when configured; fall back to original GitHub asset.
+            candidates = [url]
+            if self._effective_mirror() == "ghproxy":
+                mirrored = [via_ghproxy(url, p) for p in GHPROXY_PREFIXES]
+                # If url already mirrored, also try bare github URL as fallback.
+                bare = url
+                for p in GHPROXY_PREFIXES:
+                    if url.startswith(p):
+                        bare = url[len(p) :]
                         break
-                    fh.write(chunk)
-                    downloaded += len(chunk)
-                    with self.lock:
-                        self.state.downloaded_bytes = downloaded
-                        if total:
-                            self.state.progress = max(0, min(99, int(downloaded * 100 / total)))
-                        else:
-                            self.state.progress = min(99, self.state.progress + 1)
+                candidates = mirrored + ([bare] if bare.startswith("http") else []) + [url]
+            # de-dupe preserve order
+            seen: set[str] = set()
+            ordered: list[str] = []
+            for c in candidates:
+                if c and c not in seen:
+                    seen.add(c)
+                    ordered.append(c)
+
+            last_err: Exception | None = None
+            downloaded_ok = False
+            for candidate in ordered:
+                try:
+                    self._log(f"downloading {candidate}")
+                    req = urllib.request.Request(candidate, headers={"User-Agent": self.user_agent})
+                    with urllib.request.urlopen(req, timeout=60) as resp, open(tmp, "wb") as fh:
+                        total = expected or int(resp.headers.get("Content-Length") or 0) or None
+                        downloaded = 0
+                        while True:
+                            chunk = resp.read(1024 * 256)
+                            if not chunk:
+                                break
+                            fh.write(chunk)
+                            downloaded += len(chunk)
+                            with self.lock:
+                                self.state.downloaded_bytes = downloaded
+                                if total:
+                                    self.state.progress = max(0, min(99, int(downloaded * 100 / total)))
+                                else:
+                                    self.state.progress = min(99, self.state.progress + 1)
+                    downloaded_ok = True
+                    break
+                except Exception as exc:
+                    last_err = exc
+                    self._log(f"download candidate failed: {exc}")
+                    try:
+                        tmp.unlink(missing_ok=True)
+                    except OSError:
+                        pass
+            if not downloaded_ok:
+                raise last_err or RuntimeError("download failed")
             tmp.replace(target)
             self._verify_local_file(target)
             with self.lock:

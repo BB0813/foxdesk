@@ -22,42 +22,76 @@ from pydantic import BaseModel, Field, field_validator
 from starlette.middleware.base import BaseHTTPMiddleware
 
 
-def get_app_data_dir() -> Path:
-    """Get the application data directory in %APPDATA% (Windows) or ~/.config (Linux/Mac)."""
+def _config_home() -> Path:
     if os.name == "nt":
         base = os.environ.get("APPDATA")
         if base:
-            return Path(base) / "CamoufoxManager"
-    else:
-        base = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
-        return Path(base) / "CamoufoxManager"
-    return Path.home() / ".camoufox-manager"
+            return Path(base)
+        return Path.home() / "AppData" / "Roaming"
+    base = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+    return Path(base)
+
+
+def get_app_data_dir() -> Path:
+    """Application data directory: %APPDATA%\\FoxDesk (legacy CamoufoxManager still migrated)."""
+    home = _config_home()
+    modern = home / "FoxDesk"
+    legacy = home / "CamoufoxManager"
+    # Prefer modern if it already has data; else legacy if only legacy exists.
+    if modern.exists() and any(modern.iterdir()):
+        return modern
+    if legacy.exists() and any(legacy.iterdir()) and not modern.exists():
+        return legacy
+    return modern
 
 
 def migrate_legacy_data() -> None:
-    """Migrate data from legacy project directory to app data directory."""
+    """Migrate data from project ./data and CamoufoxManager → FoxDesk."""
+    home = _config_home()
+    modern = home / "FoxDesk"
+    legacy_app = home / "CamoufoxManager"
+
+    # 1) CamoufoxManager → FoxDesk (directory rename/copy once)
+    if legacy_app.exists() and not modern.exists():
+        try:
+            print(f"Migrating app data from {legacy_app} to {modern}")
+            shutil.copytree(legacy_app, modern)
+            marker = modern / ".migrated_from_camoufoxmanager"
+            marker.write_text(str(legacy_app), encoding="utf-8")
+        except Exception as exc:
+            print(f"Warning: could not migrate CamoufoxManager → FoxDesk: {exc}")
+
+    app_data = get_app_data_dir()
+    app_data.mkdir(parents=True, exist_ok=True)
+
+    # 2) Repo-local ./data → app data (older dev layouts)
     legacy_root = Path(__file__).resolve().parent.parent
     legacy_data = legacy_root / "data"
     legacy_profiles = legacy_data / "profiles.json"
     legacy_profiles_dir = legacy_data / "profiles"
-
-    app_data = get_app_data_dir()
     app_profiles = app_data / "profiles.json"
     app_profiles_dir = app_data / "profiles"
 
-    # Only migrate if legacy data exists and app data doesn't
     if legacy_profiles.exists() and not app_profiles.exists():
-        app_data.mkdir(parents=True, exist_ok=True)
         print(f"Migrating profiles from {legacy_profiles} to {app_profiles}")
         shutil.copy2(legacy_profiles, app_profiles)
 
     if legacy_profiles_dir.exists() and not app_profiles_dir.exists():
-        app_data.mkdir(parents=True, exist_ok=True)
         print(f"Migrating profiles directory from {legacy_profiles_dir} to {app_profiles_dir}")
         shutil.copytree(legacy_profiles_dir, app_profiles_dir)
 
+    # Also pull proxies.json / settings if present in legacy only
+    for name in ("proxies.json", "settings.json", "channels.json"):
+        src = legacy_app / name if (legacy_app / name).exists() else legacy_data / name
+        dst = app_data / name
+        if src.exists() and not dst.exists():
+            try:
+                shutil.copy2(src, dst)
+            except OSError:
+                pass
 
-APP_VERSION = "1.1.1"
+
+APP_VERSION = "1.2.0"
 GITHUB_REPO = "BB0813/foxdesk"
 
 if getattr(sys, "frozen", False):
@@ -206,6 +240,8 @@ class ProfileStore:
             self._seed()
 
     def _seed(self) -> None:
+        from backend.storage_util import atomic_write_json
+
         seed = Profile(
             id=str(uuid.uuid4()),
             name="Default visible profile",
@@ -232,7 +268,7 @@ class ProfileStore:
             created_at=now_iso(),
             updated_at=now_iso(),
         )
-        self.path.write_text(json.dumps([seed.model_dump()], ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic_write_json(self.path, [seed.model_dump()])
 
     def all(self) -> list[Profile]:
         with self.lock:
@@ -240,11 +276,11 @@ class ProfileStore:
             return [Profile(**item) for item in data]
 
     def save_all(self, profiles: list[Profile]) -> None:
+        from backend.storage_util import atomic_write_json
+
         with self.lock:
             payload = [profile.model_dump() for profile in profiles]
-            tmp = self.path.with_suffix(".tmp")
-            tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-            tmp.replace(self.path)
+            atomic_write_json(self.path, payload)
 
     def get(self, profile_id: str) -> Profile:
         for profile in self.all():
@@ -505,17 +541,21 @@ app.add_middleware(LocalApiTokenMiddleware)
 app.mount("/assets", StaticFiles(directory=STATIC_DIR), name="assets")
 
 from backend.proxy_pool import ProxyPoolStore  # noqa: E402
+from backend.settings_store import SettingsStore  # noqa: E402
 from backend.setup_manager import SetupManager  # noqa: E402
 from backend.templates_data import profile_templates  # noqa: E402
 from backend.update_manager import UpdateManager  # noqa: E402
 
 proxy_pool = ProxyPoolStore(DATA_DIR / "proxies.json")
+settings_store = SettingsStore(DATA_DIR / "settings.json")
 update_manager = UpdateManager(
     app_version=APP_VERSION,
     github_repo=GITHUB_REPO,
     download_dir=DATA_DIR / "updates",
     user_agent=f"FoxDesk/{APP_VERSION}",
     require_checksum=False,  # verify when SHA256SUMS present; CI publishes it for 1.1.0+
+    token_provider=settings_store.get_github_token,
+    mirror_provider=settings_store.get_update_mirror,
 )
 
 
@@ -528,25 +568,29 @@ class ChannelStore:
             self._seed()
 
     def _seed(self) -> None:
+        from backend.storage_util import atomic_write_json
+
         defaults = [
             {"id": "github", "name": "GitHub Official", "prefix": "", "is_default": True},
-            {"id": "ghproxy", "name": "GitHub Mirror (China)", "prefix": "https://mirror.ghproxy.com/", "is_default": False},
+            {"id": "ghproxy", "name": "GitHub Mirror (China)", "prefix": "https://ghproxy.net/", "is_default": False},
             {"id": "custom", "name": "Custom Mirror", "prefix": "", "is_default": False},
         ]
-        self.path.write_text(json.dumps(defaults, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic_write_json(self.path, defaults)
 
     def all(self) -> list[dict[str, Any]]:
         with self.lock:
             return json.loads(self.path.read_text(encoding="utf-8"))
 
     def update(self, channel_id: str, prefix: str) -> None:
+        from backend.storage_util import atomic_write_json
+
         with self.lock:
             channels = json.loads(self.path.read_text(encoding="utf-8"))
             for ch in channels:
                 if ch["id"] == channel_id:
                     ch["prefix"] = prefix
                     break
-            self.path.write_text(json.dumps(channels, ensure_ascii=False, indent=2), encoding="utf-8")
+            atomic_write_json(self.path, channels)
 
 
 channel_store = ChannelStore(DATA_DIR / "channels.json")
@@ -895,6 +939,7 @@ def system() -> dict[str, Any]:
     ]
     first_run = (not installed) or (not path_ok)
     setup = setup_manager.status()
+    settings_view = settings_store.get()
     return {
         "app_name": "FoxDesk",
         "app_version": APP_VERSION,
@@ -915,6 +960,9 @@ def system() -> dict[str, Any]:
         "api_token_header": API_TOKEN_HEADER,
         "proxy_pool_count": len(proxy_pool.all()),
         "profile_count": len(store.all()),
+        "settings": settings_view,
+        "update_mirror": settings_view.get("update_mirror"),
+        "github_token_set": settings_view.get("github_token_set"),
     }
 
 
@@ -943,6 +991,97 @@ def setup_complete() -> dict[str, Any]:
     """Mark guided setup as completed even if user skips (not recommended)."""
     setup_manager.mark_completed()
     return {"ok": True, **setup_manager.status()}
+
+
+class SettingsUpdateRequest(BaseModel):
+    update_mirror: str | None = None
+    github_token: str | None = None
+    clear_github_token: bool = False
+
+
+@app.get("/api/settings")
+def get_settings() -> dict[str, Any]:
+    return {"ok": True, **settings_store.get()}
+
+
+@app.put("/api/settings")
+def put_settings(request: SettingsUpdateRequest) -> dict[str, Any]:
+    try:
+        view = settings_store.update(request.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    # Refresh update manager effective config immediately.
+    update_manager.configure(
+        github_token=settings_store.get_github_token(),
+        mirror=settings_store.get_update_mirror(),
+    )
+    activity.log(
+        "settings_update",
+        f"mirror={view.get('update_mirror')} token={view.get('github_token_source')}",
+    )
+    return {"ok": True, **view}
+
+
+@app.post("/api/system/diagnostics")
+def export_diagnostics() -> dict[str, Any]:
+    """Write a redacted diagnostics bundle under data_dir/logs (no secrets/cookies)."""
+    from backend.storage_util import atomic_write_json
+
+    logs_dir = DATA_DIR / "logs"
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    out_path = logs_dir / f"diagnostics-{stamp}.json"
+
+    settings_view = settings_store.get()
+    try:
+        update_status = update_manager.status()
+    except Exception as exc:
+        update_status = {"error": str(exc)}
+
+    # Redact sensitive fields from update logs / asset URLs already public.
+    safe_update = {
+        k: update_status.get(k)
+        for k in (
+            "status",
+            "current",
+            "latest",
+            "release_name",
+            "release_url",
+            "prerelease",
+            "asset_name",
+            "progress",
+            "error",
+            "checked_at",
+            "mirror",
+            "github_token_set",
+            "sha256_verified",
+            "logs",
+        )
+        if isinstance(update_status, dict)
+    }
+
+    payload = {
+        "generated_at": now_iso(),
+        "app_name": "FoxDesk",
+        "app_version": APP_VERSION,
+        "python": sys.version,
+        "executable": sys.executable,
+        "frozen": bool(getattr(sys, "frozen", False)),
+        "platform": sys.platform,
+        "data_dir": str(DATA_DIR),
+        "github_repo": GITHUB_REPO,
+        "settings": settings_view,
+        "setup": setup_manager.status(),
+        "profile_count": len(store.all()),
+        "proxy_count": len(proxy_pool.all()),
+        "running_sessions": sum(1 for s in registry.list("session") if s.get("status") == "running"),
+        "update": safe_update,
+        "camoufox_installed": import_available("camoufox"),
+        "note": "Redacted: no proxy passwords, cookies, or API tokens included.",
+    }
+    atomic_write_json(out_path, payload)
+    activity.log("diagnostics_export", str(out_path))
+    return {"ok": True, "path": str(out_path)}
 
 
 @app.post("/api/system/health")

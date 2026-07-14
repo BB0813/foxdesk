@@ -8,6 +8,13 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from backend.storage_util import (
+    atomic_write_json,
+    is_protected_secret,
+    protect_secret,
+    unprotect_secret,
+)
+
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -63,17 +70,62 @@ class ProxyPoolStore:
         self.path = path
         self.lock = threading.RLock()
         if not self.path.exists():
-            self.path.write_text("[]", encoding="utf-8")
+            atomic_write_json(self.path, [])
+        else:
+            # Upgrade plaintext passwords at rest on first load.
+            try:
+                self._migrate_secrets()
+            except Exception:
+                pass
+
+    def _decode_item(self, item: dict[str, Any]) -> dict[str, Any]:
+        out = dict(item)
+        out["password"] = unprotect_secret(out.get("password") or "")
+        return out
+
+    def _encode_item(self, item: dict[str, Any]) -> dict[str, Any]:
+        out = dict(item)
+        pwd = out.get("password") or ""
+        if pwd and not is_protected_secret(str(pwd)):
+            out["password"] = protect_secret(str(pwd))
+        return out
 
     def _read(self) -> list[dict[str, Any]]:
         with self.lock:
-            return json.loads(self.path.read_text(encoding="utf-8"))
+            try:
+                raw = json.loads(self.path.read_text(encoding="utf-8"))
+            except Exception:
+                raw = []
+            if not isinstance(raw, list):
+                raw = []
+            return [self._decode_item(item if isinstance(item, dict) else {}) for item in raw]
 
     def _write(self, items: list[dict[str, Any]]) -> None:
         with self.lock:
-            tmp = self.path.with_suffix(".tmp")
-            tmp.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
-            tmp.replace(self.path)
+            encoded = [self._encode_item(item) for item in items]
+            atomic_write_json(self.path, encoded)
+
+    def _migrate_secrets(self) -> None:
+        with self.lock:
+            try:
+                raw = json.loads(self.path.read_text(encoding="utf-8"))
+            except Exception:
+                return
+            if not isinstance(raw, list):
+                return
+            changed = False
+            encoded: list[dict[str, Any]] = []
+            for item in raw:
+                if not isinstance(item, dict):
+                    continue
+                row = dict(item)
+                pwd = row.get("password") or ""
+                if pwd and not is_protected_secret(str(pwd)):
+                    row["password"] = protect_secret(str(pwd))
+                    changed = True
+                encoded.append(row)
+            if changed:
+                atomic_write_json(self.path, encoded)
 
     def all(self) -> list[dict[str, Any]]:
         return self._read()

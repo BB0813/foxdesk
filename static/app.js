@@ -153,6 +153,20 @@ const i18n = {
     updateFailed: "更新失败",
     updateHint: "下载完成后将自动打开安装程序；安装时建议先关闭当前会话。",
     updateStarted: "已开始更新",
+    updateSettings: "更新设置",
+    updateSettingsDesc: "国内默认走 ghproxy；可选填 GitHub Token 提高 API 配额",
+    updateMirror: "更新镜像",
+    mirrorGhproxy: "ghproxy（国内推荐）",
+    mirrorOfficial: "GitHub 官方",
+    githubToken: "GitHub Token（可选）",
+    clearGithubToken: "清除已保存的 Token",
+    saveSettings: "保存设置",
+    settingsSaved: "设置已保存",
+    exportDiagnostics: "导出诊断",
+    diagnosticsExported: "诊断已导出",
+    tokenFromEnv: "Token 来自环境变量（优先）",
+    tokenFromStore: "Token 已保存在本机（加密）",
+    tokenNone: "未配置 Token（也可正常检查更新）",
     templates: "模板",
     createFromTemplate: "从模板创建",
     unsavedChanges: "有未保存的修改，确定离开？",
@@ -396,6 +410,20 @@ const i18n = {
     updateFailed: "Update failed",
     updateHint: "The installer will open automatically after download. Close running sessions first.",
     updateStarted: "Update started",
+    updateSettings: "Update Settings",
+    updateSettingsDesc: "Default mirror: ghproxy. Optional GitHub token raises API quota.",
+    updateMirror: "Update mirror",
+    mirrorGhproxy: "ghproxy (China)",
+    mirrorOfficial: "GitHub official",
+    githubToken: "GitHub token (optional)",
+    clearGithubToken: "Clear saved token",
+    saveSettings: "Save settings",
+    settingsSaved: "Settings saved",
+    exportDiagnostics: "Export diagnostics",
+    diagnosticsExported: "Diagnostics exported",
+    tokenFromEnv: "Token from environment variable (preferred)",
+    tokenFromStore: "Token stored locally (encrypted)",
+    tokenNone: "No token (update check still works)",
     templates: "Templates",
     createFromTemplate: "Create from template",
     unsavedChanges: "You have unsaved changes. Leave anyway?",
@@ -1083,6 +1111,8 @@ function renderSystem() {
 
   const version = sys?.camoufox_version?.stdout || sys?.camoufox_version?.stderr || t("unavailable");
   const path = sys?.camoufox_path?.stdout || sys?.camoufox_path?.stderr || t("unavailable");
+  const mirror = sys?.update_mirror || sys?.settings?.update_mirror || "ghproxy";
+  const tokenSet = Boolean(sys?.github_token_set || sys?.settings?.github_token_set);
   grid.innerHTML = `
     <dt>${t("appVersion")}</dt><dd>${escapeHtml(sys?.app_version || "")}</dd>
     <dt>${t("python")}</dt><dd>${escapeHtml(sys?.python || "")}</dd>
@@ -1091,14 +1121,65 @@ function renderSystem() {
     <dt>${t("version")}</dt><dd>${escapeHtml(version)}</dd>
     <dt>${t("path")}</dt><dd>${escapeHtml(path)}</dd>
     <dt>${t("dataDir")}</dt><dd>${escapeHtml(sys?.data_dir || "")}</dd>
+    <dt>${t("updateMirror")}</dt><dd>${escapeHtml(mirror)}</dd>
+    <dt>GitHub Token</dt><dd>${tokenSet ? t("yes") : t("no")}</dd>
   `;
   renderInstallFlow();
+  renderSettingsForm();
+}
+
+function renderSettingsForm() {
+  const settings = state.system?.settings || {};
+  const mirrorSel = $("#updateMirrorSelect");
+  if (mirrorSel) {
+    mirrorSel.value = settings.update_mirror || state.system?.update_mirror || "ghproxy";
+  }
+  const hint = $("#settingsTokenHint");
+  if (hint) {
+    const src = settings.github_token_source || "none";
+    if (src === "env") hint.textContent = t("tokenFromEnv");
+    else if (src === "stored") hint.textContent = `${t("tokenFromStore")} ${settings.github_token_preview || ""}`.trim();
+    else hint.textContent = t("tokenNone");
+  }
+  const clear = $("#clearGithubToken");
+  if (clear) clear.checked = false;
+  const tokenInput = $("#githubTokenInput");
+  if (tokenInput && !tokenInput.dataset.dirty) tokenInput.value = "";
 }
 
 async function loadSystem() {
   state.system = await api("/api/system");
   renderSystem();
   updateFirstRunBanner();
+}
+
+async function saveSettings() {
+  const mirror = $("#updateMirrorSelect")?.value || "ghproxy";
+  const clear = Boolean($("#clearGithubToken")?.checked);
+  const tokenRaw = ($("#githubTokenInput")?.value || "").trim();
+  const body = {
+    update_mirror: mirror,
+    clear_github_token: clear,
+  };
+  if (!clear && tokenRaw) body.github_token = tokenRaw;
+  const result = await api("/api/settings", {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+  const tokenInput = $("#githubTokenInput");
+  if (tokenInput) {
+    tokenInput.value = "";
+    delete tokenInput.dataset.dirty;
+  }
+  toast(t("settingsSaved"));
+  await loadSystem();
+  return result;
+}
+
+async function exportDiagnostics() {
+  const result = await api("/api/system/diagnostics", { method: "POST", body: "{}" });
+  toast(`${t("diagnosticsExported")}: ${result.path || ""}`);
+  return result;
 }
 
 async function startTask(name) {
@@ -2321,6 +2402,11 @@ function bindEvents() {
   $("#healthCheckBtn")?.addEventListener("click", runHealthCheck);
   $("#cleanupRuntimeBtn")?.addEventListener("click", runCleanupRuntime);
   $("#checkUpdateBtn")?.addEventListener("click", () => checkForUpdates(false));
+  $("#saveSettingsBtn")?.addEventListener("click", () => saveSettings().catch((e) => toast(e.message)));
+  $("#exportDiagnosticsBtn")?.addEventListener("click", () => exportDiagnostics().catch((e) => toast(e.message)));
+  $("#githubTokenInput")?.addEventListener("input", (e) => {
+    e.target.dataset.dirty = "1";
+  });
   $("#setupRetryBtn")?.addEventListener("click", () => startGuidedSetup({ force: true }));
   $("#setupContinueBtn")?.addEventListener("click", async () => {
     try {

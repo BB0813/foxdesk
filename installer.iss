@@ -2,7 +2,7 @@
 ; Requires: Inno Setup 6+
 
 #define MyAppName "FoxDesk"
-#define MyAppVersion "1.1.1"
+#define MyAppVersion "1.2.0"
 #define MyAppPublisher "FoxDesk"
 #define MyAppURL "https://github.com/BB0813/foxdesk"
 #define MyAppExeName "FoxDesk.exe"
@@ -41,8 +41,8 @@ CreateUninstallRegKey=yes
 UninstallDisplayName={#MyAppName}
 InfoBeforeFile=
 ; Windows VERSIONINFO fields must be numeric (x.y.z[.w]); beta labels stay in AppVersion/AppVerName.
-VersionInfoVersion=1.1.1.0
-VersionInfoProductVersion=1.1.1.0
+VersionInfoVersion=1.2.0.0
+VersionInfoProductVersion=1.2.0.0
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -91,7 +91,8 @@ begin
   if MsgBox(
        '是否同时删除用户数据？' + #13#10 + #13#10 +
        '包括配置档案、代理池、运行时缓存与首次引导标记：' + #13#10 +
-       ExpandConstant('{userappdata}\CamoufoxManager') + #13#10 + #13#10 +
+       ExpandConstant('{userappdata}\FoxDesk') + #13#10 +
+       ExpandConstant('{userappdata}\CamoufoxManager') + ' (旧版)' + #13#10 + #13#10 +
        '选择「是」= 完全卸载（推荐重装前使用）' + #13#10 +
        '选择「否」= 仅删除程序，保留配置',
        mbConfirmation, MB_YESNO) = IDYES then
@@ -104,6 +105,7 @@ procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   DataDir: String;
   LegacyDir: String;
+  LegacyLocal: String;
 begin
   if CurUninstallStep = usPostUninstall then
   begin
@@ -117,13 +119,16 @@ begin
 
     if RemoveUserData then
     begin
-      DataDir := ExpandConstant('{userappdata}\CamoufoxManager');
-      LegacyDir := ExpandConstant('{localappdata}\CamoufoxManager');
+      DataDir := ExpandConstant('{userappdata}\FoxDesk');
+      LegacyDir := ExpandConstant('{userappdata}\CamoufoxManager');
+      LegacyLocal := ExpandConstant('{localappdata}\CamoufoxManager');
       if DirExists(DataDir) then
         DelTree(DataDir, True, True, True);
       if DirExists(LegacyDir) then
         DelTree(LegacyDir, True, True, True);
-      // Camoufox browser cache is shared; only remove FoxDesk-managed markers above.
+      if DirExists(LegacyLocal) then
+        DelTree(LegacyLocal, True, True, True);
+      // Camoufox browser cache is shared; only remove FoxDesk-managed data above.
     end;
   end;
 end;

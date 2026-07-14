@@ -17,7 +17,9 @@ if exist "%LOCALAPPDATA%\Programs\FoxDesk" (
   echo Removing %LOCALAPPDATA%\Programs\FoxDesk ...
   rmdir /s /q "%LOCALAPPDATA%\Programs\FoxDesk"
 )
+if exist "%APPDATA%\FoxDesk" rmdir /s /q "%APPDATA%\FoxDesk"
 if exist "%APPDATA%\CamoufoxManager" rmdir /s /q "%APPDATA%\CamoufoxManager"
+if exist "%LOCALAPPDATA%\FoxDesk" rmdir /s /q "%LOCALAPPDATA%\FoxDesk"
 if exist "%LOCALAPPDATA%\CamoufoxManager" rmdir /s /q "%LOCALAPPDATA%\CamoufoxManager"
 if exist "%TEMP%\FoxDesk" rmdir /s /q "%TEMP%\FoxDesk"
 del /f /q "%USERPROFILE%\Desktop\FoxDesk.lnk" >nul 2>&1
@@ -33,10 +35,12 @@ if exist "C:\Program Files\FoxDesk" (
 ) else (
   echo CLEAN: C:\Program Files\FoxDesk is gone
 )
-if exist "%APPDATA%\CamoufoxManager" (
+if exist "%APPDATA%\FoxDesk" (
+  echo STILL EXISTS: %APPDATA%\FoxDesk
+) else if exist "%APPDATA%\CamoufoxManager" (
   echo STILL EXISTS: %APPDATA%\CamoufoxManager
 ) else (
   echo CLEAN: user data gone
 )
-echo Done. You can install FoxDesk-1.1.0-beta.6-Setup.exe now.
+echo Done. You can install FoxDesk-1.2.0-Setup.exe now.
 pause

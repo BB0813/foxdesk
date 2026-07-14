@@ -102,7 +102,7 @@ foreach ($p in $shortcuts) {
 
 if (-not $KeepUserData) {
     if (-not $Yes) {
-        $answer = Read-Host "Delete user data under %APPDATA%\CamoufoxManager ? [y/N]"
+        $answer = Read-Host "Delete user data under %APPDATA%\FoxDesk (and legacy CamoufoxManager)? [y/N]"
         if ($answer -notmatch '^(y|yes)$') {
             Write-Warn "kept user data"
             Write-Host "Done."
@@ -111,7 +111,9 @@ if (-not $KeepUserData) {
     }
     Write-Step "Removing user data"
     foreach ($dir in @(
+        "$env:APPDATA\FoxDesk",
         "$env:APPDATA\CamoufoxManager",
+        "$env:LOCALAPPDATA\FoxDesk",
         "$env:LOCALAPPDATA\CamoufoxManager"
     )) {
         if (Test-Path $dir) {
@@ -124,7 +126,7 @@ if (-not $KeepUserData) {
         }
     }
 } else {
-    Write-Warn "KeepUserData set — left %APPDATA%\CamoufoxManager intact"
+    Write-Warn "KeepUserData set — left %APPDATA%\FoxDesk / CamoufoxManager intact"
 }
 
 Write-Host ""

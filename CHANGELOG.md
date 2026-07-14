@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.2.0 — 2026-07-14
+
+Local-only quality release (no cloud control).
+
+### Updates
+- Default update mirror: **ghproxy** (with multi-prefix failover + official fallback)
+- Optional **GitHub Token** via UI / `FOXDESK_GITHUB_TOKEN` / `GITHUB_TOKEN` (never committed)
+- Token is stored encrypted at rest (Windows DPAPI)
+
+### Security & data
+- Proxy passwords encrypted at rest (DPAPI on Windows)
+- Atomic JSON writes for profiles / proxies / settings / channels
+- Data directory prefers `%APPDATA%\FoxDesk` with auto-migration from `CamoufoxManager`
+
+### Ops
+- System → update settings panel
+- One-click **diagnostics export** (redacted) under `data_dir/logs`
+
+
 ## 1.1.1 — 2026-07-14
 
 Hotfix: GitHub update check no longer fails hard on API rate limit (HTTP 403).

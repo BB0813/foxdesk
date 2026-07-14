@@ -553,6 +553,43 @@
           <div class="panel">
             <div class="panel-head">
               <div>
+                <h2 data-i18n="updateSettings">更新设置</h2>
+                <p data-i18n="updateSettingsDesc">国内默认走 ghproxy；可选填 GitHub Token 提高 API 配额</p>
+              </div>
+              <div class="button-row">
+                <button class="button secondary" id="exportDiagnosticsBtn" type="button">
+                  <i data-lucide="stethoscope"></i>
+                  <span data-i18n="exportDiagnostics">导出诊断</span>
+                </button>
+                <button class="button primary" id="saveSettingsBtn" type="button">
+                  <i data-lucide="save"></i>
+                  <span data-i18n="saveSettings">保存设置</span>
+                </button>
+              </div>
+            </div>
+            <div class="form-grid" style="padding:12px 16px">
+              <label>
+                <span data-i18n="updateMirror">更新镜像</span>
+                <select id="updateMirrorSelect">
+                  <option value="ghproxy" data-i18n-option="mirrorGhproxy">ghproxy（国内推荐）</option>
+                  <option value="official" data-i18n-option="mirrorOfficial">GitHub 官方</option>
+                </select>
+              </label>
+              <label>
+                <span data-i18n="githubToken">GitHub Token（可选）</span>
+                <input id="githubTokenInput" type="password" autocomplete="off" placeholder="ghp_… 或留空" />
+              </label>
+              <label class="span-2" style="display:flex;align-items:center;gap:8px">
+                <input id="clearGithubToken" type="checkbox" />
+                <span data-i18n="clearGithubToken">清除已保存的 Token</span>
+              </label>
+              <p class="span-2" id="settingsTokenHint" style="margin:0;font-size:12px;color:var(--muted)"></p>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <div>
                 <h2 data-i18n="taskHistory">任务历史</h2>
               </div>
             </div>
