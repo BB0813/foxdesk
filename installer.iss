@@ -2,15 +2,16 @@
 ; Requires: Inno Setup 6+
 
 #define MyAppName "FoxDesk"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.1.0-beta.1"
 #define MyAppPublisher "FoxDesk"
-#define MyAppURL "https://github.com/yourname/foxdesk"
+#define MyAppURL "https://github.com/BB0813/foxdesk"
 #define MyAppExeName "FoxDesk.exe"
 
 [Setup]
 AppId={{B9F7E5A0-4C2D-4E8F-9A1B-3D6C7F8E2A50}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
+AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
@@ -28,11 +29,14 @@ PrivilegesRequiredOverridesAllowed=dialog
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 DisableProgramGroupPage=yes
-LicenseFile=
+LicenseFile=LICENSE
 SetupIconFile=static\logo.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 CloseApplications=force
 RestartApplications=no
+InfoBeforeFile=
+VersionInfoVersion=1.1.0
+VersionInfoProductVersion={#MyAppVersion}
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

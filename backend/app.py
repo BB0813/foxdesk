@@ -55,10 +55,15 @@ def migrate_legacy_data() -> None:
         shutil.copytree(legacy_profiles_dir, app_profiles_dir)
 
 
+APP_VERSION = "1.1.0-beta.1"
+
 if getattr(sys, "frozen", False):
     ROOT = Path(sys._MEIPASS)
+    APP_EXECUTABLE = Path(sys.executable)
 else:
     ROOT = Path(__file__).resolve().parent.parent
+    APP_EXECUTABLE = Path(sys.executable)
+
 STATIC_DIR = ROOT / "static"
 WORKER = ROOT / "backend" / "camoufox_worker.py"
 CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
@@ -217,6 +222,7 @@ class ProfileStore:
             enable_cache=True,
             addons=[],
             extra_args=[],
+            tags=[],
             notes="Seed profile. Edit proxy and locale before launch if needed.",
             created_at=now_iso(),
             updated_at=now_iso(),
@@ -409,7 +415,7 @@ class ProcessRegistry:
 
 store = ProfileStore(DATA_DIR / "profiles.json")
 registry = ProcessRegistry()
-app = FastAPI(title="Camoufox Manager", version="0.1.0")
+app = FastAPI(title="FoxDesk", version=APP_VERSION)
 app.mount("/assets", StaticFiles(directory=STATIC_DIR), name="assets")
 
 
@@ -474,12 +480,26 @@ def run_short(command: list[str], timeout: int = 10) -> dict[str, Any]:
 
 
 def import_available(module: str) -> bool:
+    # In frozen builds, sys.executable is the app binary and cannot run -c reliably.
+    if getattr(sys, "frozen", False):
+        try:
+            __import__(module)
+            return True
+        except Exception:
+            return False
     return subprocess.run(
         [sys.executable, "-c", f"import {module}"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         creationflags=CREATE_NO_WINDOW,
     ).returncode == 0
+
+
+def worker_command(runtime_path: Path) -> list[str]:
+    """Build a command that works in source and frozen (PyInstaller) modes."""
+    if getattr(sys, "frozen", False):
+        return [str(APP_EXECUTABLE), "--worker", str(runtime_path)]
+    return [sys.executable, str(WORKER), str(runtime_path)]
 
 
 def start_process(kind: str, label: str, command: list[str], timeout: float | None = None) -> ManagedProcess:
@@ -529,8 +549,12 @@ def system() -> dict[str, Any]:
         },
     ]
     return {
+        "app_name": "FoxDesk",
+        "app_version": APP_VERSION,
         "python": sys.version.split()[0],
         "executable": sys.executable,
+        "frozen": bool(getattr(sys, "frozen", False)),
+        "data_dir": str(DATA_DIR),
         "camoufox_installed": installed,
         "camoufox_version": version,
         "camoufox_path": path,
@@ -576,7 +600,15 @@ def list_profiles() -> list[Profile]:
 
 @app.post("/api/profiles")
 def create_profile(profile: ProfileIn) -> Profile:
-    return store.create(profile)
+    data = profile.model_dump()
+    if data.get("user_data_dir"):
+        data["user_data_dir"] = str(resolve_user_data_dir(data["user_data_dir"]))
+    elif data.get("name"):
+        slug = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in data["name"]).strip("-") or "profile"
+        data["user_data_dir"] = str(PROFILES_DIR / slug)
+    created = store.create(ProfileIn(**data))
+    activity.log("profile_create", created.name)
+    return created
 
 
 @app.get("/api/profiles/export")
@@ -609,7 +641,12 @@ def clone_profile(profile_id: str) -> Profile:
 @app.put("/api/profiles/{profile_id}")
 def update_profile(profile_id: str, profile: ProfileIn) -> Profile:
     try:
-        return store.update(profile_id, profile)
+        data = profile.model_dump()
+        if data.get("user_data_dir"):
+            data["user_data_dir"] = str(resolve_user_data_dir(data["user_data_dir"]))
+        updated = store.update(profile_id, ProfileIn(**data))
+        activity.log("profile_update", updated.name)
+        return updated
     except KeyError:
         raise HTTPException(status_code=404, detail="profile not found") from None
 
@@ -661,15 +698,48 @@ def launch_session(request: LaunchRequest) -> dict[str, Any]:
     if errors:
         raise HTTPException(status_code=400, detail="; ".join(errors))
 
+    profile = normalize_profile_paths(profile)
     if profile.persistent_context and profile.user_data_dir:
         Path(profile.user_data_dir).expanduser().mkdir(parents=True, exist_ok=True)
 
-    runtime_path = RUNTIME_DIR / f"{uuid.uuid4()}.json"
-    runtime_path.write_text(json.dumps(profile.model_dump(), ensure_ascii=False, indent=2), encoding="utf-8")
-    command = [sys.executable, str(WORKER), str(runtime_path)]
+    runtime_id = str(uuid.uuid4())
+    runtime_path = RUNTIME_DIR / f"{runtime_id}.json"
+    payload = profile.model_dump()
+    payload["_runtime_id"] = runtime_id
+    runtime_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    command = worker_command(runtime_path)
     item = start_process("session", profile.name, command)
+    # Attach runtime metadata for accurate session detail lookup
+    with registry.lock:
+        item.logs.append(f"[runtime] {runtime_path.name}")
     activity.log("session_launch", f"{profile.name} (pid {item.process.pid})")
-    return item.view()
+    view = item.view()
+    view["runtime_id"] = runtime_id
+    view["profile_id"] = profile.id
+    return view
+
+
+def resolve_user_data_dir(raw: str) -> Path:
+    """Resolve relative profile dirs under APPDATA profiles root."""
+    value = (raw or "").strip()
+    if not value:
+        return PROFILES_DIR / "unnamed"
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        path = PROFILES_DIR / path
+    return path
+
+
+def normalize_profile_paths(profile: Profile) -> Profile:
+    """Ensure user_data_dir is absolute under the app data directory when relative."""
+    if not profile.user_data_dir:
+        return profile
+    resolved = resolve_user_data_dir(profile.user_data_dir)
+    if str(resolved) != profile.user_data_dir:
+        data = profile.model_dump()
+        data["user_data_dir"] = str(resolved)
+        return Profile(**data)
+    return profile
 
 
 def validate_profile_for_launch(profile: Profile) -> list[str]:
@@ -690,10 +760,9 @@ def validate_profile_for_launch(profile: Profile) -> list[str]:
 
     # 2. Check user data directory is writable (if persistent context)
     if profile.persistent_context and profile.user_data_dir:
-        user_data_dir = Path(profile.user_data_dir).expanduser()
+        user_data_dir = resolve_user_data_dir(profile.user_data_dir)
         try:
             user_data_dir.mkdir(parents=True, exist_ok=True)
-            # Test write permission
             test_file = user_data_dir / ".write_test"
             test_file.write_text("test", encoding="utf-8")
             test_file.unlink()
@@ -705,9 +774,6 @@ def validate_profile_for_launch(profile: Profile) -> list[str]:
     # 3. Validate proxy format
     if profile.proxy and profile.proxy.server:
         server = profile.proxy.server.strip()
-        if server and "://" not in server:
-            # The ProxyConfig validator will normalize, but let's be explicit
-            pass
         allowed_schemes = ("http://", "https://", "socks4://", "socks5://")
         if server and not server.lower().startswith(allowed_schemes):
             errors.append(f"Proxy server must use http://, https://, socks4://, or socks5:// (got: {server})")
@@ -889,11 +955,24 @@ def get_session(process_id: str) -> dict[str, Any]:
     view = item.view()
     view["started_at_human"] = datetime.fromtimestamp(item.started_at, tz=timezone.utc).isoformat()
     view["uptime_seconds"] = int(time.time() - item.started_at)
-    # Try to load profile snapshot from runtime dir
+    # Prefer runtime id recorded in logs; fallback to profile id/name match
+    runtime_name = None
+    for line in reversed(item.logs):
+        if line.startswith("[runtime] "):
+            runtime_name = line.replace("[runtime] ", "", 1).strip()
+            break
+    if runtime_name:
+        runtime_file = RUNTIME_DIR / runtime_name
+        if runtime_file.exists():
+            try:
+                view["profile_snapshot"] = json.loads(runtime_file.read_text(encoding="utf-8"))
+                return view
+            except Exception:
+                pass
     for runtime_file in RUNTIME_DIR.glob("*.json"):
         try:
             data = json.loads(runtime_file.read_text(encoding="utf-8"))
-            if data.get("name") == item.label:
+            if data.get("name") == item.label or data.get("id") and data.get("name") == item.label:
                 view["profile_snapshot"] = data
                 break
         except Exception:
@@ -938,15 +1017,25 @@ def batch_launch(request: BatchLaunchRequest) -> dict[str, Any]:
             results.append({"profile_id": profile_id, "ok": False, "error": "profile not found"})
             failed += 1
             continue
+        errors = validate_profile_for_launch(profile)
+        if errors:
+            results.append({"profile_id": profile_id, "ok": False, "error": "; ".join(errors)})
+            failed += 1
+            continue
+        profile = normalize_profile_paths(profile)
         if profile.persistent_context and profile.user_data_dir:
             Path(profile.user_data_dir).expanduser().mkdir(parents=True, exist_ok=True)
-        runtime_path = RUNTIME_DIR / f"{uuid.uuid4()}.json"
-        runtime_path.write_text(json.dumps(profile.model_dump(), ensure_ascii=False, indent=2), encoding="utf-8")
-        command = [sys.executable, str(WORKER), str(runtime_path)]
+        runtime_id = str(uuid.uuid4())
+        runtime_path = RUNTIME_DIR / f"{runtime_id}.json"
+        payload = profile.model_dump()
+        payload["_runtime_id"] = runtime_id
+        runtime_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        command = worker_command(runtime_path)
         item = start_process("session", profile.name, command)
-        results.append({"profile_id": profile_id, "ok": True, "process_id": item.id})
+        results.append({"profile_id": profile_id, "ok": True, "process_id": item.id, "runtime_id": runtime_id})
         started += 1
     skipped = len(request.profile_ids) - available
+    activity.log("session_batch_launch", f"started={started} failed={failed} skipped={max(0, skipped)}")
     return {"started": started, "failed": failed, "skipped": max(0, skipped), "results": results}
 
 
@@ -1053,6 +1142,20 @@ def generate_fingerprint(target_os: str = "auto") -> dict[str, Any]:
 
 
 # --- Cookie Management ---
+def _find_cookies_sqlite(user_data_dir: Path) -> Path | None:
+    candidates = [
+        user_data_dir / "cookies.sqlite",
+        user_data_dir / "cookies.sqlite.corrupted",
+    ]
+    # Firefox-style nested profiles
+    for path in user_data_dir.rglob("cookies.sqlite"):
+        candidates.append(path)
+    for path in candidates:
+        if path.exists() and path.is_file():
+            return path
+    return None
+
+
 @app.get("/api/profiles/{profile_id}/cookies")
 def export_cookies(profile_id: str):
     from fastapi.responses import JSONResponse
@@ -1062,25 +1165,59 @@ def export_cookies(profile_id: str):
         raise HTTPException(status_code=404, detail="profile not found") from None
     if not profile.user_data_dir:
         raise HTTPException(status_code=409, detail="profile has no user_data_dir")
-    cookies_path = Path(profile.user_data_dir).expanduser() / "cookies.sqlite"
-    if not cookies_path.exists():
-        return JSONResponse({"cookies": [], "count": 0})
-    # Read cookies from SQLite
+    user_data = Path(profile.user_data_dir).expanduser()
+    imported_file = user_data / "imported_cookies.json"
+    cookies_path = _find_cookies_sqlite(user_data)
+
+    # Prefer live sqlite; fallback to previously imported JSON
+    if cookies_path is None:
+        if imported_file.exists():
+            try:
+                data = json.loads(imported_file.read_text(encoding="utf-8"))
+                cookies = data if isinstance(data, list) else data.get("cookies", [])
+                return JSONResponse({
+                    "cookies": cookies,
+                    "count": len(cookies),
+                    "source": "imported_cookies.json",
+                })
+            except Exception as exc:
+                raise HTTPException(status_code=500, detail=f"Failed to read imported cookies: {exc}") from None
+        return JSONResponse({"cookies": [], "count": 0, "source": None})
+
     try:
         import sqlite3
-        conn = sqlite3.connect(str(cookies_path))
-        cursor = conn.execute(
-            "SELECT host, name, value, path, expiry, isSecure, isHttpOnly, sameSite FROM moz_cookies"
-        )
-        cookies = []
-        for row in cursor.fetchall():
-            cookies.append({
-                "host": row[0], "name": row[1], "value": row[2],
-                "path": row[3], "expires": row[4], "secure": bool(row[5]),
-                "httpOnly": bool(row[6]), "sameSite": row[7] or "Lax",
-            })
-        conn.close()
-        return JSONResponse({"cookies": cookies, "count": len(cookies)})
+        # Copy to temp to avoid Windows lock issues while browser is open
+        tmp = RUNTIME_DIR / f"cookies-export-{uuid.uuid4().hex}.sqlite"
+        shutil.copy2(cookies_path, tmp)
+        try:
+            conn = sqlite3.connect(str(tmp))
+            cursor = conn.execute(
+                "SELECT host, name, value, path, expiry, isSecure, isHttpOnly, sameSite FROM moz_cookies"
+            )
+            cookies = []
+            for row in cursor.fetchall():
+                cookies.append({
+                    "host": row[0],
+                    "domain": row[0],
+                    "name": row[1],
+                    "value": row[2],
+                    "path": row[3],
+                    "expires": row[4],
+                    "secure": bool(row[5]),
+                    "httpOnly": bool(row[6]),
+                    "sameSite": row[7] or "Lax",
+                })
+            conn.close()
+        finally:
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
+        return JSONResponse({
+            "cookies": cookies,
+            "count": len(cookies),
+            "source": str(cookies_path),
+        })
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to read cookies: {exc}") from None
 
@@ -1096,12 +1233,17 @@ def import_cookies(profile_id: str, request: dict[str, Any]):
     cookies = request.get("cookies", [])
     if not isinstance(cookies, list):
         raise HTTPException(status_code=400, detail="cookies must be a list")
-    # Store as JSON for later use
     cookies_dir = Path(profile.user_data_dir).expanduser()
     cookies_dir.mkdir(parents=True, exist_ok=True)
     cookies_file = cookies_dir / "imported_cookies.json"
     cookies_file.write_text(json.dumps(cookies, ensure_ascii=False, indent=2), encoding="utf-8")
-    return {"ok": True, "count": len(cookies)}
+    activity.log("cookies_import", f"{profile.name}: {len(cookies)}")
+    return {
+        "ok": True,
+        "count": len(cookies),
+        "path": str(cookies_file),
+        "note": "Cookies are applied on next session launch via Playwright add_cookies.",
+    }
 
 
 # --- Bulk Proxy Import ---
@@ -1184,8 +1326,15 @@ def api_v1_sessions() -> list[dict[str, Any]]:
 
 @app.post("/api/v1/sessions/{process_id}/navigate")
 def api_v1_navigate(process_id: str, request: dict[str, str]):
-    """Public API: send navigate command to a session's browser."""
-    return {"ok": True, "message": "Navigate command queued"}
+    """Reserved automation endpoint. Live navigation is not wired yet."""
+    try:
+        registry.get(process_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="session not found") from None
+    raise HTTPException(
+        status_code=501,
+        detail="Live navigate is not implemented in this beta. Launch with startup_url instead.",
+    )
 
 
 # --- Stop All Sessions ---

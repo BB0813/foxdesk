@@ -1,4 +1,4 @@
-name: Build FoxDesk Installer
+name: Build FoxDesk Windows Installer
 
 on:
   push:
@@ -7,15 +7,73 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version tag (e.g. v1.0.0)'
+        description: 'Override version (e.g. 1.1.0-beta.1). Empty = use VERSION file / tag.'
         required: false
+      prerelease:
+        description: 'Mark GitHub Release as prerelease'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
 
 jobs:
   build-windows:
     runs-on: windows-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
+      is_prerelease: ${{ steps.meta.outputs.is_prerelease }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Resolve version metadata
+        id: meta
+        shell: pwsh
+        run: |
+          $inputVersion = "${{ github.event.inputs.version }}"
+          $tagRef = "${{ github.ref_name }}"
+          $fileVersion = (Get-Content VERSION -Raw).Trim()
+
+          if ($inputVersion) {
+            $version = $inputVersion.TrimStart('v')
+          } elseif ($tagRef -like 'v*') {
+            $version = $tagRef.TrimStart('v')
+          } else {
+            $version = $fileVersion
+          }
+
+          $tag = "v$version"
+          $isPre = "false"
+          if ($version -match 'beta|alpha|rc|pre') { $isPre = "true" }
+          if ("${{ github.event.inputs.prerelease }}" -eq "true") { $isPre = "true" }
+          if ("${{ github.event.inputs.prerelease }}" -eq "false" -and -not ($version -match 'beta|alpha|rc|pre')) { $isPre = "false" }
+
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "is_prerelease=$isPre" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "Resolved version=$version tag=$tag prerelease=$isPre"
+
+      - name: Sync version into project files
+        shell: pwsh
+        run: |
+          $version = "${{ steps.meta.outputs.version }}"
+          Set-Content -Path VERSION -Value $version -NoNewline
+          $files = @('desktop.py', 'backend/app.py', 'installer.iss', 'README.md')
+          foreach ($file in $files) {
+            if (Test-Path $file) {
+              $content = Get-Content $file -Raw
+              $content = $content -replace '1\.1\.0-beta\.1', $version
+              $content = $content -replace '#define MyAppVersion ".*?"', "#define MyAppVersion `"$version`""
+              Set-Content -Path $file -Value $content -NoNewline
+            }
+          }
+          # Keep numeric VersionInfoVersion stable for Inno (x.y.z)
+          $numeric = ($version -replace '[^0-9.].*$', '')
+          if (-not $numeric) { $numeric = '0.0.0' }
+          (Get-Content installer.iss -Raw) -replace 'VersionInfoVersion=.*', "VersionInfoVersion=$numeric" |
+            Set-Content installer.iss -NoNewline
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -29,40 +87,63 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip install pillow
 
+      - name: Syntax check
+        run: |
+          python -m compileall backend desktop.py
+          node --check static/app.js
+
       - name: Create icon
         run: python make_ico.py
 
       - name: Build with PyInstaller
         run: python -m PyInstaller foxdesk.spec --noconfirm --clean --log-level WARN
 
+      - name: Smoke test frozen CLI flags
+        shell: pwsh
+        run: |
+          $exe = "dist/FoxDesk/FoxDesk.exe"
+          if (-not (Test-Path $exe)) { throw "Missing $exe" }
+          # --worker with missing file should exit non-zero quickly / usage path
+          $p = Start-Process -FilePath $exe -ArgumentList @('--worker', 'missing-runtime.json') -PassThru -Wait -WindowStyle Hidden
+          Write-Host "worker missing exit=$($p.ExitCode)"
+
       - name: Install Inno Setup
         run: choco install innosetup -y --no-progress
 
       - name: Build installer
+        shell: pwsh
         run: |
           $iscc = Get-ChildItem "C:\Program Files*\Inno Setup 6\ISCC.exe" | Select-Object -First 1
+          if (-not $iscc) { throw "ISCC.exe not found" }
           & $iscc.FullName installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
 
-      - name: Upload installer
+      - name: Package portable zip
+        shell: pwsh
+        run: |
+          $version = "${{ steps.meta.outputs.version }}"
+          Compress-Archive -Path "dist/FoxDesk/*" -DestinationPath "FoxDesk-windows-x64-$version.zip" -Force
+
+      - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
           name: FoxDesk-Installer
           path: installer_output/FoxDesk-*-Setup.exe
           retention-days: 30
 
-      - name: Upload portable
+      - name: Upload portable artifact
         uses: actions/upload-artifact@v4
         with:
           name: FoxDesk-Portable
-          path: dist/FoxDesk/
+          path: |
+            FoxDesk-windows-x64-*.zip
+            dist/FoxDesk/
           retention-days: 30
 
   release:
     needs: build-windows
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
-    permissions:
-      contents: write
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     steps:
       - name: Download installer
         uses: actions/download-artifact@v4
@@ -76,15 +157,40 @@ jobs:
           name: FoxDesk-Portable
           path: portable/
 
-      - name: Create zip from portable
-        run: cd portable && zip -r ../FoxDesk-windows-x64.zip .
+      - name: Prepare release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          cp dist/FoxDesk-*-Setup.exe release/ || true
+          if ls portable/FoxDesk-windows-x64-*.zip >/dev/null 2>&1; then
+            cp portable/FoxDesk-windows-x64-*.zip release/
+          else
+            cd portable
+            zip -r "../release/FoxDesk-windows-x64-${{ needs.build-windows.outputs.version }}.zip" .
+            cd ..
+          fi
+          ls -lah release
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            dist/FoxDesk-*-Setup.exe
-            FoxDesk-windows-x64.zip
+          tag_name: ${{ needs.build-windows.outputs.tag }}
+          name: FoxDesk ${{ needs.build-windows.outputs.version }}
+          prerelease: ${{ needs.build-windows.outputs.is_prerelease == 'true' }}
           generate_release_notes: true
-          draft: false
-          prerelease: false
+          files: |
+            release/*
+          body: |
+            ## FoxDesk ${{ needs.build-windows.outputs.version }}
+
+            Local Camoufox fingerprint browser manager (Windows).
+
+            ### Downloads
+            - **Installer**: `FoxDesk-*-Setup.exe`
+            - **Portable**: `FoxDesk-windows-x64-*.zip`
+
+            ### Notes
+            - First run may need Camoufox browser fetch from the System panel.
+            - Data directory: `%APPDATA%\CamoufoxManager`
+            - This build includes frozen worker launch (`FoxDesk.exe --worker`), offline icons, and fingerprint/cookie fixes.

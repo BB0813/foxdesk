@@ -5,6 +5,10 @@ cd /d "%~dp0"
 echo ============================================
 echo   FoxDesk Installer Builder
 echo ============================================
+if exist VERSION (
+  set /p APPVER=<VERSION
+  echo   Version: %APPVER%
+)
 echo.
 
 :: Check Python

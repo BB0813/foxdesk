@@ -153,6 +153,14 @@ const i18n = {
     toggleBlockWebgl: "拦截 WebGL",
     toggleDisableCoop: "禁用 COOP",
     toggleEnableCache: "启用缓存",
+    appVersion: "应用版本",
+    dataDir: "数据目录",
+    timezone: "时区",
+    taskInstall: "安装",
+    taskVersion: "版本",
+    taskPath: "路径",
+    taskTest: "自检",
+    taskFetch: "下载",
   },
   en: {
     productName: "FoxDesk",
@@ -308,6 +316,14 @@ const i18n = {
     osWindows: "Windows",
     osMacos: "macOS",
     osLinux: "Linux",
+    appVersion: "App Version",
+    dataDir: "Data Dir",
+    timezone: "Timezone",
+    taskInstall: "Install",
+    taskVersion: "Version",
+    taskPath: "Path",
+    taskTest: "Test",
+    taskFetch: "Fetch",
   },
 };
 
@@ -395,6 +411,8 @@ function splitList(value) {
 function formToProfile() {
   const form = $("#profileForm");
   const data = new FormData(form);
+  // Locale fields are mirrored by input listeners; either value is fine.
+  const locale = ((data.get("locale") || data.get("fp_locale") || "") + "").trim();
   return {
     name: data.get("name") || "Untitled",
     startup_url: data.get("startup_url") || "",
@@ -405,7 +423,7 @@ function formToProfile() {
     user_data_dir: data.get("user_data_dir") || "",
     humanize: Boolean(data.get("humanize")),
     geoip: Boolean(data.get("geoip")),
-    locale: data.get("locale") || "",
+    locale,
     proxy: {
       server: data.get("proxy_server") || "",
       username: data.get("proxy_username") || "",
@@ -444,6 +462,7 @@ function setCheckbox(form, name, value) {
 }
 
 function defaultProfile() {
+  const slug = `profile-${Date.now().toString(36)}`;
   return {
     name: state.lang === "zh" ? "新档案" : "New profile",
     startup_url: "https://browserleaks.com/javascript",
@@ -451,7 +470,8 @@ function defaultProfile() {
     os: "auto",
     headless: false,
     persistent_context: true,
-    user_data_dir: "data/profiles/new-profile",
+    // Backend will resolve under %APPDATA%/CamoufoxManager/profiles when relative.
+    user_data_dir: `profiles/${slug}`,
     humanize: true,
     geoip: false,
     locale: "",
@@ -463,6 +483,7 @@ function defaultProfile() {
     enable_cache: true,
     addons: [],
     extra_args: [],
+    tags: [],
     notes: "",
   };
 }
@@ -497,7 +518,7 @@ function loadProfile(profile, fillForm = true) {
     form.elements.webgl_vendor.value = value.webgl_vendor || "";
     form.elements.webgl_renderer.value = value.webgl_renderer || "";
     form.elements.timezone.value = value.timezone || "";
-    form.elements.fp_locale.value = value.locale || "";
+    if (form.elements.fp_locale) form.elements.fp_locale.value = value.locale || "";
     form.elements.webrtc_mode.value = value.webrtc_mode || "default";
     form.elements.media_devices.value = value.media_devices || "default";
     form.elements.fonts.value = (value.fonts || []).join(", ");
@@ -713,6 +734,9 @@ async function saveProfile() {
 }
 
 async function deleteProfile(id) {
+  const profile = state.profiles.find((item) => item.id === id);
+  const label = profile?.name || id;
+  if (!confirm(`${t("delete")} "${label}"?`)) return;
   await api(`/api/profiles/${id}`, { method: "DELETE" });
   if (state.selectedId === id) state.selectedId = null;
   await loadProfiles();
@@ -823,11 +847,13 @@ function renderSystem() {
   const version = sys?.camoufox_version?.stdout || sys?.camoufox_version?.stderr || t("unavailable");
   const path = sys?.camoufox_path?.stdout || sys?.camoufox_path?.stderr || t("unavailable");
   grid.innerHTML = `
+    <dt>${t("appVersion")}</dt><dd>${escapeHtml(sys?.app_version || "")}</dd>
     <dt>${t("python")}</dt><dd>${escapeHtml(sys?.python || "")}</dd>
     <dt>${t("executable")}</dt><dd>${escapeHtml(sys?.executable || "")}</dd>
     <dt>${t("installedField")}</dt><dd>${sys?.camoufox_installed ? t("yes") : t("no")}</dd>
     <dt>${t("version")}</dt><dd>${escapeHtml(version)}</dd>
     <dt>${t("path")}</dt><dd>${escapeHtml(path)}</dd>
+    <dt>${t("dataDir")}</dt><dd>${escapeHtml(sys?.data_dir || "")}</dd>
   `;
   renderInstallFlow();
 }
@@ -1039,7 +1065,10 @@ async function randomFingerprint() {
     if (result.webgl_vendor) form.elements.webgl_vendor.value = result.webgl_vendor;
     if (result.webgl_renderer) form.elements.webgl_renderer.value = result.webgl_renderer;
     if (result.timezone) form.elements.timezone.value = result.timezone;
-    if (result.locale) form.elements.fp_locale.value = result.locale;
+    if (result.locale) {
+      if (form.elements.fp_locale) form.elements.fp_locale.value = result.locale;
+      if (form.elements.locale) form.elements.locale.value = result.locale;
+    }
     if (result.webrtc_mode) form.elements.webrtc_mode.value = result.webrtc_mode;
     if (result.media_devices) form.elements.media_devices.value = result.media_devices;
     toast(t("fingerprintGenerated"));
@@ -1473,6 +1502,16 @@ function bindEvents() {
     searchEl.addEventListener("input", () => {
       clearTimeout(debounce);
       debounce = setTimeout(() => renderProfiles(), 150);
+    });
+  }
+  // Keep locale fields mirrored across Basic / Fingerprint tabs
+  const form = $("#profileForm");
+  if (form?.elements?.locale && form?.elements?.fp_locale) {
+    form.elements.locale.addEventListener("input", () => {
+      form.elements.fp_locale.value = form.elements.locale.value;
+    });
+    form.elements.fp_locale.addEventListener("input", () => {
+      form.elements.locale.value = form.elements.fp_locale.value;
     });
   }
   // Keyboard shortcuts
