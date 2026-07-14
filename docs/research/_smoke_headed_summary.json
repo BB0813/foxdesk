@@ -1,0 +1,88 @@
+{
+  "app_version_hint": "1.4.0-dev",
+  "headed": true,
+  "platform": "win32",
+  "poc": {
+    "returncode": 0,
+    "stdout_tail": "{\n  \"ok\": true,\n  \"backend\": \"playwright\",\n  \"channel\": null,\n  \"headless\": false,\n  \"locale\": \"en-US\",\n  \"timezone\": \"America/New_York\",\n  \"proxy\": null,\n  \"started_at\": 1784050137.0711632,\n  \"href\": \"about:blank\",\n  \"probe\": {\n    \"userAgent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36\",\n    \"platform\": \"Win32\",\n    \"language\": \"en-US\",\n    \"languages\": [\n      \"en-US\"\n    ],\n    \"webdriver\": true,\n    \"hardwareConcurrency\": 20,\n    \"deviceMemory\": null,\n    \"maxTouchPoints\": 10,\n    \"vendor\": \"Google Inc.\",\n    \"pluginsLength\": 5,\n    \"uaChBrands\": null,\n    \"screen\": {\n      \"width\": 1280,\n      \"height\": 720,\n      \"colorDepth\": 24,\n      \"availWidth\": 1280,\n      \"availHeight\": 720\n    },\n    \"timezone\": \"America/New_York\",\n    \"webglVendor\": \"Google Inc. (Intel)\",\n    \"webglRenderer\": \"ANGLE (Intel, Intel(R) Iris(R) Xe Graphics (0x000046A6) Direct3D11 vs_5_0 ps_5_0, D3D11)\",\n    \"hasChromeRuntime\": true,\n    \"href\": \"about:blank\"\n  },\n  \"elapsed_s\": 3.929\n}\n",
+    "stderr_tail": "",
+    "result": {
+      "ok": true,
+      "backend": "playwright",
+      "channel": null,
+      "headless": false,
+      "locale": "en-US",
+      "timezone": "America/New_York",
+      "proxy": null,
+      "started_at": 1784050137.0711632,
+      "href": "about:blank",
+      "probe": {
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
+        "platform": "Win32",
+        "language": "en-US",
+        "languages": [
+          "en-US"
+        ],
+        "webdriver": true,
+        "hardwareConcurrency": 20,
+        "deviceMemory": null,
+        "maxTouchPoints": 10,
+        "vendor": "Google Inc.",
+        "pluginsLength": 5,
+        "uaChBrands": null,
+        "screen": {
+          "width": 1280,
+          "height": 720,
+          "colorDepth": 24,
+          "availWidth": 1280,
+          "availHeight": 720
+        },
+        "timezone": "America/New_York",
+        "webglVendor": "Google Inc. (Intel)",
+        "webglRenderer": "ANGLE (Intel, Intel(R) Iris(R) Xe Graphics (0x000046A6) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "hasChromeRuntime": true,
+        "href": "about:blank"
+      },
+      "elapsed_s": 3.929
+    }
+  },
+  "worker": {
+    "ready": true,
+    "returncode": 0,
+    "fingerprint": {
+      "engine": "chromium",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
+      "platform": "Win32",
+      "language": "en-US",
+      "languages": [
+        "en-US"
+      ],
+      "webdriver": true,
+      "hardwareConcurrency": 20,
+      "deviceMemory": 0,
+      "screen": {
+        "width": 1280,
+        "height": 720,
+        "colorDepth": 24
+      },
+      "timezone": "America/New_York",
+      "webglVendor": "Google Inc. (Intel)",
+      "webglRenderer": "ANGLE (Intel, Intel(R) Iris(R) Xe Graphics (0x000046A6) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "uaCh": null,
+      "href": "about:blank"
+    },
+    "logs_tail": [
+      "{\"event\": \"launching\", \"engine\": \"chromium\", \"headless\": false, \"proxy\": null, \"locale\": \"en-US\", \"timezone\": \"America/New_York\", \"channel\": null}",
+      "{\"event\": \"ready\", \"engine\": \"chromium\", \"mode\": \"browser\"}",
+      "{\"event\": \"navigated\", \"url\": \"about:blank\", \"href\": \"about:blank\"}",
+      "{\"event\": \"fingerprint_report\", \"report\": {\"engine\": \"chromium\", \"userAgent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36\", \"platform\": \"Win32\", \"language\": \"en-US\", \"languages\": [\"en-US\"], \"webdriver\": true, \"hardwareConcurrency\": 20, \"deviceMemory\": 0, \"screen\": {\"width\": 1280, \"height\": 720, \"colorDepth\": 24}, \"timezone\": \"America/New_York\", \"webglVendor\": \"Google Inc. (Intel)\", \"webglRenderer\": \"ANGLE (Intel, Intel(R) Iris(R) Xe Graphics (0x000046A6) Direct3D11 vs_5_0 ps_5_0, D3D11)\", \"uaCh\": null, \"href\": \"about:blank\"}}",
+      "{\"event\": \"command_result\", \"id\": \"smoke-stop\", \"cmd\": \"stop\", \"ok\": true, \"message\": \"stopping\"}",
+      "{\"event\": \"stopped\", \"engine\": \"chromium\"}"
+    ],
+    "runtime_path": "C:\\Users\\hbq30\\AppData\\Local\\Temp\\foxdesk-smoke-e7f32dae-f70b-4849-8582-672e1f47efe3.json",
+    "webdriver": true,
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
+  },
+  "ok": true,
+  "notes": "Headed smoke only proves L1 launch path. webdriver/automation signals remaining are expected until Phase C."
+}

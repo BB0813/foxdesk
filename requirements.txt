@@ -6,3 +6,7 @@ pywebview>=5.1
 pyinstaller>=6.0
 pystray>=0.19
 Pillow>=10.0
+# Phase A/C Chromium stack (optional at runtime; install browsers separately)
+playwright>=1.49
+# Phase C patched automation backend (preferred when present)
+patchright>=1.49

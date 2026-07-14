@@ -4,7 +4,7 @@ const i18n = {
     title: "指纹浏览器控制台",
     refresh: "刷新",
     profiles: "配置档案",
-    profilesDesc: "管理 Camoufox 启动参数",
+    profilesDesc: "管理指纹档案（Camoufox / Chromium）",
     import: "导入",
     export: "导出",
     new: "新建",
@@ -16,6 +16,28 @@ const i18n = {
     name: "名称",
     startupUrl: "启动网址",
     mode: "模式",
+    engine: "引擎",
+    engineCamoufox: "Camoufox (Firefox)",
+    engineChromium: "Chromium",
+    chromiumBackend: "Chromium 后端",
+    backendAuto: "自动（优先 Patchright）",
+    backendPatchright: "Patchright（Phase C）",
+    backendPlaywright: "Playwright",
+    chromiumChannel: "Chromium 通道",
+    channelBundled: "捆绑 Chromium",
+    channelChrome: "Google Chrome",
+    channelMsedge: "Microsoft Edge",
+    consistencyPolicy: "一致性策略",
+    policyNormal: "普通（仅提示）",
+    policyStrict: "严格（高风险拦截启动）",
+    userAgent: "User-Agent",
+    hardwareConcurrency: "CPU 逻辑核",
+    deviceMemory: "设备内存 (GB)",
+    uaChPlatform: "UA-CH Platform",
+    uaChMobile: "UA-CH mobile",
+    fontPack: "字体包",
+    fontPackNone: "无（手动列表）",
+    fontPackAuto: "自动（按 OS）",
     targetOs: "目标系统",
     userDataDir: "用户数据目录",
     locale: "语言区域",
@@ -26,7 +48,7 @@ const i18n = {
     extraArgs: "额外启动参数",
     notes: "备注",
     sessions: "运行会话",
-    sessionsDesc: "由管理器启动和跟踪的 Camoufox 进程",
+    sessionsDesc: "由管理器启动和跟踪的浏览器进程",
     system: "系统与安装",
     systemDesc: "检查 Python 环境、Camoufox 包和浏览器文件",
     checking: "检查中",
@@ -257,6 +279,18 @@ const i18n = {
     proxyHealthNow: "立即巡检",
     proxyHealthRunning: "代理巡检进行中…",
     proxyHealthDone: "代理巡检完成",
+    proxyHealthStatus: "巡检状态",
+    proxyHealthNever: "尚未巡检",
+    proxyHealthEnabled: "自动巡检开",
+    proxyHealthDisabled: "自动巡检关",
+    batchStop: "批量停止",
+    batchStopNone: "请先勾选要停止的会话",
+    batchStopDone: "已批量停止",
+    screenshotSession: "截图",
+    evaluateSession: "执行表达式",
+    evaluatePrompt: "输入浏览器上下文表达式（如 document.title）",
+    screenshotDone: "截图已下载",
+    evaluateDone: "表达式已执行",
     localBackup: "本地备份",
     localBackupDesc: "密码加密备份到 data_dir/backups（.fdk），可一键恢复",
     createBackup: "创建备份",
@@ -279,13 +313,35 @@ const i18n = {
     resourceHint: "资源",
     sessionsCap: "并发上限",
     fingerprintReport: "指纹报告",
+    envRisks: "环境风险提示",
+    envRiskNote: "仅为配置一致性提示，不保证支付/注册/订阅/风控通过",
+    allChecksPassed: "检查通过",
+    issues: "项问题",
+    openInBrowser: "在浏览器打开",
+    navigatorPlatform: "平台",
+    navigatorVendor: "厂商",
+    screenWidth: "宽",
+    screenHeight: "高",
+    chromiumStack: "Chromium 栈",
+    patchrightReady: "Patchright 已就绪",
+    patchrightMissing: "Patchright 未安装",
+    playwrightReady: "Playwright 已就绪",
+    playwrightMissing: "Playwright 未安装",
+    chromeDetected: "本机检测到 Chrome",
+    chromeMissing: "本机未检测到 Chrome",
+    defaultBackend: "auto 默认后端",
+    chromiumInstallHint: "Chromium 安装提示",
+    suggestChromeChannel: "建议 channel=chrome（本机有 Chrome）",
+    chromeChannelNoChrome: "channel=chrome 但未检测到 Chrome",
+    aiProxyHint: "AI 场景：请绑定与时区/语言一致的代理；全程可见窗口",
+    mediumRisks: "中风险提示",
   },
   en: {
     productName: "FoxDesk",
     title: "Fingerprint Browser Console",
     refresh: "Refresh",
     profiles: "Profiles",
-    profilesDesc: "Manage Camoufox launch options",
+    profilesDesc: "Manage fingerprint profiles (Camoufox / Chromium)",
     import: "Import",
     export: "Export",
     new: "New",
@@ -297,6 +353,28 @@ const i18n = {
     name: "Name",
     startupUrl: "Startup URL",
     mode: "Mode",
+    engine: "Engine",
+    engineCamoufox: "Camoufox (Firefox)",
+    engineChromium: "Chromium",
+    chromiumBackend: "Chromium backend",
+    backendAuto: "Auto (prefer Patchright)",
+    backendPatchright: "Patchright (Phase C)",
+    backendPlaywright: "Playwright",
+    chromiumChannel: "Chromium channel",
+    channelBundled: "Bundled Chromium",
+    channelChrome: "Google Chrome",
+    channelMsedge: "Microsoft Edge",
+    consistencyPolicy: "Consistency policy",
+    policyNormal: "Normal (warnings only)",
+    policyStrict: "Strict (block high risks)",
+    userAgent: "User-Agent",
+    hardwareConcurrency: "CPU cores",
+    deviceMemory: "Device memory (GB)",
+    uaChPlatform: "UA-CH platform",
+    uaChMobile: "UA-CH mobile",
+    fontPack: "Font pack",
+    fontPackNone: "None (manual list)",
+    fontPackAuto: "Auto (by OS)",
     targetOs: "Target OS",
     userDataDir: "User Data Dir",
     locale: "Locale",
@@ -307,7 +385,7 @@ const i18n = {
     extraArgs: "Extra Args",
     notes: "Notes",
     sessions: "Sessions",
-    sessionsDesc: "Camoufox processes launched and tracked by the manager",
+    sessionsDesc: "Browser processes launched and tracked by the manager",
     system: "System & Install",
     systemDesc: "Check Python, Camoufox package, and browser files",
     checking: "Checking",
@@ -538,6 +616,18 @@ const i18n = {
     proxyHealthNow: "Check now",
     proxyHealthRunning: "Proxy health check running…",
     proxyHealthDone: "Proxy health check finished",
+    proxyHealthStatus: "Health status",
+    proxyHealthNever: "Not checked yet",
+    proxyHealthEnabled: "Auto-check on",
+    proxyHealthDisabled: "Auto-check off",
+    batchStop: "Batch stop",
+    batchStopNone: "Select sessions to stop first",
+    batchStopDone: "Batch stop finished",
+    screenshotSession: "Screenshot",
+    evaluateSession: "Evaluate",
+    evaluatePrompt: "Browser-context expression (e.g. document.title)",
+    screenshotDone: "Screenshot downloaded",
+    evaluateDone: "Expression evaluated",
     localBackup: "Local backup",
     localBackupDesc: "Password-encrypted backups under data_dir/backups (.fdk) with restore",
     createBackup: "Create backup",
@@ -560,12 +650,35 @@ const i18n = {
     resourceHint: "Resources",
     sessionsCap: "Session cap",
     fingerprintReport: "Fingerprint report",
+    envRisks: "Environment risk hints",
+    envRiskNote: "Config consistency only — not a payment / signup / subscribe / anti-bot pass guarantee",
+    allChecksPassed: "All checks passed",
+    issues: "issue(s)",
+    openInBrowser: "Open in browser",
+    navigatorPlatform: "Platform",
+    navigatorVendor: "Vendor",
+    screenWidth: "W",
+    screenHeight: "H",
+    chromiumStack: "Chromium stack",
+    patchrightReady: "Patchright ready",
+    patchrightMissing: "Patchright not installed",
+    playwrightReady: "Playwright ready",
+    playwrightMissing: "Playwright not installed",
+    chromeDetected: "Google Chrome detected",
+    chromeMissing: "Google Chrome not detected",
+    defaultBackend: "auto default backend",
+    chromiumInstallHint: "Chromium install hint",
+    suggestChromeChannel: "Suggest channel=chrome (Chrome detected)",
+    chromeChannelNoChrome: "channel=chrome but Chrome not detected",
+    aiProxyHint: "AI scene: bind proxy matching timezone/locale; keep window visible",
+    mediumRisks: "Medium risks",
   },
 };
 
 const state = {
   lang: localStorage.getItem("cm-lang") || "zh",
   theme: localStorage.getItem("cm-theme") || "light",
+  selectedSessions: new Set(),
   profiles: [],
   selectedId: null,
   system: null,
@@ -694,6 +807,10 @@ function formToProfile() {
     name: data.get("name") || "Untitled",
     startup_url: data.get("startup_url") || "",
     mode: data.get("mode") || "browser",
+    engine: data.get("engine") || "camoufox",
+    chromium_backend: data.get("chromium_backend") || "auto",
+    chromium_channel: data.get("chromium_channel") || "",
+    consistency_policy: data.get("consistency_policy") || "normal",
     os: data.get("os") || "auto",
     headless: Boolean(data.get("headless")),
     persistent_context: Boolean(data.get("persistent_context")),
@@ -717,16 +834,22 @@ function formToProfile() {
     tags: splitList(data.get("tags")),
     notes: data.get("notes") || "",
     // Fingerprint
+    user_agent: data.get("user_agent") || "",
     navigator_platform: data.get("navigator_platform") || "",
     navigator_vendor: data.get("navigator_vendor") || "",
     screen_width: parseInt(data.get("screen_width")) || 0,
     screen_height: parseInt(data.get("screen_height")) || 0,
     screen_color_depth: parseInt(data.get("screen_color_depth")) || 0,
     device_pixel_ratio: parseFloat(data.get("device_pixel_ratio")) || 0,
+    hardware_concurrency: parseInt(data.get("hardware_concurrency")) || 0,
+    device_memory: parseFloat(data.get("device_memory")) || 0,
+    ua_ch_platform: data.get("ua_ch_platform") || "",
+    ua_ch_mobile: Boolean(data.get("ua_ch_mobile")),
     canvas_noise: Boolean(data.get("canvas_noise")),
     webgl_vendor: data.get("webgl_vendor") || "",
     webgl_renderer: data.get("webgl_renderer") || "",
     audio_noise: Boolean(data.get("audio_noise")),
+    font_pack: data.get("font_pack") || "",
     fonts: splitList(data.get("fonts")),
     timezone: data.get("timezone") || "",
     webrtc_mode: data.get("webrtc_mode") || "default",
@@ -791,10 +914,14 @@ function defaultProfile() {
     name: state.lang === "zh" ? "新档案" : "New profile",
     startup_url: "https://browserleaks.com/javascript",
     mode: "browser",
+    engine: "camoufox",
+    chromium_backend: "auto",
+    chromium_channel: "",
+    consistency_policy: "normal",
     os: "auto",
     headless: false,
     persistent_context: true,
-    // Backend will resolve under %APPDATA%/CamoufoxManager/profiles when relative.
+    // Backend will resolve under %APPDATA%/FoxDesk/profiles when relative.
     user_data_dir: `profiles/${slug}`,
     humanize: true,
     geoip: false,
@@ -810,7 +937,49 @@ function defaultProfile() {
     extra_args: [],
     tags: [],
     notes: "",
+    user_agent: "",
+    hardware_concurrency: 0,
+    device_memory: 0,
+    ua_ch_platform: "",
+    ua_ch_mobile: false,
+    font_pack: "",
   };
+}
+
+function syncEngineUi() {
+  const form = $("#profileForm");
+  if (!form || !form.elements.engine) return;
+  const engine = form.elements.engine.value || "camoufox";
+  const channelLabel = $("#chromiumChannelLabel");
+  const backendLabel = $("#chromiumBackendLabel");
+  if (channelLabel) {
+    channelLabel.style.display = engine === "chromium" ? "" : "none";
+  }
+  if (backendLabel) {
+    backendLabel.style.display = engine === "chromium" ? "" : "none";
+  }
+  // Chromium Phase A: server mode unsupported — keep UI hint via mode option state.
+  const modeSelect = form.elements.mode;
+  if (modeSelect) {
+    const serverOpt = Array.from(modeSelect.options || []).find((o) => o.value === "server");
+    if (serverOpt) {
+      serverOpt.disabled = engine === "chromium";
+      if (engine === "chromium" && modeSelect.value === "server") {
+        modeSelect.value = "browser";
+      }
+    }
+  }
+  // Soft label on chrome channel option when Chrome is present/missing.
+  const channelSel = form.elements.chromium_channel;
+  if (channelSel) {
+    const chromeOpt = Array.from(channelSel.options || []).find((o) => o.value === "chrome");
+    if (chromeOpt) {
+      const detected = Boolean(state.system?.google_chrome?.installed);
+      chromeOpt.textContent = detected
+        ? `${t("channelChrome")} ✓`
+        : t("channelChrome");
+    }
+  }
 }
 
 function loadProfile(profile, fillForm = true) {
@@ -824,9 +993,20 @@ function loadProfile(profile, fillForm = true) {
     form.elements.name.value = value.name || "";
     form.elements.startup_url.value = value.startup_url || "";
     form.elements.mode.value = value.mode || "browser";
+    if (form.elements.engine) form.elements.engine.value = value.engine || "camoufox";
+    if (form.elements.chromium_backend) {
+      form.elements.chromium_backend.value = value.chromium_backend || "auto";
+    }
+    if (form.elements.chromium_channel) {
+      form.elements.chromium_channel.value = value.chromium_channel || "";
+    }
+    if (form.elements.consistency_policy) {
+      form.elements.consistency_policy.value = value.consistency_policy || "normal";
+    }
     form.elements.os.value = value.os || "auto";
     form.elements.user_data_dir.value = value.user_data_dir || "";
     form.elements.locale.value = value.locale || "";
+    syncEngineUi();
     fillProxySelect(value.proxy_id || "");
     form.elements.proxy_server.value = value.proxy?.server || "";
     form.elements.proxy_username.value = value.proxy?.username || "";
@@ -836,21 +1016,33 @@ function loadProfile(profile, fillForm = true) {
     form.elements.tags.value = (value.tags || []).join(", ");
     form.elements.notes.value = value.notes || "";
     // Fingerprint fields
+    if (form.elements.user_agent) form.elements.user_agent.value = value.user_agent || "";
     form.elements.navigator_platform.value = value.navigator_platform || "";
     form.elements.navigator_vendor.value = value.navigator_vendor || "";
     form.elements.screen_width.value = value.screen_width || "";
     form.elements.screen_height.value = value.screen_height || "";
     form.elements.screen_color_depth.value = value.screen_color_depth || "";
     form.elements.device_pixel_ratio.value = value.device_pixel_ratio || "";
+    if (form.elements.hardware_concurrency) {
+      form.elements.hardware_concurrency.value = value.hardware_concurrency || "";
+    }
+    if (form.elements.device_memory) {
+      form.elements.device_memory.value = value.device_memory || "";
+    }
+    if (form.elements.ua_ch_platform) {
+      form.elements.ua_ch_platform.value = value.ua_ch_platform || "";
+    }
     form.elements.webgl_vendor.value = value.webgl_vendor || "";
     form.elements.webgl_renderer.value = value.webgl_renderer || "";
     form.elements.timezone.value = value.timezone || "";
     if (form.elements.fp_locale) form.elements.fp_locale.value = value.locale || "";
     form.elements.webrtc_mode.value = value.webrtc_mode || "default";
     form.elements.media_devices.value = value.media_devices || "default";
+    if (form.elements.font_pack) form.elements.font_pack.value = value.font_pack || "";
     form.elements.fonts.value = (value.fonts || []).join(", ");
     setCheckbox(form, "canvas_noise", value.canvas_noise !== false);
     setCheckbox(form, "audio_noise", value.audio_noise !== false);
+    if (form.elements.ua_ch_mobile) setCheckbox(form, "ua_ch_mobile", value.ua_ch_mobile);
     [
       "headless",
       "persistent_context",
@@ -882,7 +1074,8 @@ function loadProfile(profile, fillForm = true) {
 }
 
 function profileTags(profile) {
-  const tags = [profile.mode, profile.os, profile.headless ? "headless" : "visible"];
+  const engine = profile.engine || "camoufox";
+  const tags = [engine, profile.mode, profile.os, profile.headless ? "headless" : "visible"];
   if (profile.proxy?.server || profile.proxy_id) tags.push("proxy");
   if (profile.geoip) tags.push("geoip");
   if (profile.persistent_context) tags.push("persistent");
@@ -892,9 +1085,11 @@ function profileTags(profile) {
 const TAG_I18N = {
   browser: { zh: "浏览器", en: "browser" },
   server: { zh: "服务端", en: "server" },
+  camoufox: { zh: "Camoufox", en: "camoufox" },
+  chromium: { zh: "Chromium", en: "chromium" },
   windows: { zh: "Windows", en: "Windows" },
   macos: { zh: "macOS", en: "macOS" },
-  linux: { zh: "Linux", en: "Linux" },
+  linux: { zh: "Linux", en: "linux" },
   auto: { zh: "自动", en: "auto" },
   headless: { zh: "无界面", en: "headless" },
   visible: { zh: "有界面", en: "visible" },
@@ -1090,16 +1285,86 @@ async function openSelectedDir() {
   toast(t("openDirDone"));
 }
 
+function summarizeEnvironmentRisks(result) {
+  const risks = Array.isArray(result?.environment_risks) ? result.environment_risks : [];
+  const high = risks.filter((r) => r.level === "high");
+  const medium = risks.filter((r) => r.level === "medium");
+  if (!high.length && !medium.length) return "";
+  if (high.length) {
+    const first = high[0]?.message || "";
+    const extra = high.length > 1 ? ` (+${high.length - 1})` : "";
+    return ` · ${t("envRisks")}: ${String(first).slice(0, 90)}${extra}`;
+  }
+  const first = medium[0]?.message || "";
+  return ` · ${t("mediumRisks")}: ${String(first).slice(0, 80)}`;
+}
+
+function preflightLaunchHints() {
+  const form = $("#profileForm");
+  if (!form) return [];
+  const hints = [];
+  const engine = form.elements.engine?.value || "camoufox";
+  const channel = form.elements.chromium_channel?.value || "";
+  const tags = String(form.elements.tags?.value || "").toLowerCase();
+  const notes = String(form.elements.notes?.value || "").toLowerCase();
+  const aiLike =
+    /\b(ai|chatgpt|claude|gemini)\b/.test(tags) ||
+    notes.includes("chatgpt") ||
+    notes.includes("claude") ||
+    notes.includes("gemini") ||
+    notes.includes("ai workstation");
+  const chromeOk = Boolean(state.system?.google_chrome?.installed);
+  const prOk = Boolean(state.system?.patchright_installed ?? state.system?.chromium_stack?.patchright);
+  const pwOk = Boolean(state.system?.playwright_installed ?? state.system?.chromium_stack?.playwright);
+  if (engine === "chromium") {
+    if (!prOk && !pwOk) {
+      hints.push(
+        `${t("chromiumInstallHint")}: pip install playwright patchright && playwright install chromium && patchright install chromium`
+      );
+    } else if (!prOk) {
+      hints.push(`${t("patchrightMissing")}: pip install patchright && patchright install chromium`);
+    }
+    if (channel === "chrome" && !chromeOk) {
+      hints.push(t("chromeChannelNoChrome"));
+    } else if (!channel && chromeOk) {
+      hints.push(t("suggestChromeChannel"));
+    }
+  }
+  if (aiLike) {
+    hints.push(t("aiProxyHint"));
+  }
+  return hints;
+}
+
 async function launchSelected() {
   if (!state.selectedId) {
     await saveProfile();
   }
-  const result = await api("/api/sessions", {
-    method: "POST",
-    body: JSON.stringify({ profile_id: state.selectedId }),
-  });
-  toast(`${t("launched")} ${result.label}`);
-  await loadSessions();
+  const soft = preflightLaunchHints();
+  // Soft confirm only when chrome channel is broken or stack fully missing
+  const hard = soft.filter(
+    (h) =>
+      h.includes("pip install") ||
+      h.includes(t("chromeChannelNoChrome")) ||
+      h.includes("patchright install")
+  );
+  if (hard.length) {
+    const ok = confirm(`${hard.join("\n")}\n\nContinue launch?`);
+    if (!ok) return;
+  } else if (soft.length) {
+    // Non-blocking toast for suggestions
+    toast(soft[0]);
+  }
+  try {
+    const result = await api("/api/sessions", {
+      method: "POST",
+      body: JSON.stringify({ profile_id: state.selectedId }),
+    });
+    toast(`${t("launched")} ${result.label}${summarizeEnvironmentRisks(result)}`);
+    await loadSessions();
+  } catch (err) {
+    toast(err.message || String(err));
+  }
 }
 
 async function exportProfiles() {
@@ -1179,6 +1444,25 @@ function renderSystem() {
   const path = sys?.camoufox_path?.stdout || sys?.camoufox_path?.stderr || t("unavailable");
   const mirror = sys?.update_mirror || sys?.settings?.update_mirror || "ghproxy";
   const tokenSet = Boolean(sys?.github_token_set || sys?.settings?.github_token_set);
+  const stack = sys?.chromium_stack || {};
+  const chrome = sys?.google_chrome || {};
+  const pr = sys?.patchright_installed ?? stack.patchright;
+  const pw = sys?.playwright_installed ?? stack.playwright;
+  const chromiumLine = [
+    pw ? t("playwrightReady") : t("playwrightMissing"),
+    pr ? t("patchrightReady") : t("patchrightMissing"),
+    chrome.installed ? t("chromeDetected") : t("chromeMissing"),
+    stack.default_backend ? `${t("defaultBackend")}: ${stack.default_backend}` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const installHint =
+    stack.hint ||
+    (!pr
+      ? "pip install patchright && patchright install chromium"
+      : !pw
+        ? "pip install playwright && playwright install chromium"
+        : "");
   grid.innerHTML = `
     <dt>${t("appVersion")}</dt><dd>${escapeHtml(sys?.app_version || "")}</dd>
     <dt>${t("python")}</dt><dd>${escapeHtml(sys?.python || "")}</dd>
@@ -1186,12 +1470,15 @@ function renderSystem() {
     <dt>${t("installedField")}</dt><dd>${sys?.camoufox_installed ? t("yes") : t("no")}</dd>
     <dt>${t("version")}</dt><dd>${escapeHtml(version)}</dd>
     <dt>${t("path")}</dt><dd>${escapeHtml(path)}</dd>
+    <dt>${t("chromiumStack")}</dt><dd>${escapeHtml(chromiumLine || t("unavailable"))}</dd>
+    <dt>${t("chromiumInstallHint")}</dt><dd style="font-family:ui-monospace,monospace;font-size:12px">${escapeHtml(installHint || "—")}</dd>
     <dt>${t("dataDir")}</dt><dd>${escapeHtml(sys?.data_dir || "")}</dd>
     <dt>${t("updateMirror")}</dt><dd>${escapeHtml(mirror)}</dd>
     <dt>GitHub Token</dt><dd>${tokenSet ? t("yes") : t("no")}</dd>
   `;
   renderInstallFlow();
   renderSettingsForm();
+  syncEngineUi();
 }
 
 function renderSettingsForm() {
@@ -1333,15 +1620,49 @@ async function restoreBackup() {
   return result;
 }
 
+function formatProxyHealthHint(status) {
+  if (!status) return "";
+  const enabled = status.enabled ? t("proxyHealthEnabled") : t("proxyHealthDisabled");
+  const interval = status.interval_seconds != null ? `${status.interval_seconds}s` : "—";
+  const running = status.running_pass ? ` · ${t("proxyHealthRunning")}` : "";
+  const summary = status.last_summary || {};
+  let last = t("proxyHealthNever");
+  if (status.last_run_at) {
+    const when = new Date(Number(status.last_run_at) * 1000).toLocaleString();
+    last = `${when} · ok=${summary.passed ?? 0} fail=${summary.failed ?? 0}`;
+  }
+  return `${t("proxyHealthStatus")}: ${enabled} · ${interval}${running} · ${last}`;
+}
+
+async function loadProxyHealthStatus() {
+  const hint = $("#proxyHealthHint");
+  if (!hint) return null;
+  try {
+    const status = await api("/api/proxies/health-status");
+    hint.textContent = formatProxyHealthHint(status);
+    return status;
+  } catch (_) {
+    return null;
+  }
+}
+
 async function runProxyHealthNow() {
   toast(t("proxyHealthRunning"));
   const result = await api("/api/proxies/health-check", { method: "POST", body: "{}" });
   const hint = $("#proxyHealthHint");
   if (hint) {
-    hint.textContent = `${t("proxyHealthDone")}: ok=${result.passed ?? 0} fail=${result.failed ?? 0}`;
+    if (result.error && !result.checked) {
+      hint.textContent = result.error;
+    } else {
+      hint.textContent = `${t("proxyHealthDone")}: ok=${result.passed ?? 0} fail=${result.failed ?? 0}`;
+    }
   }
-  toast(`${t("proxyHealthDone")}: ${result.passed ?? 0}/${result.checked ?? 0}`);
-  await loadProxies();
+  toast(
+    result.error && !result.checked
+      ? result.error
+      : `${t("proxyHealthDone")}: ${result.passed ?? 0}/${result.checked ?? 0}`,
+  );
+  await Promise.all([loadProxies(), loadProxyHealthStatus()]);
   return result;
 }
 
@@ -1364,6 +1685,43 @@ async function startTask(name) {
   const task = await api(`/api/tasks/${name}`, { method: "POST", body: JSON.stringify({ args: [] }) });
   toast(`${t("taskStarted")}：${task.label}`);
   await loadTasks();
+}
+
+function updateSessionBatchBar(sessions) {
+  const bar = $("#sessionBatchBar");
+  const count = $("#sessionBatchCount");
+  if (!bar || !count) return;
+  const runningIds = new Set((sessions || []).filter((s) => s.status === "running").map((s) => s.id));
+  for (const id of [...state.selectedSessions]) {
+    if (!runningIds.has(id)) state.selectedSessions.delete(id);
+  }
+  const n = state.selectedSessions.size;
+  if (n > 0) {
+    bar.classList.remove("hidden");
+    count.textContent = `${n}`;
+  } else {
+    bar.classList.add("hidden");
+    count.textContent = "0";
+  }
+}
+
+async function batchStopSessions() {
+  const ids = [...state.selectedSessions];
+  if (!ids.length) {
+    toast(t("batchStopNone"));
+    return;
+  }
+  try {
+    const result = await api("/api/sessions/batch-stop", {
+      method: "POST",
+      body: JSON.stringify({ process_ids: ids }),
+    });
+    state.selectedSessions.clear();
+    toast(`${t("batchStopDone")}: ${result.stopped ?? 0}`);
+    await loadSessions();
+  } catch (err) {
+    toast(err.message);
+  }
 }
 
 function renderProcesses(selector, processes, stopLabel = t("stop"), isSession = false) {
@@ -1397,12 +1755,14 @@ function renderProcesses(selector, processes, stopLabel = t("stop"), isSession =
       const isServer = (item.mode || "browser") === "server";
       const sessionActions =
         isSession && running
-          ? `<div class="button-row" style="padding:0 0 6px;gap:6px">
+          ? `<div class="button-row" style="padding:0 0 6px;gap:6px;flex-wrap:wrap">
                ${
                  isServer
                    ? `<button class="button secondary session-endpoint" data-process-id="${item.id}" type="button" style="min-height:28px;font-size:12px">${t("refreshEndpoint")}</button>`
                    : `<button class="button secondary session-navigate" data-process-id="${item.id}" type="button" style="min-height:28px;font-size:12px">${t("navigateSession")}</button>
-               <button class="button secondary session-probe" data-process-id="${item.id}" type="button" style="min-height:28px;font-size:12px">${t("probeFingerprint")}</button>`
+               <button class="button secondary session-probe" data-process-id="${item.id}" type="button" style="min-height:28px;font-size:12px">${t("probeFingerprint")}</button>
+               <button class="button secondary session-screenshot" data-process-id="${item.id}" type="button" style="min-height:28px;font-size:12px">${t("screenshotSession")}</button>
+               <button class="button secondary session-evaluate" data-process-id="${item.id}" type="button" style="min-height:28px;font-size:12px">${t("evaluateSession")}</button>`
                }
              </div>`
           : "";
@@ -1413,12 +1773,19 @@ function renderProcesses(selector, processes, stopLabel = t("stop"), isSession =
         isSession && item.idle_seconds != null
           ? ` · ${t("idleSeconds")} ${Math.max(0, Number(item.idle_seconds) || 0)}s`
           : "";
+      const batchCheck =
+        isSession && running
+          ? `<input type="checkbox" class="session-batch-check" data-session-id="${item.id}" ${state.selectedSessions.has(item.id) ? "checked" : ""} />`
+          : "";
       return `
         <article class="process-row ${failed ? "has-error" : ""}" data-process-id="${item.id}" ${isSession ? 'style="cursor:pointer"' : ""}>
           <div class="row-main">
-            <div>
-              <div class="row-title">${escapeHtml(item.label)}</div>
-              <div class="row-meta">pid ${item.pid} · ${escapeHtml(item.status)} · ${uptimeStr}${item.mode ? ` · ${escapeHtml(item.mode)}` : ""}${idleStr}</div>
+            <div style="display:flex;gap:10px;align-items:flex-start">
+              ${batchCheck}
+              <div>
+                <div class="row-title">${escapeHtml(item.label)}</div>
+                <div class="row-meta">pid ${item.pid} · ${escapeHtml(item.status)} · ${uptimeStr}${item.mode ? ` · ${escapeHtml(item.mode)}` : ""}${idleStr}</div>
+              </div>
             </div>
             <div style="display:flex;gap:6px;align-items:center">
               ${isSession ? `<button class="button secondary expand-detail icon-only" data-detail-id="${item.id}" type="button" title="Detail"><i data-lucide="chevron-down"></i></button>` : ""}
@@ -1474,12 +1841,26 @@ function renderProcesses(selector, processes, stopLabel = t("stop"), isSession =
     button.addEventListener("click", async (e) => {
       e.stopPropagation();
       try {
-        const response = await fetch(`/api/sessions/${button.dataset.logId}/logs/download`);
+        const headers = {};
+        const token = apiToken();
+        if (token) headers["X-FoxDesk-Token"] = token;
+        const response = await fetch(`/api/sessions/${button.dataset.logId}/logs/download`, {
+          method: "GET",
+          headers,
+        });
+        if (!response.ok) {
+          let detail = response.statusText;
+          try {
+            const data = await response.json();
+            detail = data.detail || detail;
+          } catch (_) {}
+          throw new Error(detail);
+        }
         const blob = await response.blob();
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        link.download = `session-${button.dataset.logId}.log`;
+        link.download = `session-${button.dataset.logId.slice(0, 8)}.log`;
         document.body.appendChild(link);
         link.click();
         link.remove();
@@ -1487,6 +1868,16 @@ function renderProcesses(selector, processes, stopLabel = t("stop"), isSession =
       } catch (err) {
         toast(err.message);
       }
+    });
+  });
+  $$(".session-batch-check").forEach((cb) => {
+    cb.addEventListener("click", (e) => e.stopPropagation());
+    cb.addEventListener("change", () => {
+      const id = cb.dataset.sessionId;
+      if (!id) return;
+      if (cb.checked) state.selectedSessions.add(id);
+      else state.selectedSessions.delete(id);
+      updateSessionBatchBar(processes);
     });
   });
   $$(".copy-ws").forEach((button) => {
@@ -1551,6 +1942,61 @@ function renderProcesses(selector, processes, stopLabel = t("stop"), isSession =
       }
     });
   });
+  $$(".session-screenshot").forEach((button) => {
+    button.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      try {
+        const result = await api(`/api/sessions/${button.dataset.processId}/screenshot`, {
+          method: "POST",
+          body: JSON.stringify({ full_page: false }),
+        });
+        if (!result.ok || !result.image_base64) {
+          toast(result.error || t("failed"));
+          return;
+        }
+        const bin = atob(result.image_base64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
+        const blob = new Blob([bytes], { type: result.mime || "image/png" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `session-${String(button.dataset.processId).slice(0, 8)}.png`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+        toast(t("screenshotDone"));
+      } catch (err) {
+        toast(err.message);
+      }
+    });
+  });
+  $$(".session-evaluate").forEach((button) => {
+    button.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const expression = prompt(t("evaluatePrompt"), "document.title");
+      if (expression == null || !String(expression).trim()) return;
+      try {
+        const result = await api(`/api/sessions/${button.dataset.processId}/evaluate`, {
+          method: "POST",
+          body: JSON.stringify({ expression: String(expression).trim() }),
+        });
+        if (result.ok === false) {
+          toast(result.error || t("failed"));
+          return;
+        }
+        const preview =
+          typeof result.value === "string"
+            ? result.value
+            : JSON.stringify(result.value, null, 2);
+        toast(`${t("evaluateDone")}: ${String(preview || "").slice(0, 180)}`);
+      } catch (err) {
+        toast(err.message);
+      }
+    });
+  });
+  if (isSession) updateSessionBatchBar(processes);
   renderIcons();
 }
 
@@ -1754,6 +2200,7 @@ async function loadProxies() {
   }
   fillProxySelect($("#proxyPoolSelect")?.value || "");
   renderProxyPool();
+  loadProxyHealthStatus().catch(() => {});
 }
 
 function renderProxyPool() {
@@ -2365,8 +2812,11 @@ async function handleContextAction(action) {
   switch (action) {
     case "launch":
       try {
-        await api("/api/sessions", { method: "POST", body: JSON.stringify({ profile_id: contextProfileId }) });
-        toast(`${t("launched")} ${profile.name}`);
+        const launched = await api("/api/sessions", {
+          method: "POST",
+          body: JSON.stringify({ profile_id: contextProfileId }),
+        });
+        toast(`${t("launched")} ${profile.name}${summarizeEnvironmentRisks(launched)}`);
         await loadSessions();
       } catch (err) { toast(err.message); }
       break;
@@ -2518,24 +2968,39 @@ async function checkFingerprint() {
     el.classList.add("open");
     const result = await api(`/api/profiles/${state.selectedId}/fingerprint-check`);
     const scoreColor = result.score >= 80 ? "var(--success)" : result.score >= 50 ? "var(--warning)" : "var(--danger)";
+    const issues = result.issues || [];
+    const risks = (result.environment_risks || []).filter((r) => r.level !== "info");
+    const riskList = risks.length
+      ? `<div style="margin:8px 0 4px;font-size:12px;font-weight:650">${t("envRisks")}</div>
+         <ul class="fp-issues">${risks
+           .map(
+             (r) =>
+               `<li><strong style="text-transform:uppercase;font-size:10px;opacity:.8">${escapeHtml(r.level)}</strong> ${escapeHtml(r.message || "")}</li>`,
+           )
+           .join("")}</ul>`
+      : "";
     el.innerHTML = `
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
         <div class="fp-score">
           <div class="fp-score-bar"><div class="fp-score-fill" style="width:${result.score}%;background:${scoreColor}"></div></div>
           <span style="color:${scoreColor}">${result.score}/100</span>
         </div>
-        <span style="font-size:12px;color:var(--muted)">${result.issues.length === 0 ? "✓ " + t("allChecksPassed") : `${result.issues.length} ${t("issues")}`}</span>
+        <span style="font-size:12px;color:var(--muted)">${issues.length === 0 ? "✓ " + t("allChecksPassed") : `${issues.length} ${t("issues")}`}</span>
         <a href="${result.check_url}" target="_blank" style="margin-left:auto;font-size:12px">${t("openInBrowser")} →</a>
       </div>
-      ${result.issues.length ? `<ul class="fp-issues">${result.issues.map((i) => `<li>${escapeHtml(i)}</li>`).join("")}</ul>` : ""}
+      <p style="margin:0 0 8px;font-size:12px;color:var(--muted)">${escapeHtml(result.note || t("envRiskNote"))}</p>
+      ${issues.length ? `<ul class="fp-issues">${issues.map((i) => `<li>${escapeHtml(i)}</li>`).join("")}</ul>` : ""}
+      ${riskList}
       <dl class="fp-checks-grid">
+        <dt>Proxy</dt><dd>${escapeHtml(String(result.checks.proxy || "—"))}</dd>
+        <dt>geoip</dt><dd>${result.checks.geoip ? "on" : "off"}</dd>
         <dt>${t("navigatorPlatform")}</dt><dd>${escapeHtml(result.checks.platform)}</dd>
         <dt>${t("navigatorVendor")}</dt><dd>${escapeHtml(result.checks.vendor)}</dd>
         <dt>${t("screenWidth")}×${t("screenHeight")}</dt><dd>${escapeHtml(result.checks.screen)}</dd>
         <dt>WebGL</dt><dd>${escapeHtml(result.checks.webgl)}</dd>
         <dt>Canvas</dt><dd>${result.checks.canvas_noise ? t("canvasNoise") + " ✓" : "—"}</dd>
         <dt>Audio</dt><dd>${result.checks.audio_noise ? t("audioNoise") + " ✓" : "—"}</dd>
-        <dt>WebRTC</dt><dd>${escapeHtml(result.checks.webrtc_mode)}</dd>
+        <dt>WebRTC</dt><dd>${escapeHtml(String(result.checks.webrtc_mode || ""))}${result.checks.block_webrtc ? " · block" : ""}</dd>
         <dt>${t("timezone")}</dt><dd>${escapeHtml(result.checks.timezone)}</dd>
         <dt>${t("locale")}</dt><dd>${escapeHtml(result.checks.locale)}</dd>
       </dl>`;
@@ -2643,6 +3108,7 @@ function bindEvents() {
   $("#checkFpBtn")?.addEventListener("click", checkFingerprint);
   $("#bulkProxyBtn")?.addEventListener("click", bulkProxyImport);
   $("#stopAllBtn")?.addEventListener("click", stopAllSessions);
+  $("#batchStopSessionsBtn")?.addEventListener("click", () => batchStopSessions().catch((e) => toast(e.message)));
   $("#proxyAddBtn")?.addEventListener("click", () => addProxyFromForm().catch((e) => toast(e.message)));
   $("#proxyImportBtn")?.addEventListener("click", () => importProxyPool().catch((e) => toast(e.message)));
   $("#templateBtn")?.addEventListener("click", () => {
@@ -2794,6 +3260,13 @@ function bindEvents() {
   if (form) {
     form.addEventListener("input", markFormDirty);
     form.addEventListener("change", markFormDirty);
+    if (form.elements.engine) {
+      form.elements.engine.addEventListener("change", () => {
+        syncEngineUi();
+        markFormDirty();
+      });
+    }
+    syncEngineUi();
     if (form.elements.locale && form.elements.fp_locale) {
       form.elements.locale.addEventListener("input", () => {
         form.elements.fp_locale.value = form.elements.locale.value;

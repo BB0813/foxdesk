@@ -1,0 +1,39 @@
+{
+  "ok": true,
+  "backend": "playwright",
+  "channel": null,
+  "headless": false,
+  "locale": "en-US",
+  "timezone": "America/New_York",
+  "proxy": null,
+  "started_at": 1784051762.1436522,
+  "href": "about:blank",
+  "probe": {
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+    "platform": "Win32",
+    "language": "en-US",
+    "languages": [
+      "en-US"
+    ],
+    "webdriver": true,
+    "hardwareConcurrency": 20,
+    "deviceMemory": null,
+    "maxTouchPoints": 10,
+    "vendor": "Google Inc.",
+    "pluginsLength": 5,
+    "uaChBrands": null,
+    "screen": {
+      "width": 1280,
+      "height": 720,
+      "colorDepth": 32,
+      "availWidth": 1280,
+      "availHeight": 720
+    },
+    "timezone": "America/New_York",
+    "webglVendor": "Google Inc. (Intel)",
+    "webglRenderer": "ANGLE (Intel, Intel(R) Iris(R) Xe Graphics (0x000046A6) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+    "hasChromeRuntime": true,
+    "href": "about:blank"
+  },
+  "elapsed_s": 2.416
+}

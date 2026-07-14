@@ -68,6 +68,9 @@ hiddenimports = [
     'playwright',
     'playwright.sync_api',
     'playwright.async_api',
+    'patchright',
+    'patchright.sync_api',
+    'patchright.async_api',
     'language_tags',
     'screeninfo',
     'ua_parser',
@@ -77,6 +80,8 @@ hiddenimports = [
     'backend',
     'backend.app',
     'backend.camoufox_worker',
+    'backend.chromium_worker',
+    'backend.fingerprint_presets',
     'backend.process_utils',
     'backend.proxy_pool',
     'backend.templates_data',
@@ -98,7 +103,11 @@ for pkg in (
     'apify_fingerprint_datapoints',
     'language_tags',
     'playwright',
+    'patchright',
     'certifi',
+    # WebView2 / WinForms backend needs full pythonnet runtime DLLs.
+    'pythonnet',
+    'clr_loader',
 ):
     try:
         pkg_datas, pkg_binaries, pkg_hidden = collect_all(pkg)
@@ -115,11 +124,26 @@ for pkg in (
         except Exception as exc2:
             print(f'[foxdesk.spec] collect_data_files({pkg}) skipped: {exc2}')
 
-for pkg in ('camoufox', 'browserforge', 'apify_fingerprint_datapoints', 'playwright'):
+for pkg in (
+    'camoufox',
+    'browserforge',
+    'apify_fingerprint_datapoints',
+    'playwright',
+    'patchright',
+    'pythonnet',
+    'clr_loader',
+):
     try:
         hiddenimports += collect_submodules(pkg)
     except Exception:
         pass
+
+hiddenimports += [
+    'clr',
+    'clr_loader',
+    'pythonnet',
+    'webview.platforms.winforms',
+]
 
 # de-dup while preserving order
 _seen = set()
@@ -130,6 +154,37 @@ for name in hiddenimports:
         _unique_hidden.append(name)
 hiddenimports = _unique_hidden
 
+# Host site-packages often contain ML/IDE stacks that Analysis would drag in
+# via accidental imports (e.g. camoufox/browserforge optional paths). Keep the
+# portable tree lean — FoxDesk does not need torch/scipy/IPython at runtime.
+excludes = [
+    'torch',
+    'torchvision',
+    'torchaudio',
+    'transformers',
+    'tensorboard',
+    'scipy',
+    'pandas',
+    'numba',
+    'llvmlite',
+    'jedi',
+    'IPython',
+    'ipykernel',
+    'notebook',
+    'matplotlib',
+    'sklearn',
+    'scikit-learn',
+    'cv2',
+    'tensorflow',
+    'keras',
+    'mypy',
+    'pytest',
+    'black',
+    'isort',
+    'ruff',
+    'undetected_playwright',
+]
+
 a = Analysis(
     ['desktop.py'],
     pathex=[str(ROOT)],
@@ -139,7 +194,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=excludes,
     noarchive=False,
 )
 

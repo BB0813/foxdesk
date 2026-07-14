@@ -91,7 +91,7 @@ def migrate_legacy_data() -> None:
                 pass
 
 
-APP_VERSION = "1.3.1"
+APP_VERSION = "1.4.0"
 GITHUB_REPO = "BB0813/foxdesk"
 
 if getattr(sys, "frozen", False):
@@ -103,6 +103,7 @@ else:
 
 STATIC_DIR = ROOT / "static"
 WORKER = ROOT / "backend" / "camoufox_worker.py"
+WORKER_CHROMIUM = ROOT / "backend" / "chromium_worker.py"
 CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 
 # Migrate legacy data on startup
@@ -145,6 +146,15 @@ class ProfileIn(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     startup_url: str = "https://browserleaks.com/javascript"
     mode: Literal["browser", "server"] = "browser"
+    # Phase A dual-engine: camoufox (Firefox) | chromium (Playwright Chromium stack)
+    engine: Literal["camoufox", "chromium"] = "camoufox"
+    # Phase C: chromium automation backend — playwright | patchright | auto
+    # auto = prefer patchright when installed, else playwright
+    chromium_backend: Literal["auto", "playwright", "patchright"] = "auto"
+    # Optional Playwright channel for chromium engine: chrome | msedge | "" (bundled chromium)
+    chromium_channel: str = ""
+    # Phase B: normal = soft risks only; strict = high risks block launch
+    consistency_policy: Literal["normal", "strict"] = "normal"
     os: Literal["auto", "windows", "macos", "linux"] = "auto"
     headless: bool = False
     persistent_context: bool = True
@@ -164,18 +174,27 @@ class ProfileIn(BaseModel):
     tags: list[str] = Field(default_factory=list)
     notes: str = ""
     # Fingerprint parameters
+    user_agent: str = ""
     navigator_platform: str = ""
     navigator_vendor: str = ""
     screen_width: int = 0
     screen_height: int = 0
     screen_color_depth: int = 0
     device_pixel_ratio: float = 0.0
+    hardware_concurrency: int = 0
+    device_memory: float = 0.0
+    max_touch_points: int = -1  # -1 = leave default; 0+ override
     canvas_noise: bool = True
     webgl_vendor: str = ""
     webgl_renderer: str = ""
     audio_noise: bool = True
     fonts: list[str] = Field(default_factory=list)
+    # Phase B: empty/none = no pack; auto = OS pack; windows|macos|linux = fixed pack
+    font_pack: str = ""
     timezone: str = ""
+    # Client Hints (Chromium; best-effort via init script / context)
+    ua_ch_platform: str = ""
+    ua_ch_mobile: bool = False
     webrtc_mode: Literal["default", "disable", "public_only", "force_proxy"] = "default"
     media_devices: Literal["default", "random", "empty"] = "default"
     keyboard_layout: str = ""
@@ -188,10 +207,69 @@ class ProfileIn(BaseModel):
             raise ValueError("startup_url must start with http://, https://, or about:")
         return value
 
-    @field_validator("addons", "extra_args")
+    @field_validator("engine", mode="before")
+    @classmethod
+    def normalize_engine(cls, value: Any) -> str:
+        raw = (str(value) if value is not None else "camoufox").strip().lower()
+        if raw in {"", "firefox", "camoufox", "default"}:
+            return "camoufox"
+        if raw in {"chromium", "chrome", "pw", "playwright"}:
+            return "chromium"
+        raise ValueError("engine must be camoufox or chromium")
+
+    @field_validator("chromium_backend", mode="before")
+    @classmethod
+    def normalize_chromium_backend(cls, value: Any) -> str:
+        raw = (str(value) if value is not None else "auto").strip().lower()
+        if raw in {"", "auto", "default"}:
+            return "auto"
+        if raw in {"playwright", "pw"}:
+            return "playwright"
+        if raw in {"patchright", "pr", "patched"}:
+            return "patchright"
+        raise ValueError("chromium_backend must be auto, playwright, or patchright")
+
+    @field_validator("chromium_channel", mode="before")
+    @classmethod
+    def normalize_chromium_channel(cls, value: Any) -> str:
+        raw = (str(value) if value is not None else "").strip().lower()
+        if raw in {"", "chromium", "default"}:
+            return ""
+        if raw in {"chrome", "msedge", "chrome-beta", "msedge-beta", "msedge-dev"}:
+            return raw
+        raise ValueError("chromium_channel must be empty, chrome, or msedge")
+
+    @field_validator("consistency_policy", mode="before")
+    @classmethod
+    def normalize_consistency_policy(cls, value: Any) -> str:
+        raw = (str(value) if value is not None else "normal").strip().lower()
+        if raw in {"", "normal", "default", "soft"}:
+            return "normal"
+        if raw in {"strict", "hard", "block"}:
+            return "strict"
+        raise ValueError("consistency_policy must be normal or strict")
+
+    @field_validator("user_agent", mode="before")
+    @classmethod
+    def normalize_user_agent(cls, value: Any) -> str:
+        return (str(value) if value is not None else "").strip()
+
+    @field_validator("font_pack", mode="before")
+    @classmethod
+    def normalize_font_pack(cls, value: Any) -> str:
+        raw = (str(value) if value is not None else "").strip().lower()
+        if raw in {"", "none", "off", "manual", "custom"}:
+            return ""
+        if raw in {"auto", "os", "default_pack"}:
+            return "auto"
+        if raw in {"windows", "macos", "linux"}:
+            return raw
+        raise ValueError("font_pack must be empty, auto, windows, macos, or linux")
+
+    @field_validator("addons", "extra_args", "fonts")
     @classmethod
     def normalize_list(cls, value: list[str]) -> list[str]:
-        return [item.strip() for item in value if item.strip()]
+        return [item.strip() for item in value if item and str(item).strip()]
 
 
 class Profile(ProfileIn):
@@ -368,6 +446,7 @@ class ManagedProcess:
     runtime_id: str | None = None
     runtime_path: str | None = None
     mode: str | None = None
+    engine: str | None = None
     last_event: str | None = None
     error_message: str | None = None
     ws_endpoint: str | None = None
@@ -397,6 +476,7 @@ class ManagedProcess:
             "profile_id": self.profile_id,
             "runtime_id": self.runtime_id,
             "mode": self.mode,
+            "engine": self.engine or "camoufox",
             "last_event": self.last_event,
             "error_message": self.error_message,
             "ws_endpoint": self.ws_endpoint,
@@ -505,7 +585,14 @@ class ProcessRegistry:
                     if event.get("mode"):
                         item.mode = str(event.get("mode"))
                 if event.get("event") == "error":
-                    item.error_message = str(event.get("message") or "worker error")
+                    raw_msg = str(event.get("message") or "worker error")
+                    be = event.get("backend") or ""
+                    item.error_message = humanize_chromium_launch_error(raw_msg, be or None)
+                    # Keep a short hint line in logs for the UI log pane.
+                    try:
+                        item.logs.append(f"[error-hint] {item.error_message[:500]}")
+                    except Exception:
+                        pass
                 if event.get("event") in {"endpoint", "ready"} and event.get("ws_endpoint"):
                     item.ws_endpoint = str(event.get("ws_endpoint"))
                 if event.get("event") == "fingerprint_report" and isinstance(event.get("report"), dict):
@@ -849,11 +936,122 @@ setup_manager = SetupManager(
 )
 
 
-def worker_command(runtime_path: Path) -> list[str]:
+def normalize_engine_name(value: str | None) -> str:
+    raw = (value or "camoufox").strip().lower()
+    if raw in {"", "firefox", "camoufox", "default"}:
+        return "camoufox"
+    if raw in {"chromium", "chrome", "pw", "playwright"}:
+        return "chromium"
+    return "camoufox"
+
+
+def normalize_chromium_backend_name(value: str | None) -> str:
+    raw = (value or "auto").strip().lower()
+    if raw in {"", "auto", "default"}:
+        return "auto"
+    if raw in {"playwright", "pw"}:
+        return "playwright"
+    if raw in {"patchright", "pr", "patched"}:
+        return "patchright"
+    return "auto"
+
+
+def chromium_backend_available(name: str) -> bool:
+    name = normalize_chromium_backend_name(name)
+    if name == "auto":
+        return import_available("playwright") or import_available("patchright")
+    if name == "patchright":
+        return import_available("patchright")
+    return import_available("playwright")
+
+
+def chromium_install_hint(backend: str | None = None) -> str:
+    """User-facing install commands for Chromium stack gaps."""
+    name = normalize_chromium_backend_name(backend)
+    if name == "patchright":
+        return "pip install patchright && patchright install chromium"
+    if name == "playwright":
+        return "pip install playwright && playwright install chromium"
+    # auto / both
+    return (
+        "pip install playwright patchright && "
+        "playwright install chromium && patchright install chromium"
+    )
+
+
+def humanize_chromium_launch_error(exc: BaseException | str, backend: str | None = None) -> str:
+    """Map Playwright/Patchright launch failures to actionable install text."""
+    text = str(exc)
+    low = text.lower()
+    be = normalize_chromium_backend_name(backend) if backend else "auto"
+    hint_pr = "patchright install chromium"
+    hint_pw = "playwright install chromium"
+    hint = hint_pr if be == "patchright" else (hint_pw if be == "playwright" else f"{hint_pw}  (or {hint_pr})")
+    if any(
+        key in low
+        for key in (
+            "executable doesn't exist",
+            "browser not found",
+            "browsers are not installed",
+            "please run the following command to download",
+            "chromium distribution is not found",
+            "browserType.launch",
+            "browser_type.launch",
+        )
+    ) or ("chromium" in low and "install" in low):
+        return (
+            f"Chromium browser binary missing for backend={be}. "
+            f"Run: {hint}. "
+            f"Full stack: {chromium_install_hint(be)}. "
+            f"Detail: {text}"
+        )
+    if "channel" in low and "chrome" in low:
+        return (
+            "chromium_channel=chrome failed — install Google Chrome or clear channel to use bundled Chromium. "
+            f"Detail: {text}"
+        )
+    if "patchright" in low and "not installed" in low:
+        return f"patchright package missing. Run: {chromium_install_hint('patchright')}. Detail: {text}"
+    if "playwright" in low and "not installed" in low:
+        return f"playwright package missing. Run: {chromium_install_hint('playwright')}. Detail: {text}"
+    return text
+
+
+def resolve_chromium_backend(value: str | None) -> str:
+    """Resolve auto → patchright if installed, else playwright."""
+    name = normalize_chromium_backend_name(value)
+    if name == "patchright":
+        if import_available("patchright"):
+            return "patchright"
+        raise RuntimeError(
+            f"chromium_backend=patchright but patchright is not installed. "
+            f"Run: {chromium_install_hint('patchright')}"
+        )
+    if name == "playwright":
+        if import_available("playwright"):
+            return "playwright"
+        raise RuntimeError(
+            f"chromium_backend=playwright but playwright is not installed. "
+            f"Run: {chromium_install_hint('playwright')}"
+        )
+    # auto
+    if import_available("patchright"):
+        return "patchright"
+    if import_available("playwright"):
+        return "playwright"
+    raise RuntimeError(
+        f"neither patchright nor playwright is installed. Run: {chromium_install_hint('auto')}"
+    )
+
+
+def worker_command(runtime_path: Path, engine: str = "camoufox") -> list[str]:
     """Build a command that works in source and frozen (PyInstaller) modes."""
+    eng = normalize_engine_name(engine)
     if getattr(sys, "frozen", False):
+        # Frozen binary dispatches on runtime JSON engine field inside --worker.
         return [str(APP_EXECUTABLE), "--worker", str(runtime_path)]
-    return [sys.executable, str(WORKER), str(runtime_path)]
+    script = WORKER_CHROMIUM if eng == "chromium" else WORKER
+    return [sys.executable, str(script), str(runtime_path)]
 
 
 def start_process(
@@ -866,6 +1064,7 @@ def start_process(
     runtime_id: str | None = None,
     runtime_path: str | None = None,
     mode: str | None = None,
+    engine: str | None = None,
 ) -> ManagedProcess:
     item_id = str(uuid.uuid4())
     # On POSIX start a new session so we can signal the process group.
@@ -880,6 +1079,13 @@ def start_process(
     }
     if os.name != "nt":
         kwargs["start_new_session"] = True
+    # Chromium may resolve browsers under FoxDesk data dir.
+    env = os.environ.copy()
+    browsers = DATA_DIR / "browsers"
+    if browsers.exists():
+        env.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(browsers))
+        env.setdefault("FOXDESK_BROWSERS_PATH", str(browsers))
+    kwargs["env"] = env
     process = subprocess.Popen(**kwargs)
     item = ManagedProcess(
         id=item_id,
@@ -892,6 +1098,7 @@ def start_process(
         runtime_id=runtime_id,
         runtime_path=runtime_path,
         mode=mode,
+        engine=normalize_engine_name(engine),
     )
     registry.add(item)
     return item
@@ -1058,6 +1265,7 @@ def system() -> dict[str, Any]:
     first_run = (not installed) or (not path_ok)
     setup = setup_manager.status()
     settings_view = settings_store.get()
+    chrome = detect_google_chrome_install()
     return {
         "app_name": "FoxDesk",
         "app_version": APP_VERSION,
@@ -1068,6 +1276,33 @@ def system() -> dict[str, Any]:
         "camoufox_installed": installed,
         "camoufox_version": version,
         "camoufox_path": path,
+        "playwright_installed": import_available("playwright"),
+        "patchright_installed": import_available("patchright"),
+        "google_chrome": chrome,
+        "chromium_stack": {
+            "playwright": import_available("playwright"),
+            "patchright": import_available("patchright"),
+            "default_backend": (
+                "patchright"
+                if import_available("patchright")
+                else ("playwright" if import_available("playwright") else None)
+            ),
+            "hint": (
+                chromium_install_hint("auto")
+                if not (
+                    import_available("patchright") or import_available("playwright")
+                )
+                else (
+                    chromium_install_hint("patchright")
+                    if not import_available("patchright")
+                    else (
+                        chromium_install_hint("playwright")
+                        if not import_available("playwright")
+                        else "patchright + playwright ready (auto prefers patchright)"
+                    )
+                )
+            ),
+        },
         "install_flow": install_flow,
         "running_sessions": running_sessions,
         "first_run": first_run,
@@ -1191,6 +1426,7 @@ def export_diagnostics() -> dict[str, Any]:
         if isinstance(update_status, dict)
     }
 
+    chrome = detect_google_chrome_install()
     payload = {
         "generated_at": now_iso(),
         "app_name": "FoxDesk",
@@ -1208,7 +1444,21 @@ def export_diagnostics() -> dict[str, Any]:
         "running_sessions": sum(1 for s in registry.list("session") if s.get("status") == "running"),
         "update": safe_update,
         "camoufox_installed": import_available("camoufox"),
-        "note": "Redacted: no proxy passwords, cookies, or API tokens included.",
+        "playwright_installed": import_available("playwright"),
+        "patchright_installed": import_available("patchright"),
+        "google_chrome": {"installed": chrome.get("installed"), "path_count": len(chrome.get("paths") or [])},
+        "engines_summary": {
+            p.id: {
+                "name": p.name,
+                "engine": normalize_engine_name(getattr(p, "engine", None)),
+                "chromium_backend": getattr(p, "chromium_backend", None),
+                "chromium_channel": getattr(p, "chromium_channel", None) or "",
+                "headless": p.headless,
+                "tags": list(p.tags or [])[:12],
+            }
+            for p in store.all()[:80]
+        },
+        "note": "Redacted: no proxy passwords, cookies, or API tokens included. No anti-detect guarantee.",
     }
     atomic_write_json(out_path, payload)
     activity.log("diagnostics_export", str(out_path))
@@ -1400,13 +1650,17 @@ def list_profiles() -> list[Profile]:
 @app.post("/api/profiles")
 def create_profile(profile: ProfileIn) -> Profile:
     data = profile.model_dump()
+    engine = normalize_engine_name(data.get("engine"))
+    data["engine"] = engine
     if data.get("user_data_dir"):
         data["user_data_dir"] = str(resolve_user_data_dir(data["user_data_dir"]))
     elif data.get("name"):
         slug = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in data["name"]).strip("-") or "profile"
+        if engine == "chromium" and not slug.endswith("-chromium"):
+            slug = f"{slug}-chromium"
         data["user_data_dir"] = str(PROFILES_DIR / slug)
     created = store.create(ProfileIn(**data))
-    activity.log("profile_create", created.name)
+    activity.log("profile_create", f"{created.name} engine={engine}")
     return created
 
 
@@ -1485,8 +1739,6 @@ def open_profile_data_dir(profile_id: str) -> dict[str, Any]:
 
 @app.post("/api/sessions")
 def launch_session(request: LaunchRequest) -> dict[str, Any]:
-    if not import_available("camoufox"):
-        raise HTTPException(status_code=409, detail="camoufox is not installed. Run fetch/install first.")
     settings_view = settings_store.get()
     max_sessions = int(settings_view.get("max_concurrent_sessions") or 8)
     running = registry.running_session_count()
@@ -1502,6 +1754,19 @@ def launch_session(request: LaunchRequest) -> dict[str, Any]:
 
     profile = apply_proxy_pool_to_profile(profile)
     profile = normalize_profile_paths(profile)
+    engine = normalize_engine_name(getattr(profile, "engine", None))
+
+    if engine == "camoufox" and not import_available("camoufox"):
+        raise HTTPException(status_code=409, detail="camoufox is not installed. Run fetch/install first.")
+    resolved_backend = None
+    if engine == "chromium":
+        try:
+            resolved_backend = resolve_chromium_backend(getattr(profile, "chromium_backend", None))
+        except Exception as exc:
+            raise HTTPException(
+                status_code=409,
+                detail=humanize_chromium_launch_error(exc, getattr(profile, "chromium_backend", None)),
+            ) from None
 
     # Pre-launch validation
     errors = validate_profile_for_launch(profile)
@@ -1515,6 +1780,9 @@ def launch_session(request: LaunchRequest) -> dict[str, Any]:
     runtime_id = str(uuid.uuid4())
     runtime_path = RUNTIME_DIR / f"{runtime_id}.json"
     payload = profile.model_dump()
+    payload["engine"] = engine
+    if resolved_backend:
+        payload["chromium_backend"] = resolved_backend
     payload["_runtime_id"] = runtime_id
     payload["_profile_id"] = profile.id
     # Auto probe fingerprint once after browser ready when requested via tags/notes.
@@ -1527,7 +1795,7 @@ def launch_session(request: LaunchRequest) -> dict[str, Any]:
     # Ensure command/result sidecars exist.
     runtime_path.with_suffix(".cmd.jsonl").write_text("", encoding="utf-8")
     runtime_path.with_suffix(".result.jsonl").write_text("", encoding="utf-8")
-    command = worker_command(runtime_path)
+    command = worker_command(runtime_path, engine=engine)
     item = start_process(
         "session",
         profile.name,
@@ -1536,17 +1804,48 @@ def launch_session(request: LaunchRequest) -> dict[str, Any]:
         runtime_id=runtime_id,
         runtime_path=str(runtime_path),
         mode=profile.mode,
+        engine=engine,
     )
     with registry.lock:
         item.logs.append(f"[runtime] {runtime_path.name}")
+        item.logs.append(f"[engine] {engine}")
+        if resolved_backend:
+            item.logs.append(f"[chromium_backend] {resolved_backend}")
+            if not import_available("patchright") and resolved_backend == "playwright":
+                item.logs.append(
+                    "[hint] patchright not installed — webdriver more likely. "
+                    f"Install: {chromium_install_hint('patchright')}"
+                )
+        channel = (getattr(profile, "chromium_channel", None) or "").strip()
+        if channel:
+            item.logs.append(f"[chromium_channel] {channel}")
         if profile.proxy and profile.proxy.server:
             item.logs.append(f"[proxy] {profile.proxy.server}")
-    activity.log("session_launch", f"{profile.name} (pid {item.process.pid})")
+        tags = {str(t).lower() for t in (profile.tags or [])}
+        if tags & {"ai", "chatgpt", "claude", "gemini"}:
+            item.logs.append(
+                "[ai] own-account official flows only — no signup/subscribe guarantee; "
+                "align proxy with timezone/locale; prefer headed + persistent"
+            )
+    backend_note = f" backend={resolved_backend}" if resolved_backend else ""
+    activity.log("session_launch", f"{profile.name} engine={engine}{backend_note} (pid {item.process.pid})")
     view = item.view()
     view["runtime_id"] = runtime_id
     view["profile_id"] = profile.id
+    view["engine"] = engine
+    if resolved_backend:
+        view["chromium_backend"] = resolved_backend
     view["running_sessions"] = registry.running_session_count()
     view["max_concurrent_sessions"] = max_sessions
+    risks = environment_risks_for_profile(profile)
+    view["environment_risks"] = risks
+    high = sum(1 for r in risks if r.get("level") == "high")
+    medium = sum(1 for r in risks if r.get("level") == "medium")
+    if high or medium:
+        with registry.lock:
+            item.logs.append(
+                f"[env-risk] high={high} medium={medium} — check UI warnings / fingerprint-check"
+            )
     return view
 
 
@@ -1576,18 +1875,20 @@ def normalize_profile_paths(profile: Profile) -> Profile:
 def validate_profile_for_launch(profile: Profile) -> list[str]:
     """Validate profile before launching. Returns list of error messages."""
     errors: list[str] = []
+    engine = normalize_engine_name(getattr(profile, "engine", None))
 
-    # 1. Check Camoufox browser binary exists
-    try:
-        path_result = camoufox_path_info()
-        if not path_result.get("ok") or not path_result.get("stdout", "").strip():
-            errors.append("Camoufox browser binary not found. Complete first-run setup / fetch first.")
-        else:
-            browser_path = Path(path_result["stdout"].strip())
-            if not browser_path.exists():
-                errors.append(f"Camoufox browser path does not exist: {browser_path}")
-    except Exception as exc:
-        errors.append(f"Failed to check Camoufox browser path: {exc}")
+    # 1. Camoufox binary only required for camoufox engine
+    if engine == "camoufox":
+        try:
+            path_result = camoufox_path_info()
+            if not path_result.get("ok") or not path_result.get("stdout", "").strip():
+                errors.append("Camoufox browser binary not found. Complete first-run setup / fetch first.")
+            else:
+                browser_path = Path(path_result["stdout"].strip())
+                if not browser_path.exists():
+                    errors.append(f"Camoufox browser path does not exist: {browser_path}")
+        except Exception as exc:
+            errors.append(f"Failed to check Camoufox browser path: {exc}")
 
     # 2. Check user data directory is writable (if persistent context)
     if profile.persistent_context and profile.user_data_dir:
@@ -1619,7 +1920,351 @@ def validate_profile_for_launch(profile: Profile) -> list[str]:
     if not profile.name or not profile.name.strip():
         errors.append("Profile name cannot be empty")
 
+    # 6. Engine constraints (Phase A / C)
+    if engine == "chromium" and (profile.mode or "").lower() == "server":
+        errors.append("Chromium engine does not support server mode in Phase A (use mode=browser)")
+    if engine == "chromium":
+        backend = normalize_chromium_backend_name(getattr(profile, "chromium_backend", None))
+        if backend == "patchright" and not import_available("patchright"):
+            errors.append(
+                "patchright is not installed (required for chromium_backend=patchright). "
+                f"Run: {chromium_install_hint('patchright')}"
+            )
+        elif backend == "playwright" and not import_available("playwright"):
+            errors.append(
+                "playwright is not installed (required for chromium_backend=playwright). "
+                f"Run: {chromium_install_hint('playwright')}"
+            )
+        elif backend == "auto" and not (
+            import_available("patchright") or import_available("playwright")
+        ):
+            errors.append(
+                "neither patchright nor playwright is installed (required for chromium). "
+                f"Run: {chromium_install_hint('auto')}"
+            )
+        channel = (getattr(profile, "chromium_channel", None) or "").strip()
+        if channel == "chrome" and not detect_google_chrome_install().get("installed"):
+            errors.append(
+                "chromium_channel=chrome but Google Chrome was not found. "
+                "Install Chrome or set channel to empty (bundled Chromium)."
+            )
+    if engine == "camoufox" and not import_available("camoufox"):
+        # Soft: binary check already above; package import still useful
+        pass
+
+    # 7. user_data_dir must not be shared across engines (path marker convention)
+    ud = (profile.user_data_dir or "").replace("\\", "/").lower()
+    if engine == "chromium" and "/camoufox" in ud and "chromium" not in ud:
+        errors.append(
+            "user_data_dir looks like a camoufox profile path; use a separate directory for chromium "
+            "(e.g. .../profiles/<name>-chromium)"
+        )
+    if engine == "camoufox" and "-chromium" in ud:
+        errors.append(
+            "user_data_dir looks like a chromium profile path; use a separate directory for camoufox"
+        )
+
+    # Phase B consistency hard checks (always)
+    sw = int(getattr(profile, "screen_width", 0) or 0)
+    sh = int(getattr(profile, "screen_height", 0) or 0)
+    if (sw > 0) ^ (sh > 0):
+        errors.append("screen_width and screen_height must both be set or both empty")
+    ua = (getattr(profile, "user_agent", "") or "").strip()
+    if ua and len(ua) < 20:
+        errors.append("user_agent looks too short")
+    if ua and "HeadlessChrome" in ua:
+        errors.append("user_agent must not contain HeadlessChrome")
+
+    # Phase B strict policy: promote high environment risks to launch errors
+    policy = (getattr(profile, "consistency_policy", None) or "normal").strip().lower()
+    if policy == "strict":
+        for risk in environment_risks_for_profile(profile):
+            if risk.get("level") == "high":
+                errors.append(f"[strict] {risk.get('code')}: {risk.get('message')}")
+
     return errors
+
+
+def detect_google_chrome_install() -> dict[str, Any]:
+    """Best-effort local Google Chrome path detection (Windows-focused). Not a guarantee."""
+    candidates: list[Path] = []
+    env_candidates = [
+        os.environ.get("PROGRAMFILES", ""),
+        os.environ.get("PROGRAMFILES(X86)", ""),
+        os.environ.get("LOCALAPPDATA", ""),
+    ]
+    for root in env_candidates:
+        if not root:
+            continue
+        base = Path(root)
+        candidates.extend(
+            [
+                base / "Google" / "Chrome" / "Application" / "chrome.exe",
+                base / "Google" / "Chrome Beta" / "Application" / "chrome.exe",
+            ]
+        )
+    # macOS / Linux common paths (harmless if missing)
+    candidates.extend(
+        [
+            Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+            Path("/usr/bin/google-chrome"),
+            Path("/usr/bin/google-chrome-stable"),
+            Path("/usr/bin/chromium"),
+            Path("/usr/bin/chromium-browser"),
+        ]
+    )
+    found: list[str] = []
+    for path in candidates:
+        try:
+            if path.is_file():
+                found.append(str(path))
+        except OSError:
+            continue
+    return {"installed": bool(found), "paths": found[:5]}
+
+
+def environment_risks_for_profile(profile: Profile) -> list[dict[str, str]]:
+    """Soft warnings for high-risk site environments (not hard errors).
+
+    These do **not** guarantee pass rates (payment, AI signup/subscribe, etc.).
+    """
+    risks: list[dict[str, str]] = []
+
+    def add(code: str, level: str, message: str) -> None:
+        risks.append({"code": code, "level": level, "message": message})
+
+    tags = {str(t).lower() for t in (getattr(profile, "tags", None) or [])}
+    ai_scene = bool(tags & {"ai", "chatgpt", "claude", "gemini", "openai", "anthropic"})
+
+    engine = normalize_engine_name(getattr(profile, "engine", None))
+    if engine == "chromium":
+        backend_req = normalize_chromium_backend_name(getattr(profile, "chromium_backend", None))
+        try:
+            backend_eff = resolve_chromium_backend(backend_req)
+        except Exception:
+            backend_eff = backend_req
+        if backend_eff == "patchright":
+            add(
+                "engine_chromium_phase_c_patchright",
+                "low",
+                "Chromium backend=patchright (Phase C). Improves automation concealment vs stock Playwright; still not a Multilogin-class or signup guarantee.",
+            )
+        else:
+            add(
+                "engine_chromium_playwright",
+                "medium",
+                "Chromium backend=playwright. Automation signals (e.g. webdriver) are more likely; prefer chromium_backend=auto/patchright when installed.",
+            )
+            if backend_req == "auto" and not import_available("patchright"):
+                add(
+                    "patchright_not_installed",
+                    "medium",
+                    "patchright not installed; auto fell back to playwright. Install: pip install patchright && patchright install chromium",
+                )
+        channel = (getattr(profile, "chromium_channel", None) or "").strip()
+        chrome = detect_google_chrome_install()
+        if not channel:
+            if chrome.get("installed"):
+                add(
+                    "chromium_bundled_build",
+                    "low",
+                    "Using bundled Chromium (not channel=chrome). Google Chrome detected on this machine — optional: set chromium_channel=chrome.",
+                )
+            else:
+                add(
+                    "chromium_bundled_build",
+                    "low",
+                    "Using bundled Chromium build (not channel=chrome). Optional if Chrome is installed later.",
+                )
+        elif channel == "chrome" and not chrome.get("installed"):
+            add(
+                "chrome_channel_missing",
+                "high",
+                "chromium_channel=chrome but Google Chrome was not found in common install paths.",
+            )
+    else:
+        add(
+            "engine_firefox_payment_stack",
+            "medium",
+            "Camoufox is Firefox-based; many Chromium-oriented sites (checkout / some AI flows) score Chromium stacks more leniently.",
+        )
+
+    if profile.headless:
+        add(
+            "headless",
+            "high",
+            "Headless mode is commonly blocked by payment / 3DS / interactive signup flows. Use a visible browser window.",
+        )
+    if (profile.mode or "").lower() == "server":
+        add(
+            "server_mode",
+            "high",
+            "Server mode is for automation endpoints, not interactive signup/subscribe UIs.",
+        )
+    if ai_scene and engine != "chromium":
+        add(
+            "ai_scene_prefer_chromium",
+            "medium",
+            "AI-tagged profile on Camoufox/Firefox. Many users prefer Chromium + patchright for ChatGPT/Claude/Gemini-style flows (still no guarantee).",
+        )
+    if ai_scene and not profile.persistent_context:
+        add(
+            "ai_scene_no_persistent",
+            "high",
+            "AI workstation-style use usually needs persistent_context so cookies/session survive restarts.",
+        )
+    if profile.block_webgl:
+        add(
+            "block_webgl",
+            "high",
+            "Blocking WebGL removes GPU signals many checkout pages expect.",
+        )
+    if profile.block_images:
+        add(
+            "block_images",
+            "medium",
+            "Blocking images can break CAPTCHA / 3DS challenge pages.",
+        )
+    has_proxy = bool((profile.proxy and profile.proxy.server) or profile.proxy_id)
+    if not has_proxy:
+        add(
+            "no_proxy",
+            "medium",
+            "No proxy configured. Exit IP will be your real network; payment risk engines often weight IP reputation heavily.",
+        )
+    if has_proxy and not profile.geoip:
+        if engine == "chromium":
+            # Chromium worker does not auto-geoip; timezone/locale must be set manually.
+            if not (profile.timezone or "").strip() or not (profile.locale or "").strip():
+                add(
+                    "proxy_without_geoip",
+                    "high",
+                    "Chromium + proxy without geoip: set timezone and locale to match the exit IP (geoip auto is Camoufox-oriented).",
+                )
+            else:
+                add(
+                    "proxy_without_geoip",
+                    "low",
+                    "Chromium engine ignores Camoufox geoip; timezone/locale are set explicitly (good).",
+                )
+        else:
+            add(
+                "proxy_without_geoip",
+                "high",
+                "Proxy is set but geoip is off — timezone/locale may not match the exit IP (common hard-fail for checkout).",
+            )
+    if has_proxy and not (profile.timezone or "").strip():
+        add(
+            "proxy_without_timezone",
+            "medium",
+            "Proxy without explicit timezone. Prefer a timezone that matches the proxy region (or enable geoip).",
+        )
+    if has_proxy and not (profile.locale or "").strip():
+        add(
+            "proxy_without_locale",
+            "medium",
+            "Proxy without explicit locale/language. Align Accept-Language with the proxy region.",
+        )
+    if not profile.block_webrtc and profile.webrtc_mode == "default":
+        add(
+            "webrtc_leak_risk",
+            "high",
+            "WebRTC is not blocked — real local/public IPs may leak beside the proxy.",
+        )
+    if engine == "chromium" and profile.webrtc_mode == "force_proxy":
+        add(
+            "webrtc_force_proxy_chromium",
+            "medium",
+            "Chromium Phase B cannot fully force WebRTC through proxy at kernel level; prefer webrtc_mode=disable + block_webrtc.",
+        )
+    fonts = list(getattr(profile, "fonts", None) or [])
+    font_pack = (getattr(profile, "font_pack", None) or "").strip()
+    if engine == "chromium" and not fonts and not font_pack:
+        add(
+            "fonts_unset",
+            "medium",
+            "No fonts list / font_pack. Commercial stacks usually pin an OS font set for consistency.",
+        )
+    media = (getattr(profile, "media_devices", None) or "default").strip().lower()
+    if engine == "chromium" and media == "default":
+        add(
+            "media_devices_default",
+            "low",
+            "media_devices=default leaves host enumerateDevices as-is (may be empty or odd on servers). Prefer random for desktop-like.",
+        )
+    if media == "empty":
+        add(
+            "media_devices_empty",
+            "medium",
+            "media_devices=empty is common on headless/VPS fingerprints; unusual for consumer desktop checkout.",
+        )
+    if not profile.persistent_context:
+        add(
+            "no_persistent",
+            "medium",
+            "Non-persistent context looks like a fresh automation profile (no cookies/history warm-up).",
+        )
+    if engine == "camoufox" and not profile.humanize:
+        add(
+            "no_humanize",
+            "low",
+            "Humanize is off; pointer/scroll patterns may look more robotic.",
+        )
+    if engine == "chromium" and profile.humanize:
+        add(
+            "humanize_chromium_noop",
+            "info",
+            "humanize is Camoufox-oriented; Chromium worker does not apply Camoufox humanize.",
+        )
+    if profile.screen_width and profile.screen_height:
+        if profile.screen_width < 1024 or profile.screen_height < 700:
+            add(
+                "small_viewport",
+                "medium",
+                f"Viewport {profile.screen_width}x{profile.screen_height} is unusual for desktop checkout.",
+            )
+    if not (profile.webgl_vendor or "").strip() and not profile.block_webgl:
+        add(
+            "webgl_unset",
+            "low",
+            "WebGL vendor/renderer not pinned; Camoufox defaults apply (usually fine, but less reproducible).",
+        )
+    if (profile.os or "auto") == "auto":
+        add(
+            "os_auto",
+            "low",
+            "OS is auto. For payment flows, pin windows/macos to match the proxy and WebGL story.",
+        )
+    # Locale vs timezone rough consistency (same map as fingerprint-check).
+    if profile.locale and profile.timezone:
+        locale_tz_map = {
+            "en-US": "America/",
+            "en-GB": "Europe/London",
+            "de-DE": "Europe/",
+            "fr-FR": "Europe/",
+            "ja-JP": "Asia/Tokyo",
+            "zh-CN": "Asia/Shanghai",
+            "zh-TW": "Asia/Taipei",
+            "ko-KR": "Asia/Seoul",
+        }
+        matched = False
+        for loc_prefix, tz_prefix in locale_tz_map.items():
+            if profile.locale.startswith(loc_prefix) and profile.timezone.startswith(tz_prefix):
+                matched = True
+                break
+        if not matched:
+            add(
+                "locale_timezone_mismatch",
+                "medium",
+                f"Locale ({profile.locale}) and timezone ({profile.timezone}) look inconsistent.",
+            )
+
+    add(
+        "no_guarantee",
+        "info",
+        "FoxDesk cannot guarantee payment, AI signup/subscribe, or anti-bot pass rates. Internal quality only — not Multilogin/GoLogin SLA.",
+    )
+    return risks
 
 
 @app.get("/api/sessions")
@@ -1851,7 +2496,7 @@ def get_session(process_id: str) -> dict[str, Any]:
     return view
 
 
-@app.post("/api/sessions/{process_id}/logs/download")
+@app.api_route("/api/sessions/{process_id}/logs/download", methods=["GET", "POST"])
 def download_session_logs(process_id: str):
     from fastapi.responses import PlainTextResponse
     try:
@@ -1871,8 +2516,6 @@ MAX_CONCURRENT_SESSIONS = 5
 
 @app.post("/api/sessions/batch")
 def batch_launch(request: BatchLaunchRequest) -> dict[str, Any]:
-    if not import_available("camoufox"):
-        raise HTTPException(status_code=409, detail="camoufox is not installed")
     current_sessions = registry.list("session")
     running = sum(1 for s in current_sessions if s["status"] == "running")
     available = MAX_CONCURRENT_SESSIONS - running
@@ -1890,6 +2533,19 @@ def batch_launch(request: BatchLaunchRequest) -> dict[str, Any]:
             continue
         profile = apply_proxy_pool_to_profile(profile)
         profile = normalize_profile_paths(profile)
+        engine = normalize_engine_name(getattr(profile, "engine", None))
+        if engine == "camoufox" and not import_available("camoufox"):
+            results.append({"profile_id": profile_id, "ok": False, "error": "camoufox is not installed"})
+            failed += 1
+            continue
+        resolved_backend = None
+        if engine == "chromium":
+            try:
+                resolved_backend = resolve_chromium_backend(getattr(profile, "chromium_backend", None))
+            except Exception as exc:
+                results.append({"profile_id": profile_id, "ok": False, "error": str(exc)})
+                failed += 1
+                continue
         errors = validate_profile_for_launch(profile)
         if errors:
             results.append({"profile_id": profile_id, "ok": False, "error": "; ".join(errors)})
@@ -1900,10 +2556,15 @@ def batch_launch(request: BatchLaunchRequest) -> dict[str, Any]:
         runtime_id = str(uuid.uuid4())
         runtime_path = RUNTIME_DIR / f"{runtime_id}.json"
         payload = profile.model_dump()
+        payload["engine"] = engine
+        if resolved_backend:
+            payload["chromium_backend"] = resolved_backend
         payload["_runtime_id"] = runtime_id
         payload["_profile_id"] = profile.id
         runtime_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-        command = worker_command(runtime_path)
+        runtime_path.with_suffix(".cmd.jsonl").write_text("", encoding="utf-8")
+        runtime_path.with_suffix(".result.jsonl").write_text("", encoding="utf-8")
+        command = worker_command(runtime_path, engine=engine)
         item = start_process(
             "session",
             profile.name,
@@ -1912,8 +2573,18 @@ def batch_launch(request: BatchLaunchRequest) -> dict[str, Any]:
             runtime_id=runtime_id,
             runtime_path=str(runtime_path),
             mode=profile.mode,
+            engine=engine,
         )
-        results.append({"profile_id": profile_id, "ok": True, "process_id": item.id, "runtime_id": runtime_id})
+        results.append(
+            {
+                "profile_id": profile_id,
+                "ok": True,
+                "process_id": item.id,
+                "runtime_id": runtime_id,
+                "engine": engine,
+                "chromium_backend": resolved_backend,
+            }
+        )
         started += 1
     skipped = len(request.profile_ids) - available
     activity.log("session_batch_launch", f"started={started} failed={failed} skipped={max(0, skipped)}")
@@ -1923,13 +2594,15 @@ def batch_launch(request: BatchLaunchRequest) -> dict[str, Any]:
 @app.post("/api/sessions/batch-stop")
 def batch_stop(request: BatchStopRequest) -> dict[str, Any]:
     stopped = 0
+    missing = 0
     for pid in request.process_ids:
         try:
             registry.stop(pid)
             stopped += 1
         except KeyError:
-            pass
-    return {"stopped": stopped}
+            missing += 1
+    activity.log("session_batch_stop", f"stopped={stopped} missing={missing}")
+    return {"stopped": stopped, "missing": missing, "requested": len(request.process_ids)}
 
 
 # --- Random Fingerprint Generation ---
@@ -2002,6 +2675,9 @@ def generate_fingerprint(target_os: str = "auto") -> dict[str, Any]:
     locale = _rand.choice(LOCALES)
     timezone = _rand.choice(COMMON_TIMEZONES)
 
+    from backend.fingerprint_presets import FONT_PACKS, normalize_os_key
+
+    pack_key = normalize_os_key(os_choice)
     return {
         "navigator_platform": platform_str,
         "navigator_vendor": vendor_str,
@@ -2009,16 +2685,22 @@ def generate_fingerprint(target_os: str = "auto") -> dict[str, Any]:
         "screen_height": screen[1],
         "screen_color_depth": screen[2],
         "device_pixel_ratio": screen[3],
+        "hardware_concurrency": _rand.choice([4, 6, 8, 12, 16]),
+        "device_memory": _rand.choice([4, 8, 16]),
         "canvas_noise": True,
         "webgl_vendor": _rand.choice(WEBGL_VENDORS),
         "webgl_renderer": _rand.choice(WEBGL_RENDERERS),
         "audio_noise": True,
-        "fonts": [],
+        "font_pack": pack_key,
+        "fonts": list(FONT_PACKS.get(pack_key, [])),
         "timezone": timezone,
         "locale": locale,
-        "webrtc_mode": _rand.choice(WEBRTC_MODES),
-        "media_devices": _rand.choice(MEDIA_MODES),
+        "webrtc_mode": "disable",
+        "media_devices": "random",
         "user_agent": ua,
+        "ua_ch_platform": "Windows" if os_choice == "windows" else ("macOS" if os_choice == "macos" else "Linux"),
+        "ua_ch_mobile": False,
+        "consistency_policy": "normal",
     }
 
 
@@ -2286,14 +2968,19 @@ def create_from_template(template_id: str) -> Profile:
         raise HTTPException(status_code=404, detail="template not found")
     data = dict(template["profile"])
     slug = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in data.get("name", "template")).strip("-")
-    data["user_data_dir"] = str(PROFILES_DIR / f"{slug}-{uuid.uuid4().hex[:6]}")
+    engine = normalize_engine_name(data.get("engine"))
+    # Isolate user_data per engine so camoufox/chromium never share a profile dir.
+    suffix = "chromium" if engine == "chromium" else "camoufox"
+    data["user_data_dir"] = str(PROFILES_DIR / f"{slug}-{suffix}-{uuid.uuid4().hex[:6]}")
     data.setdefault("proxy", {"server": "", "username": "", "password": ""})
     data.setdefault("proxy_id", "")
     data.setdefault("addons", [])
     data.setdefault("extra_args", [])
     data.setdefault("fonts", [])
+    if engine == "chromium":
+        data.setdefault("chromium_backend", "auto")
     created = store.create(ProfileIn(**data))
-    activity.log("template_create", f"{template_id} -> {created.name}")
+    activity.log("template_create", f"{template_id} -> {created.name} engine={engine}")
     return created
 
 
@@ -2384,6 +3071,14 @@ class NavigateRequest(BaseModel):
     url: str
 
 
+class EvaluateRequest(BaseModel):
+    expression: str = Field(min_length=1, max_length=1500)
+
+
+class ScreenshotRequest(BaseModel):
+    full_page: bool = False
+
+
 def _session_command(process_id: str, cmd: str, payload: dict[str, Any] | None = None, timeout: float = 45.0) -> dict[str, Any]:
     try:
         item = registry.get(process_id)
@@ -2395,7 +3090,16 @@ def _session_command(process_id: str, cmd: str, payload: dict[str, Any] | None =
         raise HTTPException(status_code=409, detail="session is not running")
     if not item.runtime_path:
         raise HTTPException(status_code=409, detail="session has no runtime control channel")
-    if (item.mode or "").lower() == "server" and cmd in {"navigate", "fingerprint", "probe"}:
+    browser_only = {
+        "navigate",
+        "fingerprint",
+        "probe",
+        "screenshot",
+        "shot",
+        "evaluate",
+        "eval",
+    }
+    if (item.mode or "").lower() == "server" and cmd in browser_only:
         raise HTTPException(
             status_code=409,
             detail="command only supported for browser-mode sessions (server mode exposes ws_endpoint instead)",
@@ -2432,6 +3136,33 @@ def session_fingerprint_probe(process_id: str) -> dict[str, Any]:
     """Probe live fingerprint values from a running browser session."""
     result = _session_command(process_id, "fingerprint", timeout=60.0)
     activity.log("session_fingerprint", process_id)
+    return result
+
+
+@app.post("/api/sessions/{process_id}/screenshot")
+def session_screenshot(process_id: str, request: ScreenshotRequest | None = None) -> dict[str, Any]:
+    """Capture a PNG screenshot from a running browser-mode session (base64)."""
+    body = request or ScreenshotRequest()
+    result = _session_command(
+        process_id,
+        "screenshot",
+        {"full_page": bool(body.full_page)},
+        timeout=60.0,
+    )
+    activity.log("session_screenshot", process_id)
+    return result
+
+
+@app.post("/api/sessions/{process_id}/evaluate")
+def session_evaluate(process_id: str, request: EvaluateRequest) -> dict[str, Any]:
+    """Run a short browser-context expression (local automation helper; not a sandbox)."""
+    result = _session_command(
+        process_id,
+        "evaluate",
+        {"expression": request.expression},
+        timeout=20.0,
+    )
+    activity.log("session_evaluate", process_id)
     return result
 
 
@@ -2791,55 +3522,98 @@ def stop_all_sessions() -> dict[str, Any]:
 # --- Fingerprint Check ---
 @app.get("/api/profiles/{profile_id}/fingerprint-check")
 def fingerprint_check(profile_id: str) -> dict[str, Any]:
-    """Launch a headless browser to check fingerprint consistency."""
+    """Static consistency + environment risk scoring (not a live anti-detect guarantee)."""
     try:
         profile = store.get(profile_id)
+        profile = apply_proxy_pool_to_profile(profile)
     except KeyError:
         raise HTTPException(status_code=404, detail="profile not found") from None
 
-    # Build a lightweight check command
     check_url = "https://browserleaks.com/javascript"
+    has_proxy = bool((profile.proxy and profile.proxy.server) or profile.proxy_id)
+    engine = normalize_engine_name(getattr(profile, "engine", None))
     checks = {
-        "user_agent": profile.extra_args or [],
+        "mode": profile.mode,
+        "engine": engine,
+        "chromium_backend": getattr(profile, "chromium_backend", None) or "",
+        "chromium_channel": getattr(profile, "chromium_channel", None) or "",
+        "os": profile.os,
+        "headless": profile.headless,
+        "proxy": (profile.proxy.server if profile.proxy and profile.proxy.server else "") or ("proxy_id:" + profile.proxy_id if profile.proxy_id else "none"),
+        "geoip": profile.geoip,
         "screen": f"{profile.screen_width}x{profile.screen_height}" if profile.screen_width else "not set",
         "platform": profile.navigator_platform or "not set",
         "vendor": profile.navigator_vendor or "not set",
         "webgl": f"{profile.webgl_vendor} / {profile.webgl_renderer}" if profile.webgl_vendor else "not set",
         "canvas_noise": profile.canvas_noise,
         "audio_noise": profile.audio_noise,
+        "block_webrtc": profile.block_webrtc,
         "webrtc_mode": profile.webrtc_mode,
         "timezone": profile.timezone or "not set",
         "locale": profile.locale or "not set",
+        "persistent_context": profile.persistent_context,
+        "humanize": profile.humanize,
+        "font_pack": getattr(profile, "font_pack", None) or "",
+        "media_devices": getattr(profile, "media_devices", None) or "default",
+        "tags": list(profile.tags or [])[:16],
     }
 
-    # Determine consistency issues
-    issues = []
-    if not profile.navigator_platform and not profile.os:
-        issues.append("Platform not specified")
+    issues: list[str] = []
+    if profile.headless:
+        issues.append("Headless is on — payment/3DS pages often refuse this outright")
+    if (profile.mode or "").lower() == "server":
+        issues.append("Server mode is not suitable for interactive checkout")
+    if not profile.navigator_platform and (profile.os or "auto") == "auto":
+        issues.append("Platform/OS not pinned")
     if profile.screen_width and profile.screen_height:
         if profile.screen_width < 800 or profile.screen_height < 600:
-            issues.append("Screen resolution too small")
+            issues.append("Screen resolution too small for desktop checkout")
     if not profile.webgl_vendor and not profile.block_webgl:
-        issues.append("WebGL vendor/renderer not set (will use default)")
+        issues.append("WebGL vendor/renderer not set (will use Camoufox default)")
+    if profile.block_webgl:
+        issues.append("WebGL is blocked — many gateways expect GPU parameters")
     if profile.webrtc_mode == "default" and not profile.block_webrtc:
-        issues.append("WebRTC not disabled — may leak real IP")
+        issues.append("WebRTC not disabled — may leak real IP beside proxy")
+    if has_proxy and not profile.geoip:
+        issues.append("Proxy without geoip — timezone/locale may disagree with exit IP")
+    if has_proxy and not (profile.timezone or "").strip():
+        issues.append("Proxy without timezone")
+    if has_proxy and not (profile.locale or "").strip():
+        issues.append("Proxy without locale")
+    if not has_proxy:
+        issues.append("No proxy — exit IP is your real network")
     if profile.locale and profile.timezone:
         locale_tz_map = {
-            "en-US": "America/", "en-GB": "Europe/London",
-            "de-DE": "Europe/Berlin", "fr-FR": "Europe/Paris",
-            "ja-JP": "Asia/Tokyo", "zh-CN": "Asia/Shanghai",
+            "en-US": "America/",
+            "en-GB": "Europe/London",
+            "de-DE": "Europe/",
+            "fr-FR": "Europe/",
+            "ja-JP": "Asia/Tokyo",
+            "zh-CN": "Asia/Shanghai",
+            "zh-TW": "Asia/Taipei",
+            "ko-KR": "Asia/Seoul",
         }
         for loc_prefix, tz_prefix in locale_tz_map.items():
             if profile.locale.startswith(loc_prefix) and profile.timezone.startswith(tz_prefix):
                 break
         else:
-            issues.append(f"Locale ({profile.locale}) and timezone ({profile.timezone}) may be inconsistent")
+            issues.append(
+                f"Locale ({profile.locale}) and timezone ({profile.timezone}) may be inconsistent"
+            )
 
-    score = 100 - (len(issues) * 15)
+    risks = environment_risks_for_profile(profile)
+    high = sum(1 for r in risks if r.get("level") == "high")
+    medium = sum(1 for r in risks if r.get("level") == "medium")
+    score = 100 - (len(issues) * 12) - high * 8 - medium * 3
     return {
         "profile_id": profile_id,
         "checks": checks,
         "issues": issues,
-        "score": max(0, score),
+        "environment_risks": risks,
+        "score": max(0, min(100, score)),
         "check_url": check_url,
+        "note": (
+            "Static consistency only — not a payment / AI signup-pass guarantee. "
+            "Camoufox is Firefox-based; many payment stacks score Chromium fingerprints differently."
+        ),
     }

@@ -2,7 +2,7 @@
 
 本地 Camoufox 指纹浏览器管理器 — 免费、开源、隐私优先。
 
-**当前版本：`1.3.1`（Stable）**
+**当前版本：`1.4.0`（Stable）**
 
 <p align="center">
   <img src="static/logo.png" width="120" alt="FoxDesk Logo">
@@ -29,12 +29,18 @@
 git clone https://github.com/BB0813/foxdesk.git
 cd foxdesk
 python -m pip install -r requirements.txt
+# Camoufox 浏览器：应用内「系统」页 Install / Fetch，或按 Camoufox 文档
+# 可选 Chromium 双引擎（1.4.0 / Phase A–C）：
+#   playwright install chromium
+#   patchright install chromium   # Phase C 推荐；档案 chromium_backend=auto 会优先使用
 python desktop.py
 # 或
 python -m uvicorn backend.app:app --host 127.0.0.1 --port 8765 --reload
 ```
 
 Windows 也可双击 `Start-FoxDesk.bat`（旧名 `Start-CamoufoxManager.bat` 仍可用）。
+
+**1.4.0** 含双引擎与 Patchright 后端；**不**提供过检/支付保证。调研与门禁见 `docs/research/`（`phase-c-status.md` / `phase-d-status.md`）。
 
 ### 卸载 / 重装清理
 
@@ -56,13 +62,13 @@ build.bat
 产物：
 
 - 便携版：`dist/FoxDesk/FoxDesk.exe`
-- 安装包：`installer_output/FoxDesk-1.3.1-Setup.exe`
+- 安装包：`installer_output/FoxDesk-1.4.0-Setup.exe`
 
 ### CI/CD
 
 ```bash
-git tag v1.3.1
-git push origin v1.3.1
+git tag v1.4.0
+git push origin v1.4.0
 ```
 
 - Workflow：`.github/workflows/build.yml`
@@ -86,9 +92,10 @@ FoxDesk 是**本机桌面工具**：
 ## 已知限制
 
 - Server 模式在部分 Camoufox 版本下仍可能延迟/无法捕获 `ws_endpoint`（可点「刷新端点」）
-- 指纹检测为静态一致性评分，**不是**反检测保证
+- 指纹检测为静态一致性评分，**不是**反检测保证；Chromium + Patchright 仅降低部分自动化标记，**不保证**对齐商业指纹浏览器或支付通过
 - 无 Token 时仍可能遇到 GitHub 限流；1.2.0+ 会回退网页/Atom + ghproxy
-- 从旧版升级：建议直接装 1.3.1；Program Files 旧安装请先卸载
+- 会话 `evaluate` / 截图仅限 browser 模式本地控制通道，**不是**远程 RPA 沙箱
+- 从旧版升级：建议直接装 1.4.0；Program Files 旧安装请先卸载
 
 完整变更见 [CHANGELOG.md](CHANGELOG.md)。
 

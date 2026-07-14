@@ -201,4 +201,157 @@ def profile_templates() -> list[dict[str, Any]]:
                 "notes": "Created from Mobile Window template",
             },
         },
+        {
+            "id": "payment-checkout",
+            "name": {"zh": "结账/支付向", "en": "Checkout / Payment"},
+            "description": {
+                "zh": "可见窗口 + 持久化 + 人性化 + 关 WebRTC + 开 geoip。请绑定与地区一致的住宅代理，并自行对齐时区/语言。不保证过支付风控。",
+                "en": "Visible + persistent + humanize + WebRTC off + geoip. Bind a residential proxy matching locale/timezone. No payment-pass guarantee.",
+            },
+            "profile": {
+                "name": "Checkout Profile",
+                "startup_url": "about:blank",
+                "mode": "browser",
+                "engine": "camoufox",
+                "os": "windows",
+                "headless": False,
+                "persistent_context": True,
+                "humanize": True,
+                "geoip": True,
+                "block_images": False,
+                "block_webrtc": True,
+                "block_webgl": False,
+                "disable_coop": True,
+                "enable_cache": True,
+                "webrtc_mode": "disable",
+                "locale": "en-US",
+                "timezone": "America/New_York",
+                "screen_width": 1920,
+                "screen_height": 1080,
+                "screen_color_depth": 24,
+                "device_pixel_ratio": 1.0,
+                "canvas_noise": True,
+                "audio_noise": True,
+                "navigator_platform": "Win32",
+                "tags": ["template", "payment", "checkout"],
+                "notes": (
+                    "Created from Checkout/Payment template (Camoufox). "
+                    "Assign a residential proxy in the same region as locale/timezone. "
+                    "Warm the profile (login/browse) before high-risk checkout. "
+                    "No payment-pass guarantee."
+                ),
+            },
+        },
+        {
+            "id": "payment-checkout-chromium",
+            "name": {"zh": "结账-Chromium（实验）", "en": "Checkout Chromium (experimental)"},
+            "description": {
+                "zh": "Phase B：Playwright Chromium + 指纹字段/UA-CH。可见窗口+持久化+关 WebRTC。非商业反检测栈，不保证过支付。请用独立 user_data 目录。",
+                "en": "Phase B Playwright Chromium + fingerprint/UA-CH fields. Visible + persistent. Not commercial anti-detect; no payment guarantee. Separate user_data dir.",
+            },
+            "profile": {
+                "name": "Checkout Chromium",
+                "startup_url": "about:blank",
+                "mode": "browser",
+                "engine": "chromium",
+                "chromium_backend": "auto",
+                "chromium_channel": "",
+                "consistency_policy": "normal",
+                "os": "windows",
+                "headless": False,
+                "persistent_context": True,
+                "humanize": False,
+                "geoip": False,
+                "block_images": False,
+                "block_webrtc": True,
+                "block_webgl": False,
+                "disable_coop": True,
+                "enable_cache": True,
+                "webrtc_mode": "disable",
+                "locale": "en-US",
+                "timezone": "America/New_York",
+                "screen_width": 1920,
+                "screen_height": 1080,
+                "screen_color_depth": 24,
+                "device_pixel_ratio": 1.0,
+                "hardware_concurrency": 8,
+                "device_memory": 8,
+                "navigator_platform": "Win32",
+                "navigator_vendor": "Google Inc.",
+                "ua_ch_platform": "Windows",
+                "ua_ch_mobile": False,
+                "font_pack": "windows",
+                "media_devices": "random",
+                "tags": ["template", "payment", "checkout", "chromium", "phase-c"],
+                "notes": (
+                    "Phase C chromium: chromium_backend=auto prefers Patchright when installed. "
+                    "pip install patchright && patchright install chromium. "
+                    "Optional chromium_channel=chrome. "
+                    "Use consistency_policy=strict after proxy/timezone are aligned. "
+                    "Run: python tools/bstatic_probe.py --backend auto --require-webdriver-false. "
+                    "Not a commercial anti-detect guarantee; no payment guarantee."
+                ),
+            },
+        },
+        {
+            "id": "ai-workstation",
+            "name": {"zh": "AI 工作档案", "en": "AI Workstation"},
+            "description": {
+                "zh": "Chromium + Patchright(auto)、独立持久化目录、关 WebRTC、桌面字体/媒体。用于自有账号正常登录 ChatGPT/Claude/Gemini。不保证注册/订阅通过；请绑定与时区一致的代理。",
+                "en": "Chromium + Patchright(auto), isolated persistent profile, WebRTC off, desktop fonts/media. For normal ChatGPT/Claude/Gemini use with your own accounts. No signup/subscribe guarantee; align proxy with timezone.",
+            },
+            "profile": {
+                "name": "AI Workstation",
+                "startup_url": "about:blank",
+                "mode": "browser",
+                "engine": "chromium",
+                "chromium_backend": "auto",
+                "chromium_channel": "",
+                "consistency_policy": "normal",
+                "os": "windows",
+                "headless": False,
+                "persistent_context": True,
+                "humanize": False,
+                "geoip": False,
+                "block_images": False,
+                "block_webrtc": True,
+                "block_webgl": False,
+                "disable_coop": True,
+                "enable_cache": True,
+                "webrtc_mode": "disable",
+                "locale": "en-US",
+                "timezone": "America/New_York",
+                "screen_width": 1920,
+                "screen_height": 1080,
+                "screen_color_depth": 24,
+                "device_pixel_ratio": 1.0,
+                "hardware_concurrency": 8,
+                "device_memory": 8,
+                "navigator_platform": "Win32",
+                "navigator_vendor": "Google Inc.",
+                "ua_ch_platform": "Windows",
+                "ua_ch_mobile": False,
+                "font_pack": "windows",
+                "media_devices": "random",
+                "webgl_vendor": "Google Inc. (Intel)",
+                "webgl_renderer": "ANGLE (Intel, Intel(R) UHD Graphics 630 Direct3D11 vs_5_0 ps_5_0)",
+                "tags": ["template", "ai", "chatgpt", "claude", "gemini", "chromium", "phase-c"],
+                "notes": (
+                    "AI workstation (Chromium). chromium_backend=auto prefers Patchright.\n"
+                    "Install: pip install patchright && patchright install chromium\n"
+                    "Optional: chromium_channel=chrome if Google Chrome is installed.\n"
+                    "\n"
+                    "Warm-up checklist (own accounts only; no signup/subscribe guarantee):\n"
+                    "1) Bind residential proxy matching timezone/locale\n"
+                    "2) Launch visible window (never headless)\n"
+                    "3) Open about:blank → a public fingerprint page if you want a self-check\n"
+                    "4) Browse 2–3 normal sites ≥30s each\n"
+                    "5) Cold restart same user_data once\n"
+                    "6) Sign in / register on the official AI site\n"
+                    "7) Optional: official subscribe/upgrade with your own payment method\n"
+                    "\n"
+                    "Use a separate profile (user_data) per account. Not Multilogin-equivalent SLA."
+                ),
+            },
+        },
     ]

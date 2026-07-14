@@ -31,15 +31,16 @@ python -m uvicorn backend.app:app --host 127.0.0.1 --port 8765 --reload
 
 ## 当前版本
 
-见 `VERSION`（发布线：`1.3.1`+）。
+见 `VERSION`（发布线：`1.4.0`+）。
 
 ## 关键本地能力
 
 - Profile CRUD / 标签 / 模板 / Cookie 导入导出
 - 指纹参数 + 随机生成 + 静态一致性评分 + 运行中探测
-- 会话：启动停止、日志、并发上限、空闲自动停止、实时导航
+- 会话：启动停止、批量停止、日志（GET/POST 下载）、并发上限、空闲自动停止
+- 运行时控制（browser）：导航、指纹探测、截图、有界 evaluate
 - Server 模式：尽量捕获 `ws_endpoint`，可刷新端点
-- 代理池：加密存盘、健康巡检、sticky / round_robin / random_healthy
+- 代理池：加密存盘、健康巡检（status 展示）、sticky / round_robin / random_healthy
 - 更新：ghproxy 默认 + 可选 GitHub Token（环境变量优先，不内置）
 - 备份：密码加密 `.fdk` 创建/列表/恢复（恢复前 pre-restore 快照）
 - 诊断导出、本机 `X-FoxDesk-Token`
@@ -67,7 +68,7 @@ CI（tag `v*`）会 compileall、pytest、打包、发 Release。
 ## 发布
 
 ```bash
-git tag v1.3.1
+git tag v1.4.0
 git push origin main
-git push origin v1.3.1
+git push origin v1.4.0
 ```

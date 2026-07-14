@@ -1,0 +1,162 @@
+{
+  "ok": true,
+  "headless": false,
+  "channel": null,
+  "profile_keys": [
+    "block_webrtc",
+    "consistency_policy",
+    "device_memory",
+    "device_pixel_ratio",
+    "font_pack",
+    "fonts",
+    "hardware_concurrency",
+    "headless",
+    "locale",
+    "media_devices",
+    "navigator_platform",
+    "navigator_vendor",
+    "os",
+    "screen_color_depth",
+    "screen_height",
+    "screen_width",
+    "timezone",
+    "ua_ch_mobile",
+    "ua_ch_platform",
+    "user_agent",
+    "webgl_renderer",
+    "webgl_vendor",
+    "webrtc_mode"
+  ],
+  "started_at": 1784050867.4100165,
+  "probe": {
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
+    "platform": "Win32",
+    "language": "en-US",
+    "languages": [
+      "en-US"
+    ],
+    "webdriver": false,
+    "hardwareConcurrency": 8,
+    "deviceMemory": 8,
+    "maxTouchPoints": 10,
+    "vendor": "Google Inc.",
+    "pluginsLength": 5,
+    "uaChBrands": [
+      {
+        "brand": "Chromium",
+        "version": "127"
+      },
+      {
+        "brand": "Not.A/Brand",
+        "version": "24"
+      },
+      {
+        "brand": "Google Chrome",
+        "version": "127"
+      }
+    ],
+    "uaChMobile": false,
+    "uaChPlatform": "Windows",
+    "screen": {
+      "width": 1920,
+      "height": 1080,
+      "colorDepth": 24,
+      "availWidth": 1920,
+      "availHeight": 1080
+    },
+    "timezone": "America/New_York",
+    "webglVendor": "Google Inc. (Intel)",
+    "webglRenderer": "ANGLE (Intel, Intel(R) UHD Graphics 630 Direct3D11 vs_5_0 ps_5_0)",
+    "hasChromeRuntime": true,
+    "href": "about:blank",
+    "mediaDevices": {
+      "count": 5,
+      "kinds": [
+        "audioinput",
+        "audioinput",
+        "audiooutput",
+        "audiooutput",
+        "videoinput"
+      ]
+    },
+    "fontsCheck": {
+      "Arial": true,
+      "Segoe UI": true,
+      "Times New Roman": true,
+      "Helvetica": true
+    },
+    "hasChrome": true
+  },
+  "score": {
+    "checks": [
+      {
+        "code": "no_headless_ua",
+        "ok": true,
+        "detail": "ua=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)",
+        "severity": "high"
+      },
+      {
+        "code": "webdriver_false",
+        "ok": true,
+        "detail": "webdriver=False",
+        "severity": "high"
+      },
+      {
+        "code": "has_chrome_runtime",
+        "ok": true,
+        "detail": "window.chrome",
+        "severity": "medium"
+      },
+      {
+        "code": "platform_set",
+        "ok": true,
+        "detail": "platform=Win32",
+        "severity": "low"
+      },
+      {
+        "code": "languages_set",
+        "ok": true,
+        "detail": "languages=['en-US']",
+        "severity": "low"
+      },
+      {
+        "code": "timezone_set",
+        "ok": true,
+        "detail": "timezone=America/New_York",
+        "severity": "medium"
+      },
+      {
+        "code": "ua_ch_present",
+        "ok": true,
+        "detail": "uaCh=[{'brand': 'Chromium', 'version': '127'}, {'brand': 'Not.A/Brand', 'version': '24'}, {'brand': 'Google Chrome', 'version': '127'}]",
+        "severity": "medium"
+      },
+      {
+        "code": "media_devices_nonempty",
+        "ok": true,
+        "detail": "media.count=5",
+        "severity": "low"
+      },
+      {
+        "code": "fonts_some_present",
+        "ok": true,
+        "detail": "font_hits=4",
+        "severity": "low"
+      },
+      {
+        "code": "plugins_nonempty",
+        "ok": true,
+        "detail": "pluginsLength=5",
+        "severity": "low"
+      }
+    ],
+    "passed": 10,
+    "total": 10,
+    "high_fail": [],
+    "medium_fail": [],
+    "phase_b_gate_ok": true,
+    "phase_c_needed": false,
+    "note": "phase_b_gate ignores webdriver (Phase C). No payment guarantee."
+  },
+  "elapsed_s": 3.137
+}

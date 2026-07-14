@@ -15,7 +15,7 @@ from pathlib import Path
 HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 APP_NAME = "FoxDesk"
-APP_VERSION = "1.3.1"
+APP_VERSION = "1.4.0"
 LOCK_DIR = Path(tempfile.gettempdir()) / APP_NAME
 LOCK_FILE = LOCK_DIR / "instance.lock"
 MUTEX_NAME = "Local\\FoxDesk_SingleInstance_Mutex"
@@ -173,15 +173,33 @@ def start_server(port: int) -> subprocess.Popen[str]:
 
 
 def run_worker_mode(runtime_path: str) -> int:
-    """Run camoufox worker inside the same frozen binary or source tree."""
+    """Run engine worker inside the same frozen binary or source tree.
+
+    Phase A: dispatch camoufox vs chromium from runtime JSON ``engine`` field.
+    """
     sys.argv = [sys.argv[0], runtime_path]
+    engine = "camoufox"
     try:
-        from backend.camoufox_worker import main as worker_main
+        import json
+        from pathlib import Path
+
+        data = json.loads(Path(runtime_path).read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            raw = str(data.get("engine") or "camoufox").strip().lower()
+            if raw in {"chromium", "chrome", "pw", "playwright"}:
+                engine = "chromium"
+    except Exception:
+        engine = "camoufox"
+    try:
+        if engine == "chromium":
+            from backend.chromium_worker import main as worker_main
+        else:
+            from backend.camoufox_worker import main as worker_main
 
         return int(worker_main())
     except Exception as exc:
         try:
-            sys.stderr.write(f"worker failed: {exc}\n")
+            sys.stderr.write(f"worker failed ({engine}): {exc}\n")
         except Exception:
             pass
         return 1
@@ -322,7 +340,9 @@ def main() -> int:
             except Exception:
                 pass
             webview.start()
-        except ImportError:
+        except Exception as exc:
+            # ImportError or frozen pythonnet/webview failures → system browser + tray.
+            print(f"WebView unavailable ({type(exc).__name__}: {exc}); opening system browser.")
             start_tray(port, None)
             webbrowser.open(url)
             print(f"FoxDesk {APP_VERSION}: {url}")

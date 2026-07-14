@@ -1,0 +1,54 @@
+{
+  "ready": true,
+  "returncode": 0,
+  "backend_requested": "patchright",
+  "backend_emitted": "patchright",
+  "fingerprint": {
+    "engine": "chromium",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+    "platform": "Win32",
+    "language": "en-US",
+    "languages": [
+      "en-US"
+    ],
+    "webdriver": false,
+    "hardwareConcurrency": 20,
+    "deviceMemory": 0,
+    "maxTouchPoints": 10,
+    "vendor": "Google Inc.",
+    "screen": {
+      "width": 1280,
+      "height": 720,
+      "colorDepth": 32
+    },
+    "timezone": "America/New_York",
+    "webglVendor": "Google Inc. (Intel)",
+    "webglRenderer": "ANGLE (Intel, Intel(R) Iris(R) Xe Graphics (0x000046A6) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+    "uaCh": null,
+    "href": "about:blank",
+    "hasChrome": true,
+    "mediaDevices": {
+      "count": 0,
+      "kinds": []
+    },
+    "fontsCheck": {
+      "Arial": true,
+      "Segoe UI": true,
+      "Times New Roman": true,
+      "Helvetica": true,
+      "Noto Sans": true
+    }
+  },
+  "logs_tail": [
+    "{\"event\": \"launching\", \"engine\": \"chromium\", \"backend\": \"patchright\", \"headless\": false, \"proxy\": null, \"locale\": \"en-US\", \"timezone\": \"America/New_York\", \"channel\": null, \"has_init_script\": true, \"user_agent\": false}",
+    "{\"event\": \"fingerprint_init\", \"applied\": true}",
+    "{\"event\": \"ready\", \"engine\": \"chromium\", \"backend\": \"patchright\", \"mode\": \"browser\"}",
+    "{\"event\": \"navigated\", \"url\": \"about:blank\", \"href\": \"about:blank\"}",
+    "{\"event\": \"fingerprint_report\", \"report\": {\"engine\": \"chromium\", \"userAgent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36\", \"platform\": \"Win32\", \"language\": \"en-US\", \"languages\": [\"en-US\"], \"webdriver\": false, \"hardwareConcurrency\": 20, \"deviceMemory\": 0, \"maxTouchPoints\": 10, \"vendor\": \"Google Inc.\", \"screen\": {\"width\": 1280, \"height\": 720, \"colorDepth\": 32}, \"timezone\": \"America/New_York\", \"webglVendor\": \"Google Inc. (Intel)\", \"webglRenderer\": \"ANGLE (Intel, Intel(R) Iris(R) Xe Graphics (0x000046A6) Direct3D11 vs_5_0 ps_5_0, D3D11)\", \"uaCh\": null, \"href\": \"about:blank\", \"hasChrome\": true, \"mediaDevices\": {\"count\": 0, \"kinds\": []}, \"fontsCheck\": {\"Arial\": true, \"Segoe UI\": true, \"Times New Roman\": true, \"Helvetica\": true, \"Noto Sans\": true}}}",
+    "{\"event\": \"command_result\", \"id\": \"smoke-c-stop\", \"cmd\": \"stop\", \"ok\": true, \"message\": \"stopping\"}",
+    "{\"event\": \"stopped\", \"engine\": \"chromium\"}"
+  ],
+  "runtime_path": "C:\\Users\\hbq30\\AppData\\Local\\Temp\\foxdesk-smoke-c-d866f3eb-b7cb-4433-b916-56d2cc945de6.json",
+  "webdriver": false,
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36"
+}

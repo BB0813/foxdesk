@@ -134,27 +134,33 @@
       <!-- INSTALL -->
       <h2 id="install">安装与启动</h2>
       <h3>方式一：直接运行（推荐开发者）</h3>
-      <pre>git clone https://github.com/yourname/foxdesk.git
+      <pre>git clone https://github.com/BB0813/foxdesk.git
 cd foxdesk
 python -m pip install -r requirements.txt
+# Camoufox：应用内系统页 Install / Fetch
+# 可选 Chromium 双引擎（1.4.0）：
+#   playwright install chromium
+#   patchright install chromium
 python desktop.py</pre>
-      <p>或双击 <code>Start-CamoufoxManager.bat</code></p>
+      <p>或双击 <code>Start-FoxDesk.bat</code>（旧名 <code>Start-CamoufoxManager.bat</code> 仍可用）</p>
+      <p>用户数据目录：<code>%APPDATA%\FoxDesk</code>（旧版 <code>CamoufoxManager</code> 会自动迁移）。</p>
 
       <h3>方式二：下载 exe 安装包</h3>
-      <p>从 <a href="#">GitHub Releases</a> 下载最新版本，解压后双击 <code>FoxDesk.exe</code> 即可运行。</p>
-      <p>无需安装 Python 环境。</p>
+      <p>从 <a href="https://github.com/BB0813/foxdesk/releases">GitHub Releases</a> 下载版本：当前稳定线 <strong>v1.4.0</strong>（双引擎 + Patchright）。安装或解压后运行 <code>FoxDesk.exe</code>。</p>
+      <p>无需安装 Python 环境（安装包形态）。</p>
 
       <h3>方式三：Web 调试模式</h3>
       <pre>python -m uvicorn backend.app:app --host 127.0.0.1 --port 8765 --reload
 # 浏览器打开 http://127.0.0.1:8765</pre>
 
       <h3>首次启动</h3>
-      <p>首次启动需要安装 Camoufox 浏览器。进入「系统」标签页，按顺序执行：</p>
+      <p>Camoufox：进入「系统」标签页，按顺序执行：</p>
       <div class="card">
         <p><strong>1. Install</strong> — 安装 Python 包 <code>pip install camoufox</code></p>
         <p><strong>2. Fetch</strong> — 下载浏览器二进制文件 <code>camoufox fetch</code></p>
         <p><strong>3. Test</strong> — 运行自检（可选，可能耗时较长）</p>
       </div>
+      <p>Chromium（可选）：系统页可查看 Playwright / Patchright / 本机 Chrome 状态；推荐 <code>chromium_backend=auto</code>。模板「AI 工作档案」面向自有账号正常使用 ChatGPT/Claude/Gemini，<strong>不保证</strong>注册/订阅通过。</p>
 
       <!-- QUICKSTART -->
       <h2 id="quickstart">快速上手</h2>
@@ -243,10 +249,12 @@ python desktop.py</pre>
       <p>每个启动的浏览器是一个「会话」。在「运行会话」标签页可以看到所有运行中的会话。</p>
       <ul>
         <li><strong>展开详情</strong> — 点击会话行的下拉箭头</li>
-        <li><strong>查看日志</strong> — 展开后可看到实时日志</li>
-        <li><strong>下载日志</strong> — 点击「下载日志」按钮</li>
-        <li><strong>停止</strong> — 点击「停止」按钮终止进程</li>
+        <li><strong>查看 / 下载日志</strong> — 展开后可下载（GET/POST + 本机 Token）</li>
+        <li><strong>导航 / 指纹探测 / 截图 / 表达式</strong> — browser 模式运行时控制</li>
+        <li><strong>刷新端点</strong> — server 模式尝试刷新 <code>ws_endpoint</code></li>
+        <li><strong>批量停止</strong> — 勾选运行中会话后批量停止</li>
         <li><strong>全部停止</strong> — 一键停止所有会话</li>
+        <li><strong>并发 / 空闲</strong> — 系统设置里可配置最大并发与空闲自动停止</li>
       </ul>
 
       <!-- COOKIES -->
@@ -341,7 +349,12 @@ FoxDesk
         <tr><td>POST</td><td><code>/api/sessions</code></td><td>启动会话</td></tr>
         <tr><td>GET</td><td><code>/api/sessions</code></td><td>会话列表</td></tr>
         <tr><td>GET</td><td><code>/api/sessions/{id}</code></td><td>会话详情</td></tr>
-        <tr><td>POST</td><td><code>/api/sessions/{id}/logs/download</code></td><td>下载日志</td></tr>
+        <tr><td>GET/POST</td><td><code>/api/sessions/{id}/logs/download</code></td><td>下载日志</td></tr>
+        <tr><td>POST</td><td><code>/api/sessions/{id}/navigate</code></td><td>运行时导航（browser）</td></tr>
+        <tr><td>POST</td><td><code>/api/sessions/{id}/fingerprint</code></td><td>运行时指纹探测</td></tr>
+        <tr><td>POST</td><td><code>/api/sessions/{id}/screenshot</code></td><td>截图 PNG base64</td></tr>
+        <tr><td>POST</td><td><code>/api/sessions/{id}/evaluate</code></td><td>短表达式 evaluate</td></tr>
+        <tr><td>POST</td><td><code>/api/sessions/{id}/endpoint</code></td><td>刷新 server ws 端点</td></tr>
         <tr><td>POST</td><td><code>/api/sessions/batch</code></td><td>批量启动</td></tr>
         <tr><td>POST</td><td><code>/api/sessions/batch-stop</code></td><td>批量停止</td></tr>
         <tr><td>POST</td><td><code>/api/sessions/stop-all</code></td><td>停止所有</td></tr>
@@ -352,13 +365,20 @@ FoxDesk
       <table>
         <tr><th>方法</th><th>路径</th><th>说明</th></tr>
         <tr><td>POST</td><td><code>/api/proxy/test</code></td><td>代理测试</td></tr>
+        <tr><td>GET</td><td><code>/api/proxies</code></td><td>代理池列表</td></tr>
+        <tr><td>POST</td><td><code>/api/proxies/health-check</code></td><td>立即巡检</td></tr>
+        <tr><td>GET</td><td><code>/api/proxies/health-status</code></td><td>上次巡检状态</td></tr>
+        <tr><td>POST</td><td><code>/api/system/backup</code></td><td>创建加密备份 .fdk</td></tr>
+        <tr><td>GET</td><td><code>/api/system/backups</code></td><td>备份列表</td></tr>
+        <tr><td>POST</td><td><code>/api/system/backup/restore</code></td><td>恢复备份</td></tr>
         <tr><td>POST</td><td><code>/api/fingerprint/generate</code></td><td>随机指纹生成</td></tr>
         <tr><td>GET</td><td><code>/api/channels</code></td><td>下载源列表</td></tr>
         <tr><td>PUT</td><td><code>/api/channels</code></td><td>更新下载源</td></tr>
         <tr><td>POST</td><td><code>/api/channels/{id}/fetch</code></td><td>通过指定源下载</td></tr>
         <tr><td>GET</td><td><code>/api/activity</code></td><td>操作日志</td></tr>
-        <tr><td>GET</td><td><code>/api/v1/sessions</code></td><td>公开 API：会话列表</td></tr>
+        <tr><td>GET</td><td><code>/api/v1/sessions</code></td><td>本机自动化：会话列表（需 Token）</td></tr>
       </table>
+      <p>本机 API 使用请求头 <code>X-FoxDesk-Token</code>（页面 bootstrap 注入；勿映射到公网）。</p>
 
       <!-- BUILD -->
       <h2 id="build">构建与打包</h2>
@@ -368,9 +388,9 @@ FoxDesk
 
       <h3>CI/CD 自动构建</h3>
       <p>推送 <code>v*</code> tag 自动触发 GitHub Actions：</p>
-      <pre>git tag v1.0.0
-git push origin v1.0.0</pre>
-      <p>自动构建 Windows exe 并创建 GitHub Release。</p>
+      <pre>git tag v1.4.0
+git push origin v1.4.0</pre>
+      <p>自动构建 Windows exe / 安装包并创建 GitHub Release（含 SHA256SUMS）。</p>
 
       <!-- CONTRIBUTING -->
       <h2 id="contributing">参与贡献</h2>
@@ -385,23 +405,26 @@ git push origin v1.0.0</pre>
       <!-- CHANGELOG -->
       <h2 id="changelog">更新日志</h2>
       <div class="card">
-        <h3>v1.0.0 <span class="badge p0">最新</span></h3>
-        <p style="color:var(--muted)">2026-07-08</p>
+        <h3>v1.4.0 <span class="badge p0">最新</span></h3>
+        <p style="color:var(--muted)">2026-07-14</p>
         <ul>
-          <li>Profile CRUD + 克隆 + 导入导出</li>
-          <li>指纹参数编辑 + 随机生成</li>
-          <li>代理配置 + 测试 + 批量导入</li>
-          <li>会话启动/停止/日志查看</li>
-          <li>批量启动/停止</li>
-          <li>Cookie 导入/导出</li>
-          <li>指纹完整性检测</li>
-          <li>深浅色模式</li>
-          <li>中英文双语</li>
-          <li>右键上下文菜单</li>
-          <li>下载源切换</li>
-          <li>PyInstaller exe 打包</li>
-          <li>GitHub Actions CI/CD</li>
+          <li>日志下载 GET/POST + Token 修复</li>
+          <li>会话批量停止 UI + 代理 health-status 展示</li>
+          <li>运行时截图 / 有界 evaluate</li>
+          <li>文档与 1.3.x 能力对齐</li>
         </ul>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <h3>v1.3.1 / v1.3.0</h3>
+        <ul>
+          <li>加密备份 .fdk 创建/恢复、server 端点刷新</li>
+          <li>会话导航/指纹探测、并发与空闲限制</li>
+          <li>代理健康巡检调度与分配模式</li>
+        </ul>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <h3>v1.0.0</h3>
+        <p style="color:var(--muted)">2026-07-08 — 初版：Profile / 会话 / Cookie / 打包 CI</p>
       </div>
 
       <div style="margin-top:60px;padding-top:20px;border-top:1px solid var(--border);color:var(--muted);font-size:13px">

@@ -1,0 +1,37 @@
+{
+  "ready": true,
+  "returncode": 0,
+  "fingerprint": {
+    "engine": "chromium",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
+    "platform": "Win32",
+    "language": "en-US",
+    "languages": [
+      "en-US"
+    ],
+    "webdriver": true,
+    "hardwareConcurrency": 20,
+    "deviceMemory": 0,
+    "screen": {
+      "width": 1280,
+      "height": 720,
+      "colorDepth": 24
+    },
+    "timezone": "America/New_York",
+    "webglVendor": "Google Inc. (Intel)",
+    "webglRenderer": "ANGLE (Intel, Intel(R) Iris(R) Xe Graphics (0x000046A6) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+    "uaCh": null,
+    "href": "about:blank"
+  },
+  "logs_tail": [
+    "{\"event\": \"launching\", \"engine\": \"chromium\", \"headless\": false, \"proxy\": null, \"locale\": \"en-US\", \"timezone\": \"America/New_York\", \"channel\": null}",
+    "{\"event\": \"ready\", \"engine\": \"chromium\", \"mode\": \"browser\"}",
+    "{\"event\": \"navigated\", \"url\": \"about:blank\", \"href\": \"about:blank\"}",
+    "{\"event\": \"fingerprint_report\", \"report\": {\"engine\": \"chromium\", \"userAgent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36\", \"platform\": \"Win32\", \"language\": \"en-US\", \"languages\": [\"en-US\"], \"webdriver\": true, \"hardwareConcurrency\": 20, \"deviceMemory\": 0, \"screen\": {\"width\": 1280, \"height\": 720, \"colorDepth\": 24}, \"timezone\": \"America/New_York\", \"webglVendor\": \"Google Inc. (Intel)\", \"webglRenderer\": \"ANGLE (Intel, Intel(R) Iris(R) Xe Graphics (0x000046A6) Direct3D11 vs_5_0 ps_5_0, D3D11)\", \"uaCh\": null, \"href\": \"about:blank\"}}",
+    "{\"event\": \"command_result\", \"id\": \"smoke-stop\", \"cmd\": \"stop\", \"ok\": true, \"message\": \"stopping\"}",
+    "{\"event\": \"stopped\", \"engine\": \"chromium\"}"
+  ],
+  "runtime_path": "C:\\Users\\hbq30\\AppData\\Local\\Temp\\foxdesk-smoke-e7f32dae-f70b-4849-8582-672e1f47efe3.json",
+  "webdriver": true,
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
+}

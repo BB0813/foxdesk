@@ -154,7 +154,12 @@ def build_kwargs(profile: dict[str, Any]) -> dict[str, Any]:
     if extra_args:
         kwargs["args"] = extra_args
 
-    fonts = profile.get("fonts") or []
+    try:
+        from backend.fingerprint_presets import resolve_font_list
+
+        fonts = resolve_font_list(profile)
+    except Exception:
+        fonts = profile.get("fonts") or []
     if fonts:
         kwargs["fonts"] = fonts
 
@@ -300,6 +305,31 @@ def validate_nav_url(url: str) -> str:
     return value
 
 
+def validate_evaluate_expression(expression: str) -> str:
+    """Bound local evaluate expressions (browser context only; not a security sandbox)."""
+    value = (expression or "").strip()
+    if not value:
+        raise ValueError("expression is required")
+    if len(value) > 1500:
+        raise ValueError("expression too long (max 1500 chars)")
+    # Block obvious non-expression / host-escape attempts in the control payload.
+    lowered = value.lower()
+    banned = (
+        "import(",
+        "require(",
+        "process.",
+        "child_process",
+        "fs.",
+        "python",
+        "__import__",
+        "subprocess",
+    )
+    for token in banned:
+        if token in lowered:
+            raise ValueError(f"expression rejects token: {token}")
+    return value
+
+
 def probe_fingerprint(page: Any) -> dict[str, Any]:
     script = """
     () => {
@@ -373,6 +403,46 @@ def handle_command(cmd: dict[str, Any], profile_path: Path) -> None:
                 return
             data = probe_fingerprint(page)
             reply(ok=True, report=data)
+            return
+        if action in {"screenshot", "shot"}:
+            if page is None:
+                reply(ok=False, error="no active page (browser mode only)")
+                return
+            import base64
+
+            full_page = bool(cmd.get("full_page"))
+            raw = page.screenshot(type="png", full_page=full_page)
+            if not isinstance(raw, (bytes, bytearray)):
+                reply(ok=False, error="screenshot returned non-bytes")
+                return
+            # Cap payload size returned over the control channel (~4 MiB PNG).
+            if len(raw) > 4 * 1024 * 1024:
+                reply(ok=False, error=f"screenshot too large ({len(raw)} bytes)")
+                return
+            reply(
+                ok=True,
+                mime="image/png",
+                full_page=full_page,
+                size=len(raw),
+                image_base64=base64.b64encode(bytes(raw)).decode("ascii"),
+                href=getattr(page, "url", None),
+            )
+            return
+        if action in {"evaluate", "eval"}:
+            if page is None:
+                reply(ok=False, error="no active page (browser mode only)")
+                return
+            expression = validate_evaluate_expression(str(cmd.get("expression") or cmd.get("script") or ""))
+            # Force expression form so bare statements are rejected by the JS engine.
+            script = f"() => ({expression})"
+            value = page.evaluate(script)
+            # Ensure JSON-serializable for the result channel.
+            try:
+                json.dumps(value)
+            except TypeError as exc:
+                reply(ok=False, error=f"result not JSON-serializable: {exc}")
+                return
+            reply(ok=True, value=value, href=getattr(page, "url", None))
             return
         if action == "ping":
             reply(ok=True, ready=page is not None)
