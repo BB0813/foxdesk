@@ -228,34 +228,54 @@ class SetupManager:
         self._log(detail)
         self._set_step("check", "done", detail)
 
+    def _probe_camoufox_bundle(self) -> tuple[bool, str]:
+        """Verify camoufox + fingerprint datapoints are importable."""
+        try:
+            import camoufox  # noqa: F401
+            import apify_fingerprint_datapoints
+            from camoufox import fingerprints  # noqa: F401
+            from camoufox.pkgman import INSTALL_DIR  # noqa: F401
+
+            # Ensure zip datapoints exist on disk (common frozen packaging miss).
+            data_dir = Path(apify_fingerprint_datapoints.__file__).resolve().parent / "data"
+            required = [
+                "input-network-definition.zip",
+                "header-network-definition.zip",
+                "fingerprint-network-definition.zip",
+            ]
+            missing = [name for name in required if not (data_dir / name).exists()]
+            if missing:
+                return False, f"missing datapoints: {', '.join(missing)} under {data_dir}"
+            return True, f"ok ({data_dir})"
+        except Exception as exc:
+            return False, str(exc)
+
     def _step_package(self) -> None:
         self._set_step("package", "running")
         if self.is_frozen:
             # Bundled app must ship camoufox; pip against FoxDesk.exe is invalid.
-            if self.import_available("camoufox"):
+            ok, detail = self._probe_camoufox_bundle()
+            if ok:
                 self._set_step("package", "skipped", "bundled in app")
-                self._log("package: camoufox already bundled (frozen)")
+                self._log(f"package: camoufox bundled ({detail})")
                 return
-            # One more direct import attempt for better error detail
-            try:
-                __import__("camoufox")
-                self._set_step("package", "skipped", "bundled in app")
-                return
-            except Exception as exc:
-                raise RuntimeError(
-                    "安装包缺少 Camoufox 组件。请重新安装最新版 FoxDesk，或改用源码模式运行。"
-                    f" ({exc})"
-                ) from exc
+            raise RuntimeError(
+                "安装包缺少 Camoufox/指纹数据组件。请卸载旧版后安装最新 FoxDesk，"
+                "或改用源码模式运行。"
+                f" ({detail})"
+            )
 
-        if self.import_available("camoufox"):
+        ok, detail = self._probe_camoufox_bundle()
+        if ok:
             self._set_step("package", "skipped", "already installed")
-            self._log("package: already installed")
+            self._log(f"package: already installed ({detail})")
             return
 
         cmd = [sys.executable, "-m", "pip", "install", "--upgrade", "camoufox"]
         result = self._run(cmd, timeout=300)
-        if not result.get("ok") or not self.import_available("camoufox"):
-            raise RuntimeError(result.get("stderr") or "pip install camoufox failed")
+        ok, detail = self._probe_camoufox_bundle()
+        if not result.get("ok") or not ok:
+            raise RuntimeError(result.get("stderr") or detail or "pip install camoufox failed")
         self._set_step("package", "done", "installed")
 
     def _mirror_prefix(self, channel: str) -> str | None:

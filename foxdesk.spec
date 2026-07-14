@@ -3,7 +3,7 @@
 
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_all, collect_submodules
+from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules
 
 ROOT = Path(SPECPATH)
 
@@ -53,6 +53,8 @@ hiddenimports = [
     'browserforge.fingerprints',
     'browserforge.headers',
     'browserforge.download',
+    'browserforge.bayesian_network',
+    'apify_fingerprint_datapoints',
     'multipart',
     'anyio',
     'anyio._backends',
@@ -68,6 +70,10 @@ hiddenimports = [
     'playwright.async_api',
     'language_tags',
     'screeninfo',
+    'ua_parser',
+    'numpy',
+    'lxml',
+    'socks',
     'backend',
     'backend.app',
     'backend.camoufox_worker',
@@ -83,24 +89,37 @@ hiddenimports = [
     'PIL.Image',
 ]
 
-# Ensure camoufox + fingerprint data files and submodules ship with the installer.
-for pkg in ('camoufox', 'browserforge', 'language_tags'):
+# Ship package code + non-Python data (zip/json/yml) required at runtime.
+# browserforge depends on apify_fingerprint_datapoints data/*.zip — missing these
+# breaks frozen first-run with FileNotFoundError under _internal/.
+for pkg in (
+    'camoufox',
+    'browserforge',
+    'apify_fingerprint_datapoints',
+    'language_tags',
+    'playwright',
+    'certifi',
+):
     try:
         pkg_datas, pkg_binaries, pkg_hidden = collect_all(pkg)
         datas += pkg_datas
         binaries += pkg_binaries
         hiddenimports += pkg_hidden
+        print(f'[foxdesk.spec] collect_all({pkg}): datas={len(pkg_datas)} binaries={len(pkg_binaries)} hidden={len(pkg_hidden)}')
     except Exception as exc:
         print(f'[foxdesk.spec] collect_all({pkg}) skipped: {exc}')
+        try:
+            extra = collect_data_files(pkg)
+            datas += extra
+            print(f'[foxdesk.spec] collect_data_files({pkg}): {len(extra)}')
+        except Exception as exc2:
+            print(f'[foxdesk.spec] collect_data_files({pkg}) skipped: {exc2}')
 
-try:
-    hiddenimports += collect_submodules('camoufox')
-except Exception:
-    pass
-try:
-    hiddenimports += collect_submodules('browserforge')
-except Exception:
-    pass
+for pkg in ('camoufox', 'browserforge', 'apify_fingerprint_datapoints', 'playwright'):
+    try:
+        hiddenimports += collect_submodules(pkg)
+    except Exception:
+        pass
 
 # de-dup while preserving order
 _seen = set()

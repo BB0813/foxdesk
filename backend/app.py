@@ -55,7 +55,7 @@ def migrate_legacy_data() -> None:
         shutil.copytree(legacy_profiles_dir, app_profiles_dir)
 
 
-APP_VERSION = "1.1.0-beta.5"
+APP_VERSION = "1.1.0-beta.6"
 GITHUB_REPO = "BB0813/foxdesk"
 
 if getattr(sys, "frozen", False):
@@ -549,16 +549,35 @@ def run_short(command: list[str], timeout: int = 10) -> dict[str, Any]:
 
 
 def import_available(module: str) -> bool:
-    # Always try direct import first (works in frozen + source).
-    try:
+    """Return True only if the module is importable *and* usable.
+
+    For camoufox we also touch fingerprint datapoints so a half-bundled
+    install (missing apify zip files) is treated as unavailable.
+    """
+    def _probe() -> bool:
         __import__(module)
+        if module == "camoufox":
+            # browserforge -> apify_fingerprint_datapoints data/*.zip
+            import apify_fingerprint_datapoints  # noqa: F401
+            from camoufox import fingerprints as _fp  # noqa: F401
+            from camoufox.pkgman import INSTALL_DIR  # noqa: F401
         return True
+
+    try:
+        return _probe()
     except Exception:
         pass
     if getattr(sys, "frozen", False):
         return False
+    code = (
+        "import camoufox, apify_fingerprint_datapoints\n"
+        "from camoufox import fingerprints\n"
+        "from camoufox.pkgman import INSTALL_DIR\n"
+        if module == "camoufox"
+        else f"import {module}\n"
+    )
     return subprocess.run(
-        [sys.executable, "-c", f"import {module}"],
+        [sys.executable, "-c", code],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         creationflags=CREATE_NO_WINDOW,

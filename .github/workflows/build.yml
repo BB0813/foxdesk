@@ -123,7 +123,7 @@ jobs:
           Write-Host "worker missing exit=$($p.ExitCode)"
           if ($p.ExitCode -eq 0) { throw "expected non-zero exit for missing runtime" }
 
-          # Ensure camoufox package is actually bundled (first-run setup depends on this).
+          # Ensure camoufox + fingerprint datapoints are bundled (first-run setup depends on this).
           $camoufoxDir = Get-ChildItem -Path "dist/FoxDesk" -Recurse -Directory -Filter "camoufox" -ErrorAction SilentlyContinue | Select-Object -First 1
           if (-not $camoufoxDir) {
             throw "camoufox package directory missing from dist/FoxDesk - packaging failed"
@@ -133,6 +133,23 @@ jobs:
             throw "camoufox/pkgman.py missing from bundle: $($camoufoxDir.FullName)"
           }
           Write-Host "bundled camoufox at $($camoufoxDir.FullName)"
+
+          $apifyDir = Get-ChildItem -Path "dist/FoxDesk" -Recurse -Directory -Filter "apify_fingerprint_datapoints" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $apifyDir) {
+            throw "apify_fingerprint_datapoints package missing from dist/FoxDesk - packaging failed"
+          }
+          $requiredZips = @(
+            "input-network-definition.zip",
+            "header-network-definition.zip",
+            "fingerprint-network-definition.zip"
+          )
+          foreach ($name in $requiredZips) {
+            $zipPath = Join-Path $apifyDir.FullName "data\$name"
+            if (-not (Test-Path $zipPath)) {
+              throw "missing required datapoint file: $zipPath"
+            }
+          }
+          Write-Host "bundled apify datapoints at $($apifyDir.FullName)"
 
       - name: Install Inno Setup
         run: choco install innosetup -y --no-progress

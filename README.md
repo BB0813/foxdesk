@@ -2,7 +2,7 @@
 
 本地 Camoufox 指纹浏览器管理器 — 免费、开源、隐私优先。
 
-**当前版本：`1.1.0-beta.5`**
+**当前版本：`1.1.0-beta.6`**
 
 <p align="center">
   <img src="static/logo.png" width="120" alt="FoxDesk Logo">
@@ -47,6 +47,17 @@ python -m uvicorn backend.app:app --host 127.0.0.1 --port 8765 --reload
 
 Windows 也可双击 `Start-CamoufoxManager.bat`。
 
+### 卸载不干净 / 重装前清理
+
+安装包卸载时会询问是否删除用户数据（`%APPDATA%\CamoufoxManager`）。  
+若旧版本残留导致无法干净卸载，可运行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools/clean-foxdesk.ps1 -Yes
+```
+
+加 `-KeepUserData` 可只删程序、保留配置档案。
+
 ## 构建 Windows 安装包
 
 ```bat
@@ -65,15 +76,15 @@ iscc installer.iss
 产物：
 
 - 便携版：`dist/FoxDesk/FoxDesk.exe`
-- 安装包：`installer_output/FoxDesk-1.1.0-beta.5-Setup.exe`
+- 安装包：`installer_output/FoxDesk-1.1.0-beta.6-Setup.exe`
 
 ### CI/CD
 
 推送 tag 或手动触发 workflow 会自动构建并发布 Release：
 
 ```bash
-git tag v1.1.0-beta.5
-git push origin v1.1.0-beta.5
+git tag v1.1.0-beta.6
+git push origin v1.1.0-beta.6
 ```
 
 - Workflow：`.github/workflows/build.yml`

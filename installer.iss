@@ -2,7 +2,7 @@
 ; Requires: Inno Setup 6+
 
 #define MyAppName "FoxDesk"
-#define MyAppVersion "1.1.0-beta.5"
+#define MyAppVersion "1.1.0-beta.6"
 #define MyAppPublisher "FoxDesk"
 #define MyAppURL "https://github.com/BB0813/foxdesk"
 #define MyAppExeName "FoxDesk.exe"
@@ -34,6 +34,10 @@ SetupIconFile=static\logo.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 CloseApplications=force
 RestartApplications=no
+; Replace existing installs cleanly (same AppId).
+UsePreviousAppDir=yes
+CreateUninstallRegKey=yes
+UninstallDisplayName={#MyAppName}
 InfoBeforeFile=
 ; Windows VERSIONINFO fields must be numeric (x.y.z[.w]); beta labels stay in AppVersion/AppVerName.
 VersionInfoVersion=1.1.0.0
@@ -59,5 +63,75 @@ Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\{#MyAppName}"; Fil
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
+; Always remove install dir leftovers (logs, broken half-updates, etc.)
 [UninstallDelete]
+Type: filesandordirs; Name: "{app}\_internal"
 Type: filesandordirs; Name: "{app}"
+Type: files; Name: "{userdesktop}\{#MyAppName}.lnk"
+Type: files; Name: "{commondesktop}\{#MyAppName}.lnk"
+Type: files; Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\{#MyAppName}.lnk"
+Type: filesandordirs; Name: "{group}"
+; Temp single-instance lock
+Type: filesandordirs; Name: "{%TEMP}\{#MyAppName}"
+
+[Code]
+var
+  RemoveUserData: Boolean;
+
+function InitializeUninstall(): Boolean;
+var
+  ResultCode: Integer;
+begin
+  Result := True;
+  RemoveUserData := False;
+  // Stop running FoxDesk / worker processes before files are locked.
+  Exec('taskkill.exe', '/F /IM {#MyAppExeName} /T', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  // Ask whether to wipe app data (profiles/proxies/setup markers).
+  if MsgBox(
+       '是否同时删除用户数据？' + #13#10 + #13#10 +
+       '包括配置档案、代理池、运行时缓存与首次引导标记：' + #13#10 +
+       ExpandConstant('{userappdata}\CamoufoxManager') + #13#10 + #13#10 +
+       '选择「是」= 完全卸载（推荐重装前使用）' + #13#10 +
+       '选择「否」= 仅删除程序，保留配置',
+       mbConfirmation, MB_YESNO) = IDYES then
+  begin
+    RemoveUserData := True;
+  end;
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  DataDir: String;
+  LegacyDir: String;
+begin
+  if CurUninstallStep = usPostUninstall then
+  begin
+    // Extra sweep for leftover shortcuts / empty dirs.
+    DeleteFile(ExpandConstant('{userdesktop}\{#MyAppName}.lnk'));
+    DeleteFile(ExpandConstant('{commondesktop}\{#MyAppName}.lnk'));
+    DeleteFile(ExpandConstant('{userappdata}\Microsoft\Internet Explorer\Quick Launch\{#MyAppName}.lnk'));
+    DelTree(ExpandConstant('{group}'), True, True, True);
+    DelTree(ExpandConstant('{%TEMP}\{#MyAppName}'), True, True, True);
+    DelTree(ExpandConstant('{app}'), True, True, True);
+
+    if RemoveUserData then
+    begin
+      DataDir := ExpandConstant('{userappdata}\CamoufoxManager');
+      LegacyDir := ExpandConstant('{localappdata}\CamoufoxManager');
+      if DirExists(DataDir) then
+        DelTree(DataDir, True, True, True);
+      if DirExists(LegacyDir) then
+        DelTree(LegacyDir, True, True, True);
+      // Camoufox browser cache is shared; only remove FoxDesk-managed markers above.
+    end;
+  end;
+end;
+
+function InitializeSetup(): Boolean;
+var
+  ResultCode: Integer;
+begin
+  Result := True;
+  // Ensure previous instance is not locking files during upgrade install.
+  Exec('taskkill.exe', '/F /IM {#MyAppExeName} /T', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
