@@ -1903,11 +1903,16 @@ function startUpdatePoll() {
   }, 900);
 }
 
-async function checkForUpdates(silent = false) {
+async function checkForUpdates(silent = false, force = false) {
   try {
+    // Avoid burning GitHub quota: silent auto-checks at most once per 30 minutes in UI.
+    if (silent && !force && state.lastAutoUpdateCheck && Date.now() - state.lastAutoUpdateCheck < 30 * 60 * 1000) {
+      return state.updateInfo;
+    }
     const result = await api("/api/system/updates/check", {
       method: "POST",
-      body: JSON.stringify({}),
+      // Manual button forces a fresh lookup; silent boot check may use server cache.
+      body: JSON.stringify({ force: !silent || force }),
     });
     applyUpdateInfo(result);
     state.lastAutoUpdateCheck = Date.now();

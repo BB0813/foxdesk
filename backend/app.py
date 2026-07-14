@@ -57,7 +57,7 @@ def migrate_legacy_data() -> None:
         shutil.copytree(legacy_profiles_dir, app_profiles_dir)
 
 
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.1.1"
 GITHUB_REPO = "BB0813/foxdesk"
 
 if getattr(sys, "frozen", False):
@@ -984,6 +984,7 @@ def system_cleanup_runtime(max_age_hours: float = 24.0) -> dict[str, Any]:
 
 class UpdateCheckRequest(BaseModel):
     include_prerelease: bool | None = None
+    force: bool = False
 
 
 class UpdateInstallRequest(BaseModel):
@@ -1004,7 +1005,10 @@ def system_updates() -> dict[str, Any]:
 @app.post("/api/system/updates/check")
 def system_updates_check(request: UpdateCheckRequest | None = None) -> dict[str, Any]:
     req = request or UpdateCheckRequest()
-    result = update_manager.check(include_prerelease=req.include_prerelease)
+    result = update_manager.check(
+        include_prerelease=req.include_prerelease,
+        force=bool(req.force),
+    )
     activity.log("update_check", f"latest={result.get('latest')} status={result.get('status')}")
     return {"ok": result.get("status") != "failed", **result, "name": result.get("release_name")}
 

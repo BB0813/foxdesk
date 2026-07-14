@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.1 — 2026-07-14
+
+Hotfix: GitHub update check no longer fails hard on API rate limit (HTTP 403).
+
+- Fall back to github.com web JSON + releases.atom when `api.github.com` is rate-limited
+- Short in-process check cache + quieter auto-check interval
+- Clearer Chinese error when the API quota is exhausted
+
+
 ## 1.1.0 — 2026-07-14 (Stable)
 
 First stable release after the 1.1.0-beta series.
