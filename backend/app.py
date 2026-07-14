@@ -55,7 +55,7 @@ def migrate_legacy_data() -> None:
         shutil.copytree(legacy_profiles_dir, app_profiles_dir)
 
 
-APP_VERSION = "1.1.0-beta.3"
+APP_VERSION = "1.1.0-beta.4"
 GITHUB_REPO = "BB0813/foxdesk"
 
 if getattr(sys, "frozen", False):
@@ -461,8 +461,15 @@ app.mount("/assets", StaticFiles(directory=STATIC_DIR), name="assets")
 from backend.proxy_pool import ProxyPoolStore  # noqa: E402
 from backend.setup_manager import SetupManager  # noqa: E402
 from backend.templates_data import profile_templates  # noqa: E402
+from backend.update_manager import UpdateManager  # noqa: E402
 
 proxy_pool = ProxyPoolStore(DATA_DIR / "proxies.json")
+update_manager = UpdateManager(
+    app_version=APP_VERSION,
+    github_repo=GITHUB_REPO,
+    download_dir=DATA_DIR / "updates",
+    user_agent=f"FoxDesk/{APP_VERSION}",
+)
 
 
 # --- Channel Store ---
@@ -780,36 +787,53 @@ def system_cleanup_runtime(max_age_hours: float = 24.0) -> dict[str, Any]:
     return {"ok": True, **result}
 
 
+class UpdateCheckRequest(BaseModel):
+    include_prerelease: bool | None = None
+
+
+class UpdateInstallRequest(BaseModel):
+    exit_after: bool = True
+
+
 @app.get("/api/system/updates")
 def system_updates() -> dict[str, Any]:
-    """Check GitHub Releases for a newer version (best-effort)."""
-    import urllib.request
+    """Check GitHub Releases for a newer version (includes prereleases when current is beta)."""
+    result = update_manager.check()
+    return {
+        "ok": result.get("status") != "failed",
+        **result,
+        "name": result.get("release_name"),
+    }
 
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": f"FoxDesk/{APP_VERSION}", "Accept": "application/vnd.github+json"})
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        tag = (data.get("tag_name") or "").lstrip("v")
-        html_url = data.get("html_url") or f"https://github.com/{GITHUB_REPO}/releases"
-        return {
-            "ok": True,
-            "current": APP_VERSION,
-            "latest": tag,
-            "update_available": bool(tag and tag != APP_VERSION and not tag.startswith(APP_VERSION)),
-            "release_url": html_url,
-            "name": data.get("name") or tag,
-            "prerelease": bool(data.get("prerelease")),
-        }
-    except Exception as exc:
-        return {
-            "ok": False,
-            "current": APP_VERSION,
-            "latest": None,
-            "update_available": False,
-            "error": str(exc),
-            "release_url": f"https://github.com/{GITHUB_REPO}/releases",
-        }
+
+@app.post("/api/system/updates/check")
+def system_updates_check(request: UpdateCheckRequest | None = None) -> dict[str, Any]:
+    req = request or UpdateCheckRequest()
+    result = update_manager.check(include_prerelease=req.include_prerelease)
+    activity.log("update_check", f"latest={result.get('latest')} status={result.get('status')}")
+    return {"ok": result.get("status") != "failed", **result, "name": result.get("release_name")}
+
+
+@app.get("/api/system/updates/status")
+def system_updates_status() -> dict[str, Any]:
+    return update_manager.status()
+
+
+@app.post("/api/system/updates/download")
+def system_updates_download() -> dict[str, Any]:
+    result = update_manager.start_download()
+    activity.log("update_download", f"status={result.get('status')} asset={result.get('asset_name')}")
+    return {"ok": result.get("status") not in {"failed"}, **result}
+
+
+@app.post("/api/system/updates/install")
+def system_updates_install(request: UpdateInstallRequest | None = None) -> dict[str, Any]:
+    req = request or UpdateInstallRequest()
+    result = update_manager.install(exit_after=req.exit_after)
+    activity.log("update_install", f"ok={result.get('ok')} path={result.get('local_path')}")
+    if not result.get("ok"):
+        raise HTTPException(status_code=409, detail=result.get("error") or "install failed")
+    return result
 
 
 @app.post("/api/tasks/{name}")

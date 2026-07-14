@@ -134,6 +134,20 @@ const i18n = {
     setupStepVerify: "安装校验",
     updateAvailable: "发现新版本",
     openRelease: "打开发布页",
+    oneClickUpdate: "一键更新",
+    updateLater: "稍后",
+    updateModalDesc: "检测到新版本，可一键下载并安装",
+    currentVersion: "当前版本",
+    latestVersion: "最新版本",
+    updateIdle: "等待操作",
+    updateChecking: "正在检查更新…",
+    updateDownloading: "正在下载安装包…",
+    updateReady: "下载完成，可安装",
+    updateInstalling: "正在启动安装程序…",
+    updateUpToDate: "已是最新版本",
+    updateFailed: "更新失败",
+    updateHint: "下载完成后将自动打开安装程序；安装时建议先关闭当前会话。",
+    updateStarted: "已开始更新",
     templates: "模板",
     createFromTemplate: "从模板创建",
     unsavedChanges: "有未保存的修改，确定离开？",
@@ -358,6 +372,20 @@ const i18n = {
     setupStepVerify: "Verify install",
     updateAvailable: "Update available",
     openRelease: "Open Release",
+    oneClickUpdate: "Update Now",
+    updateLater: "Later",
+    updateModalDesc: "A new version is available. Download and install in one click.",
+    currentVersion: "Current",
+    latestVersion: "Latest",
+    updateIdle: "Waiting",
+    updateChecking: "Checking for updates…",
+    updateDownloading: "Downloading installer…",
+    updateReady: "Ready to install",
+    updateInstalling: "Launching installer…",
+    updateUpToDate: "You're up to date",
+    updateFailed: "Update failed",
+    updateHint: "The installer will open automatically after download. Close running sessions first.",
+    updateStarted: "Update started",
     templates: "Templates",
     createFromTemplate: "Create from template",
     unsavedChanges: "You have unsaved changes. Leave anyway?",
@@ -455,6 +483,10 @@ const state = {
   setupPollTimer: null,
   setupAutoStarted: false,
   setupBlocking: false,
+  updateInfo: null,
+  updatePollTimer: null,
+  updateModalOpen: false,
+  lastAutoUpdateCheck: 0,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -1723,24 +1755,195 @@ async function runCleanupRuntime() {
   }
 }
 
+function updateStatusLabel(info) {
+  const status = info?.status || "idle";
+  const map = {
+    idle: t("updateIdle"),
+    checking: t("updateChecking"),
+    available: t("updateAvailable"),
+    downloading: t("updateDownloading"),
+    ready: t("updateReady"),
+    installing: t("updateInstalling"),
+    up_to_date: t("updateUpToDate"),
+    failed: t("updateFailed"),
+  };
+  return map[status] || status;
+}
+
+function applyUpdateInfo(info) {
+  if (!info) return;
+  state.updateInfo = info;
+  const releaseUrl = info.release_url || "https://github.com/BB0813/foxdesk/releases";
+  const banner = $("#updateBanner");
+  const text = $("#updateBannerText");
+  const link = $("#updateBannerLink");
+  const showBanner =
+    info.update_available &&
+    info.latest &&
+    info.latest !== state.updateDismissedTag &&
+    !["up_to_date", "checking"].includes(info.status);
+
+  if (text && info.latest) text.textContent = `${info.current || ""} → ${info.latest}`;
+  if (link) link.href = releaseUrl;
+  if (banner) banner.classList.toggle("hidden", !showBanner);
+
+  const openBtn = $("#updateOpenReleaseBtn");
+  if (openBtn) openBtn.href = releaseUrl;
+
+  $("#updateCurrentVer") && ($("#updateCurrentVer").textContent = info.current || "—");
+  $("#updateLatestVer") && ($("#updateLatestVer").textContent = info.latest || "—");
+  $("#updateStatusText") && ($("#updateStatusText").textContent = updateStatusLabel(info));
+  const pct = Math.max(0, Math.min(100, Number(info.progress) || 0));
+  $("#updateProgressPct") && ($("#updateProgressPct").textContent = `${pct}%`);
+  const fill = $("#updateProgressFill");
+  if (fill) fill.style.width = `${pct}%`;
+
+  const logEl = $("#updateLog");
+  if (logEl && Array.isArray(info.logs)) {
+    logEl.textContent = info.logs.slice(-40).join("\n");
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  const busy = ["checking", "downloading", "installing"].includes(info.status);
+  const nowBtn = $("#updateNowBtn");
+  if (nowBtn) {
+    nowBtn.disabled = busy;
+    if (info.status === "ready") nowBtn.textContent = t("updateReady");
+    else if (info.status === "downloading") nowBtn.textContent = t("updateDownloading");
+    else if (info.status === "installing") nowBtn.textContent = t("updateInstalling");
+    else if (!info.can_one_click && info.update_available) nowBtn.textContent = t("openRelease");
+    else nowBtn.textContent = t("oneClickUpdate");
+  }
+  if (info.error && state.updateModalOpen) {
+    // keep error visible in log already
+  }
+  renderIcons();
+}
+
+function showUpdateModal(force = false) {
+  const overlay = $("#updateOverlay");
+  if (!overlay) return;
+  const info = state.updateInfo;
+  if (!force && info?.latest && info.latest === state.updateDismissedTag) return;
+  state.updateModalOpen = true;
+  overlay.classList.remove("hidden");
+  applyUpdateInfo(info || {});
+  renderIcons();
+}
+
+function hideUpdateModal() {
+  state.updateModalOpen = false;
+  $("#updateOverlay")?.classList.add("hidden");
+  stopUpdatePoll();
+}
+
+function stopUpdatePoll() {
+  if (state.updatePollTimer) {
+    window.clearInterval(state.updatePollTimer);
+    state.updatePollTimer = null;
+  }
+}
+
+function startUpdatePoll() {
+  stopUpdatePoll();
+  state.updatePollTimer = window.setInterval(async () => {
+    try {
+      const info = await api("/api/system/updates/status");
+      applyUpdateInfo(info);
+      if (["ready", "failed", "up_to_date", "available", "idle"].includes(info.status)) {
+        if (info.status === "ready") {
+          // leave poll briefly then stop; user may click install or auto-install
+          stopUpdatePoll();
+        } else if (info.status !== "available") {
+          stopUpdatePoll();
+        }
+      }
+    } catch (_) {
+      /* ignore transient poll errors */
+    }
+  }, 900);
+}
+
 async function checkForUpdates(silent = false) {
   try {
-    const result = await api("/api/system/updates");
-    const banner = $("#updateBanner");
-    const text = $("#updateBannerText");
-    const link = $("#updateBannerLink");
-    const releaseUrl = result.release_url || result.url || "https://github.com/BB0813/foxdesk/releases";
+    const result = await api("/api/system/updates/check", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    applyUpdateInfo(result);
+    state.lastAutoUpdateCheck = Date.now();
+
     if (result.update_available && result.latest && result.latest !== state.updateDismissedTag) {
-      if (text) text.textContent = `${result.current || ""} → ${result.latest}`;
-      if (link) link.href = releaseUrl;
-      if (banner) banner.classList.remove("hidden");
-      if (!silent) toast(`${t("updateAvailable")}: ${result.latest}`);
+      if (!silent) {
+        showUpdateModal(true);
+        toast(`${t("updateAvailable")}: ${result.latest}`);
+      } else if (!state.setupBlocking && !state.updateModalOpen) {
+        // Auto-popup once per newer tag when not dismissed and setup done
+        showUpdateModal(false);
+      }
     } else {
-      if (banner) banner.classList.add("hidden");
-      if (!silent) toast(result.ok === false ? (result.error || t("upToDate")) : t("upToDate"));
+      if (!silent) {
+        if (result.status === "failed") toast(result.error || t("updateFailed"));
+        else toast(t("updateUpToDate"));
+      }
+      if (!result.update_available) {
+        $("#updateBanner")?.classList.add("hidden");
+      }
     }
+    return result;
   } catch (err) {
     if (!silent) toast(err.message);
+    return null;
+  }
+}
+
+async function startOneClickUpdate() {
+  try {
+    showUpdateModal(true);
+    let info = state.updateInfo;
+    if (!info?.update_available && !info?.asset_url) {
+      info = await checkForUpdates(true);
+    }
+    if (!info?.update_available) {
+      toast(t("updateUpToDate"));
+      return;
+    }
+    if (!info.can_one_click && info.release_url) {
+      window.open(info.release_url, "_blank", "noopener,noreferrer");
+      toast(t("openRelease"));
+      return;
+    }
+    const dl = await api("/api/system/updates/download", { method: "POST", body: "{}" });
+    applyUpdateInfo(dl);
+    startUpdatePoll();
+    toast(t("updateStarted"));
+
+    // Wait until ready then install
+    const waitReady = async () => {
+      for (let i = 0; i < 600; i++) {
+        const st = await api("/api/system/updates/status");
+        applyUpdateInfo(st);
+        if (st.status === "ready") return st;
+        if (st.status === "failed") throw new Error(st.error || t("updateFailed"));
+        await new Promise((r) => setTimeout(r, 800));
+      }
+      throw new Error(t("updateFailed"));
+    };
+    const ready = await waitReady();
+    stopUpdatePoll();
+    const installed = await api("/api/system/updates/install", {
+      method: "POST",
+      body: JSON.stringify({ exit_after: true }),
+    });
+    applyUpdateInfo(installed);
+    toast(t("updateInstalling"));
+  } catch (err) {
+    stopUpdatePoll();
+    toast(err.message || t("updateFailed"));
+    try {
+      const st = await api("/api/system/updates/status");
+      applyUpdateInfo(st);
+    } catch (_) {}
   }
 }
 
@@ -2006,7 +2209,10 @@ async function refreshAll() {
     loadChannels(),
   ]);
   await maybeAutoSetup();
-  checkForUpdates(true).catch(() => {});
+  // Skip update popup while first-run setup is blocking the UI
+  if (!state.setupBlocking) {
+    checkForUpdates(true).catch(() => {});
+  }
   renderIcons();
 }
 
@@ -2079,6 +2285,7 @@ function bindEvents() {
     hideSetupWizard();
     await loadSystem();
     toast(t("setupDone"));
+    checkForUpdates(true).catch(() => {});
   });
   $$("[data-setup-channel]").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -2089,12 +2296,23 @@ function bindEvents() {
     });
   });
   $("#updateDismissBtn")?.addEventListener("click", () => {
-    const text = $("#updateBannerText")?.textContent || "";
-    const tag = text.split("→").pop()?.trim() || "";
+    const tag = state.updateInfo?.latest || $("#updateBannerText")?.textContent?.split("→").pop()?.trim() || "";
     state.updateDismissedTag = tag;
     localStorage.setItem("cm-update-dismissed", tag);
     $("#updateBanner")?.classList.add("hidden");
+    hideUpdateModal();
   });
+  $("#updateBannerUpdateBtn")?.addEventListener("click", () => startOneClickUpdate());
+  $("#updateNowBtn")?.addEventListener("click", () => startOneClickUpdate());
+  $("#updateLaterBtn")?.addEventListener("click", () => {
+    const tag = state.updateInfo?.latest || "";
+    if (tag) {
+      state.updateDismissedTag = tag;
+      localStorage.setItem("cm-update-dismissed", tag);
+    }
+    hideUpdateModal();
+  });
+  $("#updateModalCloseBtn")?.addEventListener("click", () => hideUpdateModal());
   $("#proxyPoolSelect")?.addEventListener("change", onProxyPoolSelectChange);
 
   // Context menu

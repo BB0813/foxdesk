@@ -54,8 +54,47 @@
         <span id="updateBannerText"></span>
       </div>
       <div class="button-row">
-        <a class="button primary" id="updateBannerLink" href="#" target="_blank" rel="noreferrer" data-i18n="openRelease">打开发布页</a>
+        <button class="button primary" id="updateBannerUpdateBtn" type="button" data-i18n="oneClickUpdate">一键更新</button>
+        <a class="button secondary" id="updateBannerLink" href="#" target="_blank" rel="noreferrer" data-i18n="openRelease">打开发布页</a>
         <button class="button secondary icon-only" id="updateDismissBtn" type="button" title="Dismiss"><i data-lucide="x"></i></button>
+      </div>
+    </div>
+
+    <!-- ═══ In-app Update Modal ═══ -->
+    <div class="update-overlay hidden" id="updateOverlay" role="dialog" aria-modal="true" aria-labelledby="updateModalTitle">
+      <div class="update-card">
+        <div class="update-card-head">
+          <div>
+            <h2 id="updateModalTitle" data-i18n="updateAvailable">发现新版本</h2>
+            <p id="updateModalSubtitle" data-i18n="updateModalDesc">检测到新版本，可一键下载并安装</p>
+          </div>
+          <button class="button secondary icon-only" id="updateModalCloseBtn" type="button" title="Close"><i data-lucide="x"></i></button>
+        </div>
+        <div class="update-version-row">
+          <div>
+            <span class="muted" data-i18n="currentVersion">当前版本</span>
+            <strong id="updateCurrentVer">—</strong>
+          </div>
+          <i data-lucide="arrow-right"></i>
+          <div>
+            <span class="muted" data-i18n="latestVersion">最新版本</span>
+            <strong id="updateLatestVer">—</strong>
+          </div>
+        </div>
+        <div class="setup-progress-wrap">
+          <div class="setup-progress-bar"><div class="setup-progress-fill" id="updateProgressFill"></div></div>
+          <div class="setup-progress-meta">
+            <span id="updateStatusText" data-i18n="updateIdle">等待操作</span>
+            <span id="updateProgressPct">0%</span>
+          </div>
+        </div>
+        <pre class="setup-log" id="updateLog" aria-live="polite"></pre>
+        <div class="setup-actions">
+          <a class="button secondary" id="updateOpenReleaseBtn" href="#" target="_blank" rel="noreferrer" data-i18n="openRelease">打开发布页</a>
+          <button class="button secondary" id="updateLaterBtn" type="button" data-i18n="updateLater">稍后</button>
+          <button class="button primary" id="updateNowBtn" type="button" data-i18n="oneClickUpdate">一键更新</button>
+        </div>
+        <p class="setup-hint" data-i18n="updateHint">下载完成后将自动打开安装程序；安装时建议先关闭当前会话。</p>
       </div>
     </div>
 
