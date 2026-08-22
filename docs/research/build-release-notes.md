@@ -67,6 +67,16 @@ build.bat
 
 ## 5. 本机执行记录
 
+### 2026-08-22 — v1.4.1 发布（CI）
+
+| 项 | 值 |
+|---|---|
+| Release | https://github.com/BB0813/foxdesk/releases/tag/v1.4.1（CI 全绿：build-windows + bstatic-gate + release） |
+| 资产 | `FoxDesk-1.4.1-Setup.exe` ~84 MB / `FoxDesk-windows-x64-1.4.1.zip` ~125 MB / `SHA256SUMS` |
+| 本地 `build.bat` | 括号解析 bug 修复后 `[1/6]…[6/6]` 全链路自产 Setup |
+| **CI 冻结 serve 限制** | GitHub 无头 runner 上冻结 exe 的 `--serve` 在 `import backend.app` 阶段无限停滞（连令牌文件都不落，疑与无桌面会话的设备枚举有关；非产物缺陷——真实桌面多轮验证通过）。CI 因此只做**源码层** HTTP 中间件断言（ping/421/404）+ 冻结进程级 `--worker` 快败检查；冻结 HTTP/GUI 以桌面实测为准 |
+| bstatic 门禁 | CI 新增非阻塞 `bstatic-gate` job：playwright+patchright 装浏览器后跑 `--require-webdriver-false`，2m05s 通过 |
+
 ### 2026-07-22 — 安全加固后重打包（对应审计修复）
 
 | 项 | 值 |
