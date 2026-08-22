@@ -95,8 +95,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
-          python -m pip install pillow
+          python -m pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Syntax check
         run: |
@@ -107,7 +106,6 @@ jobs:
         env:
           PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
         run: |
-          python -m pip install pytest -q
           python -m pytest tests -q --tb=short
 
       - name: Create icon
@@ -158,6 +156,36 @@ jobs:
           }
           Write-Host "bundled apify datapoints at $($apifyDir.FullName)"
 
+      - name: Smoke test --serve mode
+        shell: pwsh
+        run: |
+          $exe = "dist/FoxDesk/FoxDesk.exe"
+          $p = Start-Process -FilePath $exe -ArgumentList @('--serve', '8799') -PassThru -WindowStyle Hidden
+          try {
+            $ready = $false
+            for ($i = 0; $i -lt 40; $i++) {
+              Start-Sleep -Milliseconds 500
+              try {
+                $resp = Invoke-WebRequest -Uri "http://127.0.0.1:8799/api/system/ping" -UseBasicParsing -TimeoutSec 2
+                if ($resp.StatusCode -eq 200) { $ready = $true; break }
+              } catch {}
+            }
+            if (-not $ready) { throw "serve smoke: /api/system/ping never became ready" }
+            # Loopback Host must be accepted, foreign Host must be rejected (DNS-rebinding guard).
+            $html = Invoke-WebRequest -Uri "http://127.0.0.1:8799/" -UseBasicParsing -TimeoutSec 5
+            if ($html.StatusCode -ne 200) { throw "serve smoke: index failed" }
+            try {
+              Invoke-WebRequest -Uri "http://127.0.0.1:8799/api/system/ping" -Headers @{Host="evil.example.com"} -UseBasicParsing -TimeoutSec 3 | Out-Null
+              throw "serve smoke: foreign Host was NOT rejected"
+            } catch [Microsoft.PowerShell.Commands.HttpResponseException] {
+              if ($_.Exception.Response.StatusCode.value__ -ne 421) { throw "serve smoke: unexpected status for foreign Host" }
+            }
+            Write-Host "serve smoke ok (ping + index + rebinding guard)"
+          } finally {
+            try { $p.Kill() } catch {}
+            try { Get-Process -Name FoxDesk -ErrorAction SilentlyContinue | Stop-Process -Force } catch {}
+          }
+
       - name: Install Inno Setup
         run: choco install innosetup -y --no-progress
 
@@ -174,6 +202,20 @@ jobs:
         run: |
           $version = "${{ steps.meta.outputs.version }}"
           Compress-Archive -Path "dist/FoxDesk/*" -DestinationPath "FoxDesk-windows-x64-$version.zip" -Force
+
+      - name: Verify portable zip
+        shell: pwsh
+        run: |
+          $version = "${{ steps.meta.outputs.version }}"
+          $zip = "FoxDesk-windows-x64-$version.zip"
+          $out = "portable-check"
+          Expand-Archive -Path $zip -DestinationPath $out -Force
+          if (-not (Test-Path "$out/FoxDesk.exe")) { throw "portable zip missing FoxDesk.exe" }
+          # Quick-fail worker check on the extracted copy (no GUI involved).
+          $p = Start-Process -FilePath "$out/FoxDesk.exe" -ArgumentList @('--worker', 'missing-runtime.json') -PassThru -WindowStyle Hidden
+          if (-not $p.WaitForExit(30000)) { try { $p.Kill() } catch {}; throw "portable worker smoke timed out" }
+          if ($p.ExitCode -eq 0) { throw "portable worker smoke: expected non-zero exit" }
+          Write-Host "portable zip verified (worker quick-fail exit=$($p.ExitCode))"
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
@@ -240,16 +282,52 @@ jobs:
           body: |
             ## FoxDesk ${{ needs.build-windows.outputs.version }}
 
-            Local Camoufox fingerprint browser manager for Windows.
+            Local dual-engine fingerprint browser manager for Windows (Camoufox + Chromium).
 
             ### Downloads
             - **Installer**: `FoxDesk-*-Setup.exe` (default install: `%LOCALAPPDATA%\Programs\FoxDesk`)
             - **Portable**: `FoxDesk-windows-x64-*.zip`
             - **Checksums**: `SHA256SUMS` (one-click update verifies this)
 
+            ### Dual engine (Chromium)
+            - Optional Chromium engine with `chromium_backend` = `auto` | `playwright` | `patchright` (auto prefers Patchright).
+            - Browser binaries are **not** bundled; after install run:
+              `playwright install chromium` and `patchright install chromium`.
+            - If the bundled WebView shell fails on your machine, FoxDesk falls back to your system browser automatically.
+
             ### Notes
             - First run guided setup downloads the Camoufox browser automatically.
             - Data directory: `%APPDATA%\FoxDesk` (legacy `%APPDATA%\CamoufoxManager` auto-migrates)
-            - Local API is bound to `127.0.0.1` and requires a per-process UI token.
+            - Local API is bound to `127.0.0.1`, requires a per-process UI token and loopback Host header.
             - Password-encrypted local backups (`.fdk`) live under the data directory.
             - Do not expose the local server to the network.
+            - No anti-detect/payment/signup guarantees are provided or implied.
+
+  bstatic-gate:
+    # Non-blocking fingerprint gate (webdriver=false under patchright).
+    # Requires network (example.com) — advisory signal, never blocks release.
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install deps
+        run: |
+          python -m pip install -r requirements.txt -r requirements-dev.txt
+      - name: Install browsers
+        run: |
+          python -m playwright install chromium
+          python -m patchright install chromium
+      - name: Run bstatic probe
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: python tools/bstatic_probe.py --backend patchright --require-webdriver-false --json-out _bstatic_ci.json
+      - name: Upload probe result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bstatic-ci-result
+          path: _bstatic_ci.json
+          retention-days: 14

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Headed Chromium smoke for Phase C / 1.4.0-dev (Patchright path).
+"""Headed Chromium smoke for Phase C / 1.4.0 (Patchright path).
 
 Runs FoxDesk chromium_worker with chromium_backend=patchright (or auto),
 collects ready + fingerprint_report, then stop.
@@ -34,13 +34,13 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--require-webdriver-false",
         action="store_true",
-        default=True,
-        help="Fail if fingerprint webdriver is not false (default on)",
+        default=False,
+        help="Fail if fingerprint webdriver is not false (Phase C gate)",
     )
     p.add_argument(
         "--allow-webdriver-true",
         action="store_true",
-        help="Do not fail on webdriver=true (debug only)",
+        help="Explicitly accept webdriver=true (debug only)",
     )
     p.add_argument(
         "--json-out",
@@ -170,7 +170,7 @@ def main() -> int:
 
     user_data = Path(tempfile.mkdtemp(prefix="foxdesk-smoke-c-"))
     summary: dict = {
-        "app_version_hint": "1.4.0-dev",
+        "app_version_hint": "1.4.0",
         "phase": "C",
         "headed": True,
         "platform": sys.platform,

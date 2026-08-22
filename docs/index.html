@@ -122,11 +122,11 @@
       <!-- HOME -->
       <div id="home" class="hero">
         <h1>FoxDesk</h1>
-        <p>本地 Camoufox 指纹浏览器管理器 — 免费、开源、隐私优先</p>
+        <p>本地双引擎指纹浏览器管理器（Camoufox + Chromium）— 免费、开源、隐私优先</p>
         <div class="badges">
           <span>Python 3.12+</span>
           <span>FastAPI</span>
-          <span>Camoufox</span>
+          <span>Camoufox + Chromium</span>
           <span>Windows / macOS / Linux</span>
         </div>
       </div>
@@ -388,8 +388,8 @@ FoxDesk
 
       <h3>CI/CD 自动构建</h3>
       <p>推送 <code>v*</code> tag 自动触发 GitHub Actions：</p>
-      <pre>git tag v1.4.0
-git push origin v1.4.0</pre>
+      <pre>git tag v1.4.1
+git push origin v1.4.1</pre>
       <p>自动构建 Windows exe / 安装包并创建 GitHub Release（含 SHA256SUMS）。</p>
 
       <!-- CONTRIBUTING -->
@@ -405,18 +405,31 @@ git push origin v1.4.0</pre>
       <!-- CHANGELOG -->
       <h2 id="changelog">更新日志</h2>
       <div class="card">
-        <h3>v1.4.0 <span class="badge p0">最新</span></h3>
-        <p style="color:var(--muted)">2026-07-14</p>
+        <h3>v1.4.1 <span class="badge p0">最新</span></h3>
+        <p style="color:var(--muted)">2026-08-22</p>
         <ul>
-          <li>日志下载 GET/POST + Token 修复</li>
-          <li>会话批量停止 UI + 代理 health-status 展示</li>
-          <li>运行时截图 / 有界 evaluate</li>
-          <li>文档与 1.3.x 能力对齐</li>
+          <li>全项目安全审计修复：恢复路径穿越、DNS rebinding 防护、更新强制 SHA256</li>
+          <li>进程清理链修复（Windows 进程树终止、退出停会话、shutdown 钩子）</li>
+          <li>冻结版原生 WebView 窗口修复（非 ASCII / 网络盘路径）</li>
+          <li>代理口令 DPAPI 封装、任务参数白名单、Cookie #HttpOnly_ 导入修复</li>
+          <li>测试 58→116；CI 增加 --serve 冒烟与 bstatic 门禁</li>
         </ul>
       </div>
       <div class="card" style="margin-top:12px">
-        <h3>v1.3.1 / v1.3.0</h3>
+        <h3>v1.4.0</h3>
+        <p style="color:var(--muted)">2026-07-15</p>
         <ul>
+          <li>双引擎：Camoufox + Chromium（chromium_backend auto/playwright/patchright，auto 优先 Patchright）</li>
+          <li>AI 工作档案模板、指纹字体/媒体预设、UA-CH 注入</li>
+          <li>安装/启动错误人性化提示与启动预检</li>
+          <li>本地安全加固：API 令牌 + 回环 Host 校验、更新强制 SHA256</li>
+          <li>浏览器二进制不随包分发，按需 install</li>
+        </ul>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <h3>v1.3.2 / v1.3.1 / v1.3.0</h3>
+        <ul>
+          <li>日志下载 GET/POST + Token 修复、会话批量停止</li>
           <li>加密备份 .fdk 创建/恢复、server 端点刷新</li>
           <li>会话导航/指纹探测、并发与空闲限制</li>
           <li>代理健康巡检调度与分配模式</li>

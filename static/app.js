@@ -238,9 +238,6 @@ const i18n = {
     bulkProxyImport: "批量导入代理（每行一个）",
     bulkProxyImportBtn: "批量导入",
     logs: "日志",
-    allChecksPassed: "所有检测通过",
-    issues: "个问题",
-    openInBrowser: "在浏览器中打开",
     fingerprintGenerated: "指纹已生成",
     exported: "已导出",
     imported: "已导入",
@@ -322,6 +319,20 @@ const i18n = {
     navigatorVendor: "厂商",
     screenWidth: "宽",
     screenHeight: "高",
+    addonsPlaceholder: "逗号或换行分隔",
+    tokenPlaceholder: "ghp_… 或留空",
+    pwdPlaceholder: "至少 4 位",
+    updatedCount: "项已更新",
+    updateCancelled: "更新已取消",
+    continueLaunch: "仍要启动吗？",
+    confirmStopAll: "停止全部运行中的会话？",
+    confirmBatchStop: "停止所选会话",
+    confirmCleanup: "清理残留的运行时文件？",
+    mirrorUrlRequired: "请输入镜像地址",
+    untitled: "未命名",
+    sessionExpired: "会话已过期（API 令牌已轮换），正在刷新…",
+    requestTimeout: "请求超时",
+    detail: "详情",
     chromiumStack: "Chromium 栈",
     patchrightReady: "Patchright 已就绪",
     patchrightMissing: "Patchright 未安装",
@@ -584,9 +595,6 @@ const i18n = {
     bulkProxyImport: "Bulk Import Proxies (one per line)",
     bulkProxyImportBtn: "Import",
     logs: "Logs",
-    allChecksPassed: "All checks passed",
-    issues: "issue(s)",
-    openInBrowser: "Open in browser",
     fingerprintGenerated: "Fingerprint generated",
     exported: "Exported",
     imported: "Imported",
@@ -659,6 +667,20 @@ const i18n = {
     navigatorVendor: "Vendor",
     screenWidth: "W",
     screenHeight: "H",
+    addonsPlaceholder: "Comma or newline separated",
+    tokenPlaceholder: "ghp_… or leave empty",
+    pwdPlaceholder: "At least 4 characters",
+    updatedCount: "updated",
+    updateCancelled: "Update cancelled",
+    continueLaunch: "Continue launch?",
+    confirmStopAll: "Stop ALL running sessions?",
+    confirmBatchStop: "Stop selected sessions",
+    confirmCleanup: "Clean up stale runtime files?",
+    mirrorUrlRequired: "Please enter a mirror URL",
+    untitled: "Untitled",
+    sessionExpired: "Session expired (API token rotated), reloading…",
+    requestTimeout: "Request timed out",
+    detail: "Detail",
     chromiumStack: "Chromium stack",
     patchrightReady: "Patchright ready",
     patchrightMissing: "Patchright not installed",
@@ -694,7 +716,7 @@ const state = {
   formDirty: false,
   firstRunDismissed: localStorage.getItem("cm-first-run-dismissed") === "1",
   updateDismissedTag: localStorage.getItem("cm-update-dismissed") || "",
-  viewMode: localStorage.getItem("cm-view-mode") || "list",
+  viewMode: localStorage.getItem("cm-view") || "card",
   setup: null,
   setupChannel: localStorage.getItem("cm-setup-channel") || "github",
   setupPollTimer: null,
@@ -764,15 +786,34 @@ function apiToken() {
 
 async function api(path, options = {}) {
   const headers = {
-    "Content-Type": "application/json",
+    ...(options.body ? { "Content-Type": "application/json" } : {}),
     ...(options.headers || {}),
   };
   const token = apiToken();
   if (token) headers["X-FoxDesk-Token"] = token;
-  const response = await fetch(path, {
-    ...options,
-    headers,
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), options.timeoutMs || 30000);
+  let response;
+  try {
+    response = await fetch(path, {
+      ...options,
+      headers,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err && err.name === "AbortError") {
+      throw new Error(t("requestTimeout") || "request timed out");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+  if (response.status === 401) {
+    // Token rotated (server restart) — reload the UI shell to get a fresh one.
+    toast(t("sessionExpired") || "session expired, reloading…");
+    setTimeout(() => window.location.reload(), 900);
+    throw new Error(t("sessionExpired") || "session expired");
+  }
   if (!response.ok) {
     let detail = response.statusText;
     try {
@@ -804,7 +845,7 @@ function formToProfile() {
   // Locale fields are mirrored by input listeners; either value is fine.
   const locale = ((data.get("locale") || data.get("fp_locale") || "") + "").trim();
   return {
-    name: data.get("name") || "Untitled",
+    name: data.get("name") || t("untitled"),
     startup_url: data.get("startup_url") || "",
     mode: data.get("mode") || "browser",
     engine: data.get("engine") || "camoufox",
@@ -885,7 +926,7 @@ function confirmDiscardIfDirty() {
 function runningProfileIds() {
   return new Set(
     (state.sessions || [])
-      .filter((s) => String(s.status || "").startsWith("running") || s.status === "running")
+      .filter((s) => String(s.status || "").startsWith("running"))
       .map((s) => s.profile_id)
       .filter(Boolean),
   );
@@ -1169,14 +1210,14 @@ function renderProfiles() {
   list.innerHTML = profiles
     .map(
       (profile) => `
-        <article class="profile-row ${profile.id === state.selectedId ? "selected" : ""} has-batch" data-profile-id="${profile.id}">
-          <input type="checkbox" class="batch-check" data-batch-id="${profile.id}" ${state.selectedProfiles.has(profile.id) ? "checked" : ""} />
+        <article class="profile-row ${profile.id === state.selectedId ? "selected" : ""} has-batch" data-profile-id="${escapeAttr(profile.id)}">
+          <input type="checkbox" class="batch-check" data-batch-id="${escapeAttr(profile.id)}" ${state.selectedProfiles.has(profile.id) ? "checked" : ""} />
           <div class="row-main">
             <div>
               <div class="row-title">${escapeHtml(profile.name)}${running.has(profile.id) ? ` <span class="live-dot" title="${t("runningBadge")}"></span>` : ""}</div>
               <div class="row-meta">${escapeHtml(profile.startup_url || "about:blank")}</div>
             </div>
-            <button class="button secondary delete-profile icon-only" data-delete-id="${profile.id}" type="button" title="Delete">
+            <button class="button secondary delete-profile icon-only" data-delete-id="${escapeAttr(profile.id)}" type="button" title="${t("delete")}">
               <i data-lucide="trash-2"></i>
             </button>
           </div>
@@ -1235,6 +1276,15 @@ function escapeHtml(value) {
   });
 }
 
+function escapeAttr(value) {
+  return escapeHtml(value);
+}
+
+function safeUrl(value) {
+  const raw = String(value || "");
+  return /^https?:\/\//i.test(raw) ? raw : "#";
+}
+
 async function loadProfiles() {
   state.profiles = await api("/api/profiles");
   if (!state.selectedId && state.profiles[0]) {
@@ -1263,12 +1313,17 @@ async function deleteProfile(id) {
   const profile = state.profiles.find((item) => item.id === id);
   const label = profile?.name || id;
   if (!confirm(`${t("delete")} "${label}"?`)) return;
-  await api(`/api/profiles/${id}`, { method: "DELETE" });
-  if (state.selectedId === id) state.selectedId = null;
-  await loadProfiles();
-  if (state.profiles[0]) loadProfile(state.profiles[0]);
-  else loadProfile(null);
-  toast(t("profileDeleted"));
+  try {
+    await api(`/api/profiles/${id}`, { method: "DELETE" });
+    if (state.selectedId === id) state.selectedId = null;
+    state.selectedProfiles?.delete(id);
+    await loadProfiles();
+    if (state.profiles[0]) loadProfile(state.profiles[0]);
+    else loadProfile(null);
+    toast(t("profileDeleted"));
+  } catch (err) {
+    toast(err.message || String(err));
+  }
 }
 
 async function cloneSelected() {
@@ -1300,6 +1355,7 @@ function summarizeEnvironmentRisks(result) {
 }
 
 function preflightLaunchHints() {
+  // Returns [{code, text, hard}] — hard hints block with a confirm dialog.
   const form = $("#profileForm");
   if (!form) return [];
   const hints = [];
@@ -1313,25 +1369,32 @@ function preflightLaunchHints() {
     notes.includes("claude") ||
     notes.includes("gemini") ||
     notes.includes("ai workstation");
+  const sysLoaded = Boolean(state.system);
   const chromeOk = Boolean(state.system?.google_chrome?.installed);
   const prOk = Boolean(state.system?.patchright_installed ?? state.system?.chromium_stack?.patchright);
   const pwOk = Boolean(state.system?.playwright_installed ?? state.system?.chromium_stack?.playwright);
-  if (engine === "chromium") {
+  if (engine === "chromium" && sysLoaded) {
     if (!prOk && !pwOk) {
-      hints.push(
-        `${t("chromiumInstallHint")}: pip install playwright patchright && playwright install chromium && patchright install chromium`
-      );
+      hints.push({
+        code: "chromium_stack_missing",
+        hard: true,
+        text: `${t("chromiumInstallHint")}: pip install playwright patchright && playwright install chromium && patchright install chromium`,
+      });
     } else if (!prOk) {
-      hints.push(`${t("patchrightMissing")}: pip install patchright && patchright install chromium`);
+      hints.push({
+        code: "patchright_missing",
+        hard: true,
+        text: `${t("patchrightMissing")}: pip install patchright && patchright install chromium`,
+      });
     }
     if (channel === "chrome" && !chromeOk) {
-      hints.push(t("chromeChannelNoChrome"));
+      hints.push({ code: "chrome_channel_no_chrome", hard: true, text: t("chromeChannelNoChrome") });
     } else if (!channel && chromeOk) {
-      hints.push(t("suggestChromeChannel"));
+      hints.push({ code: "suggest_chrome_channel", hard: false, text: t("suggestChromeChannel") });
     }
   }
   if (aiLike) {
-    hints.push(t("aiProxyHint"));
+    hints.push({ code: "ai_proxy_hint", hard: false, text: t("aiProxyHint") });
   }
   return hints;
 }
@@ -1340,20 +1403,14 @@ async function launchSelected() {
   if (!state.selectedId) {
     await saveProfile();
   }
-  const soft = preflightLaunchHints();
-  // Soft confirm only when chrome channel is broken or stack fully missing
-  const hard = soft.filter(
-    (h) =>
-      h.includes("pip install") ||
-      h.includes(t("chromeChannelNoChrome")) ||
-      h.includes("patchright install")
-  );
+  const hints = preflightLaunchHints();
+  const hard = hints.filter((h) => h.hard);
   if (hard.length) {
-    const ok = confirm(`${hard.join("\n")}\n\nContinue launch?`);
+    const ok = confirm(`${hard.map((h) => h.text).join("\n")}\n\n${t("continueLaunch")}`);
     if (!ok) return;
-  } else if (soft.length) {
+  } else if (hints.length) {
     // Non-blocking toast for suggestions
-    toast(soft[0]);
+    toast(hints[0].text);
   }
   try {
     const result = await api("/api/sessions", {
@@ -1440,8 +1497,8 @@ function renderSystem() {
   status.classList.toggle("good", Boolean(sys?.camoufox_installed));
   status.classList.toggle("bad", Boolean(sys && !sys.camoufox_installed));
 
-  const version = sys?.camoufox_version?.stdout || sys?.camoufox_version?.stderr || t("unavailable");
-  const path = sys?.camoufox_path?.stdout || sys?.camoufox_path?.stderr || t("unavailable");
+  const version = (sys?.camoufox_version?.stdout || sys?.camoufox_version?.stderr || t("unavailable") || "").trim() || t("unavailable");
+  const path = (sys?.camoufox_path?.stdout || sys?.camoufox_path?.stderr || t("unavailable") || "").trim() || t("unavailable");
   const mirror = sys?.update_mirror || sys?.settings?.update_mirror || "ghproxy";
   const tokenSet = Boolean(sys?.github_token_set || sys?.settings?.github_token_set);
   const stack = sys?.chromium_stack || {};
@@ -1683,7 +1740,7 @@ async function loadSessionResources() {
 
 async function startTask(name) {
   const task = await api(`/api/tasks/${name}`, { method: "POST", body: JSON.stringify({ args: [] }) });
-  toast(`${t("taskStarted")}：${task.label}`);
+  toast(`${t("taskStarted")}: ${task.label}`);
   await loadTasks();
 }
 
@@ -1691,7 +1748,7 @@ function updateSessionBatchBar(sessions) {
   const bar = $("#sessionBatchBar");
   const count = $("#sessionBatchCount");
   if (!bar || !count) return;
-  const runningIds = new Set((sessions || []).filter((s) => s.status === "running").map((s) => s.id));
+  const runningIds = new Set((sessions || []).filter((s) => String(s.status || "").startsWith("running")).map((s) => s.id));
   for (const id of [...state.selectedSessions]) {
     if (!runningIds.has(id)) state.selectedSessions.delete(id);
   }
@@ -1711,6 +1768,7 @@ async function batchStopSessions() {
     toast(t("batchStopNone"));
     return;
   }
+  if (!confirm(`${t("confirmBatchStop")} (${ids.length})`)) return;
   try {
     const result = await api("/api/sessions/batch-stop", {
       method: "POST",
@@ -1726,6 +1784,10 @@ async function batchStopSessions() {
 
 function renderProcesses(selector, processes, stopLabel = t("stop"), isSession = false) {
   const list = $(selector);
+  // Preserve user-expanded detail panes across polling re-renders.
+  const openDetails = new Set(
+    $$(".session-detail.open").map((el) => el.id).filter(Boolean)
+  );
   if (!processes.length) {
     list.innerHTML = `<div class="empty">${t("noProcesses")}</div>`;
     return;
@@ -1758,11 +1820,11 @@ function renderProcesses(selector, processes, stopLabel = t("stop"), isSession =
           ? `<div class="button-row" style="padding:0 0 6px;gap:6px;flex-wrap:wrap">
                ${
                  isServer
-                   ? `<button class="button secondary session-endpoint" data-process-id="${item.id}" type="button" style="min-height:28px;font-size:12px">${t("refreshEndpoint")}</button>`
-                   : `<button class="button secondary session-navigate" data-process-id="${item.id}" type="button" style="min-height:28px;font-size:12px">${t("navigateSession")}</button>
-               <button class="button secondary session-probe" data-process-id="${item.id}" type="button" style="min-height:28px;font-size:12px">${t("probeFingerprint")}</button>
-               <button class="button secondary session-screenshot" data-process-id="${item.id}" type="button" style="min-height:28px;font-size:12px">${t("screenshotSession")}</button>
-               <button class="button secondary session-evaluate" data-process-id="${item.id}" type="button" style="min-height:28px;font-size:12px">${t("evaluateSession")}</button>`
+                   ? `<button class="button secondary session-endpoint" data-process-id="${escapeAttr(item.id)}" type="button" style="min-height:28px;font-size:12px">${t("refreshEndpoint")}</button>`
+                   : `<button class="button secondary session-navigate" data-process-id="${escapeAttr(item.id)}" type="button" style="min-height:28px;font-size:12px">${t("navigateSession")}</button>
+               <button class="button secondary session-probe" data-process-id="${escapeAttr(item.id)}" type="button" style="min-height:28px;font-size:12px">${t("probeFingerprint")}</button>
+               <button class="button secondary session-screenshot" data-process-id="${escapeAttr(item.id)}" type="button" style="min-height:28px;font-size:12px">${t("screenshotSession")}</button>
+               <button class="button secondary session-evaluate" data-process-id="${escapeAttr(item.id)}" type="button" style="min-height:28px;font-size:12px">${t("evaluateSession")}</button>`
                }
              </div>`
           : "";
@@ -1775,10 +1837,10 @@ function renderProcesses(selector, processes, stopLabel = t("stop"), isSession =
           : "";
       const batchCheck =
         isSession && running
-          ? `<input type="checkbox" class="session-batch-check" data-session-id="${item.id}" ${state.selectedSessions.has(item.id) ? "checked" : ""} />`
+          ? `<input type="checkbox" class="session-batch-check" data-session-id="${escapeAttr(item.id)}" ${state.selectedSessions.has(item.id) ? "checked" : ""} />`
           : "";
       return `
-        <article class="process-row ${failed ? "has-error" : ""}" data-process-id="${item.id}" ${isSession ? 'style="cursor:pointer"' : ""}>
+        <article class="process-row ${failed ? "has-error" : ""}" data-process-id="${escapeAttr(item.id)}" ${isSession ? 'style="cursor:pointer"' : ""}>
           <div class="row-main">
             <div style="display:flex;gap:10px;align-items:flex-start">
               ${batchCheck}
@@ -1788,8 +1850,8 @@ function renderProcesses(selector, processes, stopLabel = t("stop"), isSession =
               </div>
             </div>
             <div style="display:flex;gap:6px;align-items:center">
-              ${isSession ? `<button class="button secondary expand-detail icon-only" data-detail-id="${item.id}" type="button" title="Detail"><i data-lucide="chevron-down"></i></button>` : ""}
-              <button class="button ${running ? "danger" : "secondary"} stop-process" data-process-id="${item.id}" type="button" ${running ? "" : "disabled"}>
+              ${isSession ? `<button class="button secondary expand-detail icon-only" data-detail-id="${escapeAttr(item.id)}" type="button" title="${t("detail")}"><i data-lucide="chevron-down"></i></button>` : ""}
+              <button class="button ${running ? "danger" : "secondary"} stop-process" data-process-id="${escapeAttr(item.id)}" type="button" ${running ? "" : "disabled"}>
                 ${stopLabel}
               </button>
             </div>
@@ -1798,7 +1860,7 @@ function renderProcesses(selector, processes, stopLabel = t("stop"), isSession =
           ${errorBlock}
           ${wsBlock}
           ${sessionActions}
-          <div class="session-detail" id="detail-${item.id}">
+          <div class="session-detail" id="detail-${escapeAttr(item.id)}">
             <div class="session-meta-grid">
               <dt>${t("startTime")}</dt>
               <dd>${started.toLocaleString()}</dd>
@@ -1811,7 +1873,7 @@ function renderProcesses(selector, processes, stopLabel = t("stop"), isSession =
             ${fpReport}
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
               <span style="font-size:13px;font-weight:650;color:var(--muted)">${t("logs")}</span>
-              <button class="button secondary download-logs" data-log-id="${item.id}" type="button" style="min-height:28px;font-size:12px">
+              <button class="button secondary download-logs" data-log-id="${escapeAttr(item.id)}" type="button" style="min-height:28px;font-size:12px">
                 <i data-lucide="download"></i> ${t("downloadLogs")}
               </button>
             </div>
@@ -1821,6 +1883,11 @@ function renderProcesses(selector, processes, stopLabel = t("stop"), isSession =
       `;
     })
     .join("");
+
+  openDetails.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.classList.add("open");
+  });
 
   $$(".stop-process").forEach((button) => {
     button.addEventListener("click", async (e) => {
@@ -2003,7 +2070,7 @@ function renderProcesses(selector, processes, stopLabel = t("stop"), isSession =
 function updateSessionBadge(sessions) {
   const badge = $("#sessionBadge");
   if (!badge) return;
-  const running = (sessions || []).filter((s) => s.status === "running").length;
+  const running = (sessions || []).filter((s) => String(s.status || "").startsWith("running")).length;
   if (running > 0) {
     badge.textContent = String(running);
     badge.classList.remove("hidden");
@@ -2041,7 +2108,7 @@ function renderChannels() {
   const customRow = $("#channelCustomRow");
   if (!selector) return;
   selector.innerHTML = state.channels
-    .map((ch) => `<button type="button" class="${ch.id === state.selectedChannel ? "active" : ""}" data-channel="${ch.id}">${t("channel" + ch.id.charAt(0).toUpperCase() + ch.id.slice(1)) || ch.name}</button>`)
+    .map((ch) => `<button type="button" class="${ch.id === state.selectedChannel ? "active" : ""}" data-channel="${escapeAttr(ch.id)}">${(() => { const k = "channel" + ch.id.charAt(0).toUpperCase() + ch.id.slice(1); const dict = i18n[state.lang] || i18n.zh; return dict[k] !== undefined ? t(k) : escapeHtml(ch.name); })()}</button>`)
     .join("");
   selector.querySelectorAll("button").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -2057,7 +2124,7 @@ async function channelFetch() {
   if (!channel) return;
   if (channel.id === "custom") {
     const url = $("#customMirrorInput")?.value?.trim();
-    if (!url) return toast("Please enter a mirror URL");
+    if (!url) return toast(t("mirrorUrlRequired"));
     await api("/api/channels", { method: "PUT", body: JSON.stringify({ id: "custom", prefix: url }) });
   }
   const result = await api(`/api/channels/${state.selectedChannel}/fetch`, { method: "POST", body: JSON.stringify({ args: [] }) });
@@ -2566,6 +2633,7 @@ async function runHealthCheck() {
 }
 
 async function runCleanupRuntime() {
+  if (!confirm(t("confirmCleanup"))) return;
   try {
     const result = await api("/api/system/cleanup-runtime", { method: "POST", body: "{}" });
     toast(`${t("runtimeCleaned")}: ${result.removed ?? 0}`);
@@ -2742,9 +2810,11 @@ async function startOneClickUpdate() {
     startUpdatePoll();
     toast(t("updateStarted"));
 
-    // Wait until ready then install
+    // Wait until ready then install; give up if the update dialog is closed
+    const updateOverlay = $("#updateOverlay");
     const waitReady = async () => {
       for (let i = 0; i < 600; i++) {
+        if (updateOverlay && !updateOverlay.open) throw new Error(t("updateCancelled") || "update cancelled");
         const st = await api("/api/system/updates/status");
         applyUpdateInfo(st);
         if (st.status === "ready") return st;
@@ -2805,16 +2875,17 @@ function hideContextMenu() {
 }
 
 async function handleContextAction(action) {
-  if (!contextProfileId) return;
+  const targetId = contextProfileId;
+  if (!targetId) return;
   hideContextMenu();
-  const profile = state.profiles.find((p) => p.id === contextProfileId);
+  const profile = state.profiles.find((p) => p.id === targetId);
   if (!profile) return;
   switch (action) {
     case "launch":
       try {
         const launched = await api("/api/sessions", {
           method: "POST",
-          body: JSON.stringify({ profile_id: contextProfileId }),
+          body: JSON.stringify({ profile_id: targetId }),
         });
         toast(`${t("launched")} ${profile.name}${summarizeEnvironmentRisks(launched)}`);
         await loadSessions();
@@ -2825,7 +2896,7 @@ async function handleContextAction(action) {
       break;
     case "clone":
       try {
-        const cloned = await api(`/api/profiles/${contextProfileId}/clone`, { method: "POST", body: "{}" });
+        const cloned = await api(`/api/profiles/${targetId}/clone`, { method: "POST", body: "{}" });
         await loadProfiles();
         loadProfile(cloned);
         toast(t("profileCloned"));
@@ -2848,15 +2919,16 @@ async function handleContextAction(action) {
       break;
     case "open-dir":
       try {
-        await api(`/api/profiles/${contextProfileId}/open-data-dir`, { method: "POST", body: "{}" });
+        await api(`/api/profiles/${targetId}/open-data-dir`, { method: "POST", body: "{}" });
         toast(t("openDirDone"));
       } catch (err) { toast(err.message); }
       break;
     case "delete":
       if (confirm(`${t("delete")} "${profile.name}"?`)) {
         try {
-          await api(`/api/profiles/${contextProfileId}`, { method: "DELETE" });
-          if (state.selectedId === contextProfileId) state.selectedId = null;
+          await api(`/api/profiles/${targetId}`, { method: "DELETE" });
+          if (state.selectedId === targetId) state.selectedId = null;
+          state.selectedProfiles?.delete(targetId);
           await loadProfiles();
           if (state.profiles[0]) loadProfile(state.profiles[0]);
           else loadProfile(null);
@@ -2922,13 +2994,13 @@ function renderProfileTable(profiles) {
     const proxy = p.proxy?.server || "—";
     const proxyShort = proxy.length > 24 ? proxy.slice(0, 24) + "…" : proxy;
     const tags = (p.tags || []).join(", ") || "—";
-    html += `<tr data-profile-id="${p.id}" class="${p.id === state.selectedId ? "selected" : ""}">
-      <td><input type="checkbox" class="batch-check" data-batch-id="${p.id}" ${state.selectedProfiles.has(p.id) ? "checked" : ""} /></td>
+    html += `<tr data-profile-id="${escapeAttr(p.id)}" class="${p.id === state.selectedId ? "selected" : ""}">
+      <td><input type="checkbox" class="batch-check" data-batch-id="${escapeAttr(p.id)}" ${state.selectedProfiles.has(p.id) ? "checked" : ""} /></td>
       <td title="${escapeHtml(p.name)}"><strong>${escapeHtml(p.name)}</strong><br><span style="color:var(--subtle);font-size:11px">${escapeHtml(p.startup_url || "")}</span></td>
       <td>${escapeHtml(p.os)}</td>
       <td title="${escapeHtml(proxy)}" style="color:${p.proxy?.server ? "var(--primary)" : "var(--subtle)"}">${escapeHtml(proxyShort)}</td>
       <td>${escapeHtml(tags)}</td>
-      <td><button class="button secondary icon-only delete-profile" data-delete-id="${p.id}" style="width:28px;min-height:28px" title="${t("delete")}"><i data-lucide="trash-2"></i></button></td>
+      <td><button class="button secondary icon-only delete-profile" data-delete-id="${escapeAttr(p.id)}" style="width:28px;min-height:28px" title="${t("delete")}"><i data-lucide="trash-2"></i></button></td>
     </tr>`;
   });
   html += "</tbody></table>";
@@ -2986,7 +3058,7 @@ async function checkFingerprint() {
           <span style="color:${scoreColor}">${result.score}/100</span>
         </div>
         <span style="font-size:12px;color:var(--muted)">${issues.length === 0 ? "✓ " + t("allChecksPassed") : `${issues.length} ${t("issues")}`}</span>
-        <a href="${result.check_url}" target="_blank" style="margin-left:auto;font-size:12px">${t("openInBrowser")} →</a>
+        <a href="${safeUrl(result.check_url)}" target="_blank" rel="noopener noreferrer" style="margin-left:auto;font-size:12px">${t("openInBrowser")} →</a>
       </div>
       <p style="margin:0 0 8px;font-size:12px;color:var(--muted)">${escapeHtml(result.note || t("envRiskNote"))}</p>
       ${issues.length ? `<ul class="fp-issues">${issues.map((i) => `<li>${escapeHtml(i)}</li>`).join("")}</ul>` : ""}
@@ -3021,7 +3093,7 @@ async function bulkProxyImport() {
       method: "POST",
       body: JSON.stringify({ proxies: lines, profile_ids: [] }),
     });
-    resultEl.textContent = `✓ ${result.updated} updated`;
+    resultEl.textContent = `✓ ${result.updated} ${t("updatedCount")}`;
     textarea.value = "";
     await loadProfiles();
   } catch (err) {
@@ -3031,6 +3103,7 @@ async function bulkProxyImport() {
 
 // --- Stop All Sessions ---
 async function stopAllSessions() {
+  if (!confirm(t("confirmStopAll"))) return;
   try {
     const result = await api("/api/sessions/stop-all", { method: "POST", body: "{}" });
     toast(`${t("stopped")}: ${result.stopped}`);

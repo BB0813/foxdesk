@@ -7,7 +7,7 @@ echo   FoxDesk Installer Builder
 echo ============================================
 
 :: Read VERSION without trailing CR (Git Bash / CRLF safe)
-set "APPVER=1.4.0-dev"
+set "APPVER=1.4.0"
 if exist VERSION (
   for /f "usebackq tokens=* delims=" %%A in ("VERSION") do (
     set "APPVER=%%A"
@@ -35,6 +35,14 @@ python -m pip install pillow pyinstaller -q 2>nul
 :: Convert logo to ICO
 echo [2/6] Creating icon...
 python make_ico.py
+
+:: Sync VERSION into installer.iss (same as CI does)
+echo       Syncing installer version...
+python -c "import re,pathlib;v=pathlib.Path('VERSION').read_text().strip();s=pathlib.Path('installer.iss').read_text(encoding='utf-8');s=re.sub(r'#define MyAppVersion \".*?\"',f'#define MyAppVersion \"{v}\"',s);parts=(re.split(r'[^0-9.]',v)[0] or '0.0.0').split('.');parts+=['0']*(4-len(parts));fv='.'.join(parts[:4]);s=re.sub(r'VersionInfoVersion=.*',f'VersionInfoVersion={fv}',s);s=re.sub(r'VersionInfoProductVersion=.*',f'VersionInfoProductVersion={fv}',s);pathlib.Path('installer.iss').write_text(s,encoding='utf-8');print(f'      installer.iss -> {v} (file {fv})')"
+if errorlevel 1 (
+    echo [ERROR] installer.iss version sync failed
+    exit /b 1
+)
 
 :: Clean previous builds
 echo [3/6] Cleaning previous builds...
@@ -69,6 +77,7 @@ if exist "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" (
     where iscc >nul 2>&1 && for /f "delims=" %%I in ('where iscc') do set "ISCC=%%I"
 )
 
+if not "%ISCC%"=="" echo [INFO] Using Inno Setup: "%ISCC%"
 if "%ISCC%"=="" (
     echo.
     echo [INFO] Inno Setup not found. Trying winget install...
@@ -88,7 +97,7 @@ if "%ISCC%"=="" (
     echo [WARN] Install from: https://jrsoftware.org/isinfo.php
     echo [WARN] Then re-run this script.
     echo.
-    echo Output: dist\FoxDesk\FoxDesk.exe (portable)
+    echo Output: dist\FoxDesk\FoxDesk.exe - portable only
     goto :summary
 )
 
@@ -110,7 +119,7 @@ echo   Version:  %APPVER%
 if exist "installer_output\FoxDesk-%APPVER%-Setup.exe" (
   echo   Installer: installer_output\FoxDesk-%APPVER%-Setup.exe
 ) else (
-  echo   Installer: (not built — Inno missing or failed)
+  echo   Installer: not built - Inno missing or failed
 )
 echo   Portable:  dist\FoxDesk\FoxDesk.exe
 echo.

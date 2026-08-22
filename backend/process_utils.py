@@ -43,33 +43,54 @@ def kill_process_tree(pid: int, *, force: bool = False) -> None:
 
 
 def stop_popen(process: subprocess.Popen[Any], *, grace: float = 8.0) -> None:
+    """Stop a worker and its whole child tree.
+
+    On Windows ``Popen.terminate()`` is ``TerminateProcess`` — an immediate
+    hard kill of the single process that leaves browser children orphaned and
+    never runs the worker's own cleanup. So on Windows we always go through
+    ``taskkill /T`` (graceful WM_CLOSE first, then /F), which also reaches
+    grandchildren processes.
+    """
     if process.poll() is not None:
         return
     pid = process.pid
+    if os.name == "nt":
+        # Graceful tree close first (workers get a chance to close contexts).
+        kill_process_tree(pid, force=False)
+        if _wait(process, min(grace, 5.0)):
+            return
+        kill_process_tree(pid, force=True)
+        if _wait(process, 3.0):
+            return
+        try:
+            process.kill()
+        except Exception:
+            pass
+        _wait(process, 3.0)
+        return
     try:
         process.terminate()
     except Exception:
         pass
-    try:
-        process.wait(timeout=grace)
+    if _wait(process, grace):
         return
-    except Exception:
-        pass
     kill_process_tree(pid, force=False)
-    try:
-        process.wait(timeout=3)
+    if _wait(process, 3.0):
         return
-    except Exception:
-        pass
     kill_process_tree(pid, force=True)
     try:
         process.kill()
     except Exception:
         pass
+    _wait(process, 3.0)
+
+
+def _wait(process: subprocess.Popen[Any], timeout: float) -> bool:
     try:
-        process.wait(timeout=3)
+        process.wait(timeout=timeout)
+        return True
     except Exception:
-        pass
+        return False
 
 
 def parse_worker_event(line: str) -> dict[str, Any] | None:

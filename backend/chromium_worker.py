@@ -18,6 +18,11 @@ from urllib.parse import urlparse
 
 
 running = True
+
+
+def _mark_stopped() -> None:
+    global running
+    running = False
 _page_holder: dict[str, Any] = {"page": None, "context": None, "browser": None}
 _cmd_lock = threading.RLock()
 
@@ -90,6 +95,13 @@ def build_proxy(profile: dict[str, Any]) -> dict[str, str] | None:
     result = {"server": server}
     username = (proxy.get("username") or "").strip()
     password = proxy.get("password") or ""
+    if password:
+        try:
+            from backend.storage_util import unprotect_secret
+
+            password = unprotect_secret(password)
+        except Exception:
+            pass
     if username:
         result["username"] = username
     if password:
@@ -471,7 +483,10 @@ def handle_command(cmd: dict[str, Any], profile_path: Path) -> None:
     def reply(**payload: Any) -> None:
         body = {"id": req_id, "cmd": action, "ok": payload.get("ok", True), **payload}
         write_result(profile_path, body)
-        emit("command_result", **body)
+        # The stdout event feeds the in-memory log ring; screenshot payloads
+        # (multi-MB base64) stay in the result sidecar only.
+        emit_body = {k: v for k, v in body.items() if k != "image_base64"}
+        emit("command_result", **emit_body)
 
     try:
         if action in {"stop", "quit", "exit"}:
@@ -753,6 +768,15 @@ def run_browser(profile: dict[str, Any], profile_path: Path) -> int:
             _page_holder["browser"] = browser
             _page_holder["context"] = context
             _page_holder["page"] = page
+
+            # Persistent contexts have no browser object to poll — subscribe
+            # to the close event so a user-closed window exits the worker
+            # instead of idling forever.
+            if browser is None and context is not None:
+                try:
+                    context.on("close", lambda: _mark_stopped())
+                except Exception:
+                    pass
 
             emit("ready", engine="chromium", backend=backend_name, mode="browser")
             try:

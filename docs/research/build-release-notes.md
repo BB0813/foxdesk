@@ -67,15 +67,27 @@ build.bat
 
 ## 5. 本机执行记录
 
+### 2026-07-22 — 安全加固后重打包（对应审计修复）
+
 | 项 | 值 |
 |---|---|
-| 构建日期 | 2026-07-15 |
-| 构建机 OS | Windows 11 10.0.26200 / Python 3.12.10 / PyInstaller 6.21.0 |
+| 构建 | `build.bat`：PyInstaller 成功（collect pythonnet=97 binaries / clr_loader=2）；Inno 段静默跳过，**手动 ISCC 编译成功**（~160s） |
+| Portable | `dist/FoxDesk`（`FoxDesk.exe` ~17.4 MB，含 pythonnet/clr_loader） |
+| Setup | `installer_output/FoxDesk-1.4.0-Setup.exe` **~87.8 MB**（92082356 bytes） |
+| 冻结冒烟 | `--serve`：ping / 外来 Host **421** / `/openapi.json` **404** / boot token 鉴权 / 令牌文件 — **全部 PASS** |
+| 冻结 GUI | **原生 WebView 窗口修复**：中文路径 + 网络映射盘（`Z:\指纹浏览器` → UNC）与 ASCII 本地路径均 `MainWindowTitle=FoxDesk 1.4.0`、WebView2 子进程 5 个 |
+| GUI 根因 | 双重：① netfx 按字节传程序集路径，非 ASCII 路径被按 ANSI 误解码；② 网络盘（IP UNC → Internet 区域）触发 .NET CAS `NotSupportedException` |
+| GUI 修法 | `desktop._prepare_frozen_dotnet()`：pythonnet runtime 与 `webview/lib` 镜像到 `%TEMP%\FoxDesk\`（ASCII 本地），重指 `pythonnet.__file__` 与 `webview.util.interop_dll_path`；同盘 ASCII 安装路径零开销直通 |
+| 版本回写 | `build.bat` 现已把 VERSION 同步进 `installer.iss`（`1.4.0 / 1.4.0.0`） |
+
+### 2026-07-15 — 1.4.0 首次打包
+
+| 项 | 值 |
+|---|---|
 | 首次 `build.bat` | PyInstaller **成功**；Inno 路径未命中（winget `-q` 冲突已修；ISCC 在 `%LOCALAPPDATA%\Programs\Inno Setup 6`） |
 | 首次 Portable | `dist/FoxDesk` **~1.5 GB**（误打入 host `torch` 471M + `jedi` 335M 等） |
 | 修复 | `foxdesk.spec` `excludes`；`build.bat` VERSION / winget / CRLF / Inno 用户路径 |
 | 重打包 Portable | **~394 MB**（`FoxDesk.exe` ~15.4 MB；无 torch/jedi；playwright+patchright 包约 227 MB） |
-| Setup | `installer_output/FoxDesk-1.4.0-dev-Setup.exe` **~69.8 MB**（73226756 bytes） |
-| 冒烟 | `FoxDesk.exe --serve 8765` + boot token → `/api/system` **ok**（1.4.0-dev，pw+pr ready） |
-| GUI | 直启 `FoxDesk.exe` 时 pythonnet/webview 加载 `Python.Runtime.dll` 失败（已知；serve 路径正常） |
-| 备注 | 浏览器二进制仍不捆绑；正式 1.4.0 建议干净 venv + 修 pythonnet collect |
+| Setup | 手动 ISCC：`FoxDesk-1.4.0-Setup.exe` ~69.8 MB |
+| 冒烟 | `FoxDesk.exe --serve 8765` + boot token → `/api/system` **ok** |
+| GUI | pythonnet/`Python.Runtime.dll` 加载失败 → 回退（当时进程直接崩溃，现已优雅回退） |

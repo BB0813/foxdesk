@@ -281,10 +281,30 @@ class SetupManager:
     def _mirror_prefix(self, channel: str) -> str | None:
         prefix = self.channel_prefix(channel)
         if prefix:
-            return prefix.rstrip("/") + "/"
+            normalized = self._safe_prefix(prefix)
+            if normalized is None:
+                self._log(f"ignoring unsafe mirror prefix: {prefix!r}")
+                return None
+            return normalized
         if channel == "ghproxy":
             return "https://mirror.ghproxy.com/"
         return None
+
+    @staticmethod
+    def _safe_prefix(prefix: str) -> str | None:
+        """Only https:// mirrors may wrap browser-binary downloads."""
+        try:
+            from urllib.parse import urlparse
+
+            value = prefix if "://" in prefix else f"https://{prefix}"
+            parsed = urlparse(value)
+            if parsed.scheme != "https" or not parsed.hostname:
+                return None
+            if parsed.username or parsed.password:
+                return None
+            return value.rstrip("/") + "/"
+        except Exception:
+            return None
 
     def _with_github_mirror(self, prefix: str | None):
         """Temporarily rewrite GitHub URLs for restricted networks."""

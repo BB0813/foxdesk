@@ -1,5 +1,63 @@
 # Changelog
 
+## 1.4.1 — 2026-08-22 (security & stability hardening, post-1.4.0 audit)
+
+Full-project audit findings fixed in priority order. No behavior promises changed: still local-only, no cloud control, no anti-detect/payment/signup SLA.
+
+### Second wave (remaining medium/low findings)
+- `/api/tasks` args now token-whitelisted (URL / `--index-url` / `-e` style injection rejected)
+- Proxy test target switched to **https** `api.ipify.org` (was plaintext httpbin; TLS for raw SOCKS via ssl-wrapped socket)
+- Runtime worker JSON seals proxy password with DPAPI (`_wrap_runtime_proxy_secret`); workers unseal on read
+- `extra_args`/`addons` surfaces a medium environment-risk hint (args reach the browser verbatim)
+- `--worker` with unreadable runtime JSON now fails fast (exit 65) instead of silently launching camoufox
+- Chromium persistent context subscribes to `close` — user-closed window ends the worker instead of zombie "running"
+- Server subprocess logs to `%TEMP%\FoxDesk\server.{out,err}.log` (was DEVNULL)
+- `proxy_health` scheduler starts on FastAPI startup, not import (no more test-time proxy probes)
+- **Netscape cookie import bug**: `#HttpOnly_` rows were dropped by the comment filter — fixed + tested
+- Frontend: hardcoded `✓ N updated` / task colon / placeholders via i18n; duplicate zh/en dict keys removed (dict-verified 323 keys, 0 missing, 0 dups); running-state checks unified on `startsWith("running")`; update-wait loop aborts when the dialog closes; channel buttons fall back to real names; system grid output trimmed
+- `build.bat` **root-caused**: unquoted `(...)` in `echo` text inside skipped `if` blocks corrupts cmd block parsing → silent jump past the Inno step (and the mojibake summary). Fixed; full pipeline now runs `[1/6]…[6/6]` incl. ISCC compile
+- CI: portable zip is now extracted + worker quick-fail verified; new non-blocking `bstatic-gate` job (playwright/patchright browsers + `--require-webdriver-false`, artifact uploaded); dev deps via `requirements-dev.txt`
+- `pytest.ini` (`-p no:sanic`) unifies local/CI gates; research probe JSONs untracked + gitignored
+- `smoke_phase_c_headed --require-webdriver-false` is now opt-in (was impossible-to-disable)
+- ThirdPartyNotices: full component/license table (Camoufox MIT, BrowserForge/Apify datapoints Apache-2.0, pywebview BSD-3, pythonnet MIT …)
+- Tests: `tests/test_unit_modules.py` (+27: parse_worker_event, netscape, DPAPI round-trip, version_is_newer, proxy parsing, task-arg validation)
+
+Full-project audit findings fixed in priority order. No behavior promises changed: still local-only, no cloud control, no anti-detect/payment/signup SLA.
+
+### Security (P0/P1)
+- **Backup restore path traversal** (`profiles/C:/x`, `profiles//x`, UNC) — `_safe_restore_target` now rejects drive/root/UNC arcnames and verifies final containment (was: arbitrary file write)
+- **DNS-rebinding guard**: middleware requires loopback `Host` (421 otherwise) and rejects foreign `Origin` (403); token-in-index exposure contained
+- **Update chain**: `require_checksum=True` — installer never executes without verified SHA256; custom mirror/channel prefixes must be https, credential-free (validated at API and setup-manager consumption)
+- **`/docs`, `/redoc`, `/openapi.json` disabled**
+- Screenshot `image_base64` no longer echoed into the in-memory log ring (multi-MB lines); per-line 8 KiB cap added
+- Token mirrored to `<tmp>/FoxDesk/api-token` so desktop tray stop-all authenticates; removed on shutdown/atexit
+
+### Process lifecycle (P0)
+- Windows `stop_popen` now kills the whole tree (`taskkill /T`, graceful → force) instead of single-process `TerminateProcess` — no more orphaned browsers/node drivers
+- `registry.stop` sends the worker `stop` command (graceful context close) before hard kill
+- FastAPI shutdown hook stops all workers/sessions; tray Quit no longer `os._exit(0)` — routes through normal cleanup (fallback path stops server directly)
+- WebView fallback: no duplicate tray icons, `webbrowser.open` guarded, `on_show` works in browser-fallback mode
+- `cleanup_runtime_files` now also sweeps `.cmd.jsonl`/`.result.jsonl`/`.ws`/`cookies-export-*.sqlite` (protecting live sidecars)
+
+### Frontend (P0/P2/P3)
+- **Context menu fixed** — all six actions were dead (id nulled before lookup)
+- Attribute/href XSS hardening (`escapeAttr` on all id sinks, `safeUrl` scheme check), api() gains 401 reload + 30s timeout + per-method Content-Type
+- Session detail panes stay expanded across 4s polling re-render
+- Destructive actions (stop-all / batch-stop / runtime cleanup) require confirm; launch preflight uses structured hint codes instead of translated-text matching
+- `deleteProfile` cleans `selectedProfiles` and reports errors; dead `cm-view-mode` key removed; new i18n keys (continueLaunch, confirms, sessionExpired, …)
+
+### Frozen GUI native window (post-audit follow-up)
+- **Fixed**: native WebView2 window now works from non-ASCII and network-mapped install paths, not just ASCII local disks
+- Root causes were twofold: clr_loader's netfx host mangles non-ASCII assembly paths (ANSI decode of utf-8 bytes), and network drives (IP UNC → Internet zone) trip .NET CAS on `Assembly.LoadFrom`
+- `desktop._prepare_frozen_dotnet()` stages pythonnet runtime + `webview/lib` to `%TEMP%\FoxDesk\` (ASCII, local) and reroutes `pythonnet.__file__` / `webview.util.interop_dll_path`; same-drive ASCII installs bypass staging entirely
+- Verified: `MainWindowTitle=FoxDesk 1.4.0` with 5 WebView2 child processes from both `Z:\指纹浏览器` (Chinese + mapped network drive) and `C:\temp` (ASCII local); graceful system-browser fallback retained for anything unexpected
+
+### Worker parity / misc
+- Camoufox errors no longer get chromium-specific install hints (humanizer gated on backend tag)
+- CI: `--serve` smoke added (ping + index + foreign-Host 421 assertion); release body now describes dual-engine + browser install steps + no-guarantee note
+- `build.bat` syncs VERSION into `installer.iss` (same as CI); residual `1.4.0-dev` strings cleaned
+- New tests: `tests/test_security_hardening.py` (31 cases: traversal matrix, loopback Host, token enforcement, mirror validation, checksum refusal)
+
 ## 1.4.0 — 2026-07-15
 
 Stable dual-engine release (Camoufox + Chromium/Patchright). Still **no cloud control**. Chromium is a local automation stack — **not** commercial anti-detect; **no** payment/signup/subscribe guarantee.

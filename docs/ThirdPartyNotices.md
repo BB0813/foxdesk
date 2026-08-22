@@ -1,35 +1,36 @@
-# Third-Party Notices (FoxDesk 1.4.0-dev)
+# Third-Party Notices (FoxDesk)
 
-This document summarizes third-party components relevant to the dual-engine
-Chromium path. It is **not** legal advice. Recheck licenses before a formal
-tagged release.
+This document lists third-party components bundled with or used by FoxDesk.
+It is **not** legal advice. Recheck licenses before a formal tagged release.
 
-## Patchright
+## Bundled / distributed components
 
-- Role: optional Chromium automation backend (`chromium_backend=auto|patchright`)
-- License: Apache-2.0 (metadata for package 1.61.x)
-- Notes: see `docs/research/phase-c-packaging.md`
-- Browser binaries: downloaded by the user via `patchright install chromium`
-  (not redistributed by FoxDesk by default)
+| Component | License | Role |
+|---|---|---|
+| Camoufox | MIT — https://camoufox.com/python | Firefox-based engine (primary) |
+| Playwright | Apache-2.0 — https://github.com/Microsoft/playwright-python | Chromium automation fallback |
+| Patchright | Apache-2.0 — https://github.com/Kaliiiiiiiiii-Vinyzu/patchright-python | Patched Chromium backend (auto-preferred) |
+| BrowserForge | Apache-2.0 — https://github.com/daijro/browserforge | Fingerprint generation (bundled data) |
+| apify_fingerprint_datapoints | Apache-2.0 — https://docs.apify.com/academy/anti-scraping/techniques/fingerprinting | Bayesian network data zips (bundled) |
+| pywebview | BSD 3-Clause — https://pywebview.flowrl.com | Desktop shell |
+| pythonnet / clr_loader | MIT — https://github.com/pythonnet/pythonnet | .NET bridge for WebView2 shell |
+| certifi | MPL-2.0 | CA bundle |
 
-## Playwright
+Notes:
+- Playwright/Patchright **browser binaries are NOT bundled** — downloaded by
+  the user via `playwright install chromium` / `patchright install chromium`.
+- Google Chrome (optional `chromium_channel=chrome`) is user-installed
+  machine software; FoxDesk does **not** redistribute the Chrome installer.
 
-- Role: Chromium automation fallback (`chromium_backend=playwright` or auto fallback)
-- License: follow upstream Playwright / Microsoft notices
-- Browser binaries: `playwright install chromium` (user machine cache)
+## Other runtime dependencies
 
-## Google Chrome (optional channel)
-
-- Role: optional `chromium_channel=chrome` when the user already has Chrome installed
-- FoxDesk does **not** redistribute the Chrome installer
-
-## Camoufox
-
-- Role: Firefox-based engine (primary historical path)
-- Follow existing Camoufox / project packaging notices
+FastAPI/Starlette/Pydantic (MIT), uvicorn (BSD), requests (Apache-2.0),
+Pillow (MIT-CMU), pystray (LGPL-3.0), and their transitive dependencies as
+published on PyPI.
 
 ## Disclaimer
 
-FoxDesk is a local fingerprint workstation. Nothing in this product or in these
-notices is a guarantee of anti-detect success, signup success, subscription
-success, or parity with commercial products such as Multilogin or GoLogin.
+FoxDesk is a local fingerprint workstation. Nothing in this product or in
+these notices is a guarantee of anti-detect success, signup success,
+subscription success, or parity with commercial products such as Multilogin
+or GoLogin.

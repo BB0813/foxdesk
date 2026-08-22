@@ -2,7 +2,7 @@
 
 本地 Camoufox 指纹浏览器管理器 — 免费、开源、隐私优先。
 
-**当前版本：`1.4.0`（Stable）**
+**当前版本：`1.4.1`（Stable）**
 
 <p align="center">
   <img src="static/logo.png" width="120" alt="FoxDesk Logo">
@@ -10,6 +10,7 @@
 
 ## 功能特性
 
+- **双引擎** — 档案级选择 Camoufox（Firefox）或 Chromium（Playwright/Patchright，auto 优先 Patchright）
 - **Profile 管理** — 创建、编辑、克隆、导入导出、标签分组
 - **指纹控制** — 参数编辑 + 随机生成 + 运行中探测报告 + 静态一致性评分
 - **会话控制** — 启动/停止/日志、**实时导航**、并发上限、空闲自动停止
@@ -62,13 +63,13 @@ build.bat
 产物：
 
 - 便携版：`dist/FoxDesk/FoxDesk.exe`
-- 安装包：`installer_output/FoxDesk-1.4.0-Setup.exe`
+- 安装包：`installer_output/FoxDesk-1.4.1-Setup.exe`
 
 ### CI/CD
 
 ```bash
-git tag v1.4.0
-git push origin v1.4.0
+git tag v1.4.1
+git push origin v1.4.1
 ```
 
 - Workflow：`.github/workflows/build.yml`
@@ -95,7 +96,7 @@ FoxDesk 是**本机桌面工具**：
 - 指纹检测为静态一致性评分，**不是**反检测保证；Chromium + Patchright 仅降低部分自动化标记，**不保证**对齐商业指纹浏览器或支付通过
 - 无 Token 时仍可能遇到 GitHub 限流；1.2.0+ 会回退网页/Atom + ghproxy
 - 会话 `evaluate` / 截图仅限 browser 模式本地控制通道，**不是**远程 RPA 沙箱
-- 从旧版升级：建议直接装 1.4.0；Program Files 旧安装请先卸载
+- 从旧版升级：建议直接装 1.4.1；Program Files 旧安装请先卸载
 
 完整变更见 [CHANGELOG.md](CHANGELOG.md)。
 
@@ -106,7 +107,7 @@ FoxDesk 是**本机桌面工具**：
 | 后端 | Python 3.12+ / FastAPI / Pydantic |
 | 桌面壳 | pywebview + Windows WebView2 |
 | 前端 | 原生 HTML/CSS/JS |
-| 浏览器 | Camoufox |
+| 浏览器 | Camoufox（Firefox）+ Chromium（Playwright / Patchright） |
 | 数据 | `%APPDATA%\FoxDesk`（本地 JSON；旧版目录自动迁移） |
 | 打包 | PyInstaller + Inno Setup |
 | CI/CD | GitHub Actions |

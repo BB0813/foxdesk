@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Headed dual-engine smoke for Phase A / 1.4.0-dev.
+"""Headed dual-engine smoke for Phase A / 1.4.0.
 
 Runs:
   1) Playwright Chromium headed probe (via tools/poc_chromium_launch.py path)
@@ -166,7 +166,7 @@ def main() -> int:
 
     user_data = Path(tempfile.mkdtemp(prefix="foxdesk-smoke-chromium-"))
     summary: dict = {
-        "app_version_hint": "1.4.0-dev",
+        "app_version_hint": "1.4.0",
         "headed": True,
         "platform": sys.platform,
         "poc": None,

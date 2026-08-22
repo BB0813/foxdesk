@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import atexit
 import json
 import os
 import secrets
@@ -12,8 +13,10 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Literal
+
+import tempfile
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -91,7 +94,7 @@ def migrate_legacy_data() -> None:
                 pass
 
 
-APP_VERSION = "1.4.0"
+APP_VERSION = "1.4.1"
 GITHUB_REPO = "BB0813/foxdesk"
 
 if getattr(sys, "frozen", False):
@@ -555,12 +558,18 @@ class ProcessRegistry:
                     except Exception as exc:
                         item.logs.append(f"[IDLE] stop failed: {exc}")
 
+    # Per-line byte cap for the in-memory log ring: workers already keep
+    # bulky payloads out of events, this bounds anything that slips through.
+    _MAX_LOG_LINE = 8192
+
     def _capture(self, item: ManagedProcess) -> None:
         from backend.process_utils import parse_worker_event
 
         assert item.process.stdout is not None
         for line in item.process.stdout:
             line = line.rstrip()
+            if len(line) > self._MAX_LOG_LINE:
+                line = line[: self._MAX_LOG_LINE] + f"…(+{len(line) - self._MAX_LOG_LINE} bytes)"
             with self.lock:
                 item.logs.append(line)
                 if len(item.logs) > 1000:
@@ -587,7 +596,12 @@ class ProcessRegistry:
                 if event.get("event") == "error":
                     raw_msg = str(event.get("message") or "worker error")
                     be = event.get("backend") or ""
-                    item.error_message = humanize_chromium_launch_error(raw_msg, be or None)
+                    if be:
+                        # Chromium workers tag errors with their backend; only
+                        # those get chromium-specific install hints.
+                        item.error_message = humanize_chromium_launch_error(raw_msg, str(be))
+                    else:
+                        item.error_message = raw_msg
                     # Keep a short hint line in logs for the UI log pane.
                     try:
                         item.logs.append(f"[error-hint] {item.error_message[:500]}")
@@ -625,6 +639,13 @@ class ProcessRegistry:
         item = self.get(item_id)
         if item.process.poll() is not None:
             return
+        # Ask the worker to close its browser context gracefully first;
+        # workers poll the command file ~every 0.4s.
+        if item.runtime_path:
+            try:
+                send_worker_command(Path(item.runtime_path), "stop", timeout=5.0)
+            except Exception:
+                pass
         item.logs.append("[stop] terminating process tree...")
         stop_popen(item.process, grace=8)
         item.logs.append("[stop] done")
@@ -644,16 +665,69 @@ class ProcessRegistry:
 
 store = ProfileStore(DATA_DIR / "profiles.json")
 registry = ProcessRegistry()
-app = FastAPI(title="FoxDesk", version=APP_VERSION)
+app = FastAPI(
+    title="FoxDesk",
+    version=APP_VERSION,
+    # Local tool: API surface must not be discoverable via /docs et al.
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+)
 
 # Localhost API token: blocks casual cross-process abuse on 127.0.0.1.
 # Token is generated per process and injected into the UI shell.
 API_TOKEN = secrets.token_urlsafe(32)
 API_TOKEN_HEADER = "X-FoxDesk-Token"
 
+# Mirror the token next to the desktop shell's single-instance lock dir so
+# tray actions (stop-all on quit) can authenticate against the local API.
+_TOKEN_FILE = Path(tempfile.gettempdir()) / "FoxDesk" / "api-token"
+
+
+def _write_token_file() -> None:
+    try:
+        _TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _TOKEN_FILE.write_text(API_TOKEN, encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _remove_token_file() -> None:
+    try:
+        _TOKEN_FILE.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
+_write_token_file()
+# Best-effort removal on interpreter exit; hard kills leave a stale token
+# that is simply overwritten on the next launch.
+atexit.register(_remove_token_file)
+
+# DNS-rebinding guard: only loopback hosts may reach this app. A public DNS
+# name rebound to 127.0.0.1 would otherwise be same-origin with the API and
+# could read the bootstrap token injected into GET /.
+_LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "[::1]", "::1"}
+
+
+def _is_loopback_host(host_header: str) -> bool:
+    host = (host_header or "").strip().lower()
+    if not host:
+        return False
+    if host in _LOOPBACK_HOSTS:
+        return True
+    # Strip a single trailing :port (but not the colons in a bare IPv6 literal).
+    if host.count(":") == 1:
+        host = host.rsplit(":", 1)[0]
+        return host in _LOOPBACK_HOSTS
+    # Bracketed IPv6 with port, e.g. [::1]:8765
+    if host.startswith("[") and "]" in host:
+        return host.split("]", 1)[0] + "]" in _LOOPBACK_HOSTS
+    return False
+
 
 class LocalApiTokenMiddleware(BaseHTTPMiddleware):
-    """Require token for /api/* except a tiny bootstrap endpoint."""
+    """Require loopback Host + token for /api/* except a tiny bootstrap endpoint."""
 
     OPEN_PREFIXES = (
         "/assets/",
@@ -666,6 +740,27 @@ class LocalApiTokenMiddleware(BaseHTTPMiddleware):
     }
 
     async def dispatch(self, request: Request, call_next):
+        # Loopback-only Host: blocks DNS rebinding names before any handler runs.
+        if not _is_loopback_host(request.headers.get("host")):
+            return JSONResponse(
+                status_code=421,
+                content={"detail": "misdirected request: loopback host header required"},
+            )
+        # Cross-site browser requests are rejected outright (same-origin UI
+        # fetches send no Origin header for GET).
+        origin = request.headers.get("origin")
+        if origin:
+            try:
+                from urllib.parse import urlparse
+
+                origin_host = urlparse(origin).hostname or ""
+            except Exception:
+                origin_host = ""
+            if origin_host not in {"127.0.0.1", "localhost", "::1"}:
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "cross-origin requests are not allowed"},
+                )
         path = request.url.path or "/"
         if path in self.OPEN_EXACT or any(path.startswith(p) for p in self.OPEN_PREFIXES):
             return await call_next(request)
@@ -689,6 +784,24 @@ class LocalApiTokenMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(LocalApiTokenMiddleware)
+
+
+def _shutdown_cleanup() -> None:
+    """Stop every worker/browser on server shutdown so nothing is orphaned."""
+    _remove_token_file()
+    try:
+        with registry.lock:
+            item_ids = list(registry.items.keys())
+        for item_id in item_ids:
+            try:
+                registry.stop(item_id)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+app.router.add_event_handler("shutdown", _shutdown_cleanup)
 app.mount("/assets", StaticFiles(directory=STATIC_DIR), name="assets")
 
 from backend.proxy_health import ProxyHealthScheduler  # noqa: E402
@@ -706,7 +819,8 @@ update_manager = UpdateManager(
     github_repo=GITHUB_REPO,
     download_dir=DATA_DIR / "updates",
     user_agent=f"FoxDesk/{APP_VERSION}",
-    require_checksum=False,  # verify when SHA256SUMS present; CI publishes it for 1.1.0+
+    # Never execute a downloaded installer without a verified checksum.
+    require_checksum=True,
     token_provider=settings_store.get_github_token,
     mirror_provider=settings_store.get_update_mirror,
 )
@@ -728,7 +842,9 @@ proxy_health = ProxyHealthScheduler(
     interval_seconds=float(settings_store.get().get("proxy_check_interval_sec") or 300),
     enabled_provider=lambda: bool(settings_store.get().get("proxy_auto_check", True)),
 )
-proxy_health.start()
+# Started on app startup (not import) so tests / tooling importing backend.app
+# never fire real proxy probes.
+app.router.add_event_handler("startup", proxy_health.start)
 
 _rr_proxy_index = 0
 _rr_proxy_lock = threading.Lock()
@@ -1044,6 +1160,23 @@ def resolve_chromium_backend(value: str | None) -> str:
     )
 
 
+def _wrap_runtime_proxy_secret(payload: dict[str, Any]) -> None:
+    """DPAPI-seal the proxy password inside the worker runtime JSON.
+
+    A crash otherwise leaves the plaintext credential on disk until the next
+    cleanup sweep; sealed values are only readable by the same user. Workers
+    unseal via storage_util.unprotect_secret (plaintext passes through).
+    """
+    proxy = payload.get("proxy")
+    if isinstance(proxy, dict) and proxy.get("password"):
+        try:
+            from backend.storage_util import protect_secret
+
+            proxy["password"] = protect_secret(str(proxy["password"]))
+        except Exception:
+            pass
+
+
 def worker_command(runtime_path: Path, engine: str = "camoufox") -> list[str]:
     """Build a command that works in source and frozen (PyInstaller) modes."""
     eng = normalize_engine_name(engine)
@@ -1107,17 +1240,29 @@ def start_process(
 def cleanup_runtime_files(max_age_hours: float = 24.0, keep_active: bool = True) -> dict[str, int]:
     cutoff = time.time() - max_age_hours * 3600
     active_paths: set[str] = set()
-    if keep_active:
-        for item in registry.list("session"):
-            # view doesn't include runtime_path; inspect registry items
-            pass
     with registry.lock:
         for item in registry.items.values():
             if item.runtime_path and item.process.poll() is None:
-                active_paths.add(str(Path(item.runtime_path).resolve()))
+                base = Path(item.runtime_path).resolve()
+                active_paths.add(str(base))
+                # Protect the live control-channel sidecars as well.
+                active_paths.add(str(base.with_suffix(".cmd.jsonl").resolve()))
+                active_paths.add(str(base.with_suffix(".result.jsonl").resolve()))
     removed = 0
     kept = 0
-    for path in RUNTIME_DIR.glob("*.json"):
+    # Cover runtime JSON, .cmd.jsonl / .result.jsonl sidecars and stray
+    # cookie exports alike (sidecars outlive crashes otherwise).
+    candidates: list[Path] = []
+    candidates.extend(RUNTIME_DIR.glob("*.json"))
+    candidates.extend(RUNTIME_DIR.glob("*.cmd.jsonl"))
+    candidates.extend(RUNTIME_DIR.glob("*.result.jsonl"))
+    candidates.extend(RUNTIME_DIR.glob("*.ws"))
+    candidates.extend(RUNTIME_DIR.glob("cookies-export-*.sqlite"))
+    seen: set[Path] = set()
+    for path in candidates:
+        if path in seen:
+            continue
+        seen.add(path)
         try:
             resolved = str(path.resolve())
             if resolved in active_paths:
@@ -1556,11 +1701,38 @@ def system_updates_install(request: UpdateInstallRequest | None = None) -> dict[
 
 
 @app.post("/api/tasks/{name}")
+def _validate_task_args(args: list[str]) -> list[str]:
+    """Only conservative flag/value tokens reach pip / camoufox CLIs.
+
+    Blocks URL and index/source injection (``--index-url http://evil`` and
+    friends are equivalent to code execution via package install).
+    """
+    import re
+
+    cleaned: list[str] = []
+    blocked = {
+        "--index-url", "-i", "--extra-index-url", "--editable", "-e",
+        "--prefix", "--target", "-t", "--src", "--find-links", "-f",
+        "--requirement", "-r", "--constraints", "-c", "--build-isolation",
+    }
+    for raw in args or []:
+        arg = str(raw)
+        if "://" in arg or arg.startswith(("http:", "https:", "ftp:")):
+            raise HTTPException(status_code=400, detail=f"URLs are not allowed in task args: {arg[:60]}")
+        if arg in blocked:
+            raise HTTPException(status_code=400, detail=f"flag not allowed in task args: {arg}")
+        if not re.fullmatch(r"[A-Za-z0-9._=\-]+", arg):
+            raise HTTPException(status_code=400, detail=f"unsupported task arg: {arg[:60]}")
+        cleaned.append(arg)
+    return cleaned
+
+
+@app.post("/api/tasks/{name}")
 def start_task(name: str, request: TaskRequest | None = None) -> dict[str, Any]:
     allowed = {"install", "fetch", "test", "remove", "version", "path"}
     if name not in allowed:
         raise HTTPException(status_code=404, detail="unknown task")
-    args = request.args if request else []
+    args = _validate_task_args(request.args if request else [])
 
     # Frozen builds cannot run `python -m camoufox` against FoxDesk.exe.
     # Use in-process helpers / guided setup instead of a broken subprocess.
@@ -1789,8 +1961,9 @@ def launch_session(request: LaunchRequest) -> dict[str, Any]:
     tags = {str(t).lower() for t in (profile.tags or [])}
     if "probe" in tags or "fingerprint" in tags:
         payload["_auto_fingerprint_probe"] = True
-    from backend.storage_util import atomic_write_json
+    from backend.storage_util import atomic_write_json, protect_secret
 
+    _wrap_runtime_proxy_secret(payload)
     atomic_write_json(runtime_path, payload)
     # Ensure command/result sidecars exist.
     runtime_path.with_suffix(".cmd.jsonl").write_text("", encoding="utf-8")
@@ -2095,6 +2268,20 @@ def environment_risks_for_profile(profile: Profile) -> list[dict[str, str]]:
             "high",
             "Headless mode is commonly blocked by payment / 3DS / interactive signup flows. Use a visible browser window.",
         )
+    extra_args = list(getattr(profile, "extra_args", None) or [])
+    addons = list(getattr(profile, "addons", None) or [])
+    if extra_args:
+        add(
+            "extra_args_present",
+            "medium",
+            f"extra_args are passed to the browser verbatim ({len(extra_args)} item(s)); review them — some Chromium flags can execute commands or break the fingerprint.",
+        )
+    if addons:
+        add(
+            "addons_present",
+            "medium",
+            f"Addons are loaded from arbitrary paths ({len(addons)} item(s)); only use extensions you trust.",
+        )
     if (profile.mode or "").lower() == "server":
         add(
             "server_mode",
@@ -2356,6 +2543,13 @@ def _socks4_connect(proxy_host: str, proxy_port: int, target_host: str, target_p
     return sock
 
 
+def _tls_wrap(sock: Any, server_hostname: str) -> Any:
+    import ssl
+
+    ctx = ssl.create_default_context()
+    return ctx.wrap_socket(sock, server_hostname=server_hostname)
+
+
 def _test_proxy_connection(proxy_url: str, username: str = "", password: str = "", timeout: float = 10.0) -> dict[str, Any]:
     """Test proxy by connecting through it to an IP-check endpoint."""
     import time as _time
@@ -2370,6 +2564,10 @@ def _test_proxy_connection(proxy_url: str, username: str = "", password: str = "
     pwd = password if password is not None else (parsed.password or "")
 
     start = _time.monotonic()
+    # IP-check endpoint must be https — plaintext leak would expose the exit
+    # IP (and this machine's traffic) to anyone on the path.
+    check_host = "api.ipify.org"
+    check_url = "https://api.ipify.org?format=json"
     try:
         if scheme in ("http", "https"):
             if user:
@@ -2379,13 +2577,14 @@ def _test_proxy_connection(proxy_url: str, username: str = "", password: str = "
             proxy_with_auth = f"{scheme}://{auth}{host}:{port}"
             proxy_handler = ProxyHandler({"http": proxy_with_auth, "https": proxy_with_auth})
             opener = build_opener(proxy_handler)
-            req = Request("http://httpbin.org/ip")
+            req = Request(check_url)
             resp = opener.open(req, timeout=timeout)
             data = json.loads(resp.read())
-            ip = data.get("origin", "unknown")
+            ip = data.get("ip", "unknown")
         elif scheme == "socks5":
-            sock = _socks5_connect(host, port, "httpbin.org", 80, timeout=timeout, username=user, password=pwd or "")
-            sock.sendall(b"GET /ip HTTP/1.1\r\nHost: httpbin.org\r\nConnection: close\r\n\r\n")
+            sock = _socks5_connect(host, port, check_host, 443, timeout=timeout, username=user, password=pwd or "")
+            sock = _tls_wrap(sock, check_host)
+            sock.sendall(b"GET /?format=json HTTP/1.1\r\nHost: api.ipify.org\r\nConnection: close\r\n\r\n")
             response = b""
             while True:
                 chunk = sock.recv(4096)
@@ -2395,10 +2594,11 @@ def _test_proxy_connection(proxy_url: str, username: str = "", password: str = "
             sock.close()
             body = response.split(b"\r\n\r\n", 1)[-1] if b"\r\n\r\n" in response else b"{}"
             data = json.loads(body)
-            ip = data.get("origin", "unknown")
+            ip = data.get("ip", "unknown")
         elif scheme == "socks4":
-            sock = _socks4_connect(host, port, "httpbin.org", 80, timeout=timeout)
-            sock.sendall(b"GET /ip HTTP/1.1\r\nHost: httpbin.org\r\nConnection: close\r\n\r\n")
+            sock = _socks4_connect(host, port, check_host, 443, timeout=timeout)
+            sock = _tls_wrap(sock, check_host)
+            sock.sendall(b"GET /?format=json HTTP/1.1\r\nHost: api.ipify.org\r\nConnection: close\r\n\r\n")
             response = b""
             while True:
                 chunk = sock.recv(4096)
@@ -2435,9 +2635,41 @@ def list_channels() -> list[dict[str, Any]]:
     return channel_store.all()
 
 
+def _validate_mirror_prefix(prefix: str) -> str:
+    """Custom mirror prefixes must be an https:// URL with a plain host.
+
+    The prefix is concatenated in front of GitHub download URLs and the result
+    is executed (browser binaries) — http:// or credential-bearing URLs are
+    rejected outright.
+    """
+    value = (prefix or "").strip()
+    if not value:
+        return value
+    if "\\" in value or ".." in value:
+        raise HTTPException(status_code=400, detail="invalid mirror prefix")
+    try:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(value if "://" in value else f"https://{value}")
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid mirror prefix") from None
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise HTTPException(
+            status_code=400,
+            detail="mirror prefix must be an https:// URL (e.g. https://mirror.example.com/)",
+        )
+    if parsed.username or parsed.password:
+        raise HTTPException(status_code=400, detail="mirror prefix must not contain credentials")
+    # Normalize: caller may pass bare host.
+    if "://" not in value:
+        value = f"https://{value.rstrip('/')}/"
+    return value
+
+
 @app.put("/api/channels")
 def update_channel(request: ChannelUpdateRequest) -> dict[str, bool]:
-    channel_store.update(request.id, request.prefix)
+    prefix = _validate_mirror_prefix(request.prefix)
+    channel_store.update(request.id, prefix)
     return {"ok": True}
 
 
@@ -2561,6 +2793,7 @@ def batch_launch(request: BatchLaunchRequest) -> dict[str, Any]:
             payload["chromium_backend"] = resolved_backend
         payload["_runtime_id"] = runtime_id
         payload["_profile_id"] = profile.id
+        _wrap_runtime_proxy_secret(payload)
         runtime_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         runtime_path.with_suffix(".cmd.jsonl").write_text("", encoding="utf-8")
         runtime_path.with_suffix(".result.jsonl").write_text("", encoding="utf-8")
@@ -2789,7 +3022,7 @@ def _parse_netscape_cookies(text: str) -> list[dict[str, Any]]:
     cookies: list[dict[str, Any]] = []
     for line in text.splitlines():
         line = line.strip()
-        if not line or line.startswith("#"):
+        if not line or (line.startswith("#") and not line.startswith("#HttpOnly_")):
             continue
         parts = line.split("\t")
         if len(parts) < 7:
@@ -3303,7 +3536,12 @@ def _collect_backup_files(*, include_profiles_dirs: bool) -> dict[str, bytes]:
 
 
 def _safe_restore_target(arcname: str) -> Path | None:
-    """Map archive name to absolute path under DATA_DIR, or None if unsafe."""
+    """Map archive name to absolute path under DATA_DIR, or None if unsafe.
+
+    Must reject not only ``..`` traversal but Windows drive-absolute
+    (``C:/x``), root-absolute (``/x`` → drive root) and UNC (``//server/x``)
+    arcnames — pathlib joins replace the base entirely for those.
+    """
     name = (arcname or "").replace("\\", "/").lstrip("/")
     if not name or name.startswith("../") or "/../" in f"/{name}/":
         return None
@@ -3311,9 +3549,15 @@ def _safe_restore_target(arcname: str) -> Path | None:
         return DATA_DIR / name
     if name.startswith("profiles/"):
         rel = name[len("profiles/") :]
-        if not rel or ".." in Path(rel).parts:
+        rel_path = PureWindowsPath(rel) if os.name == "nt" else PurePosixPath(rel)
+        if not rel or rel_path.drive or rel_path.root or ".." in rel_path.parts:
             return None
-        return PROFILES_DIR / rel
+        target = (PROFILES_DIR / rel).resolve()
+        try:
+            target.relative_to(PROFILES_DIR.resolve())
+        except ValueError:
+            return None
+        return target
     return None
 
 
@@ -3418,6 +3662,11 @@ def restore_encrypted_backup(request: BackupRestoreRequest) -> dict[str, Any]:
                     names = zf.namelist()
                     if "backup-meta.json" in names:
                         meta = json.loads(zf.read("backup-meta.json").decode("utf-8"))
+                        # Accepted risk (legacy format only): the stored
+                        # unsalted SHA256 is an offline cracking oracle, but
+                        # legacy zips are also unencrypted/unauthenticated, so
+                        # the user must already fully trust the file. New
+                        # backups use the AEAD-style .fdk format.
                         stamp = str(meta.get("password_sha256") or "")
                         if stamp and hashlib.sha256(request.password.encode("utf-8")).hexdigest() != stamp:
                             raise HTTPException(status_code=400, detail="wrong password for legacy backup")

@@ -478,7 +478,7 @@
                 <div class="form-grid">
                   <label>
                     <span data-i18n="addons">扩展路径</span>
-                    <input name="addons" placeholder="逗号或换行分隔" />
+                    <input name="addons" data-i18n-placeholder="addonsPlaceholder" placeholder="逗号或换行分隔" />
                   </label>
                   <label>
                     <span data-i18n="extraArgs">额外启动参数</span>
@@ -650,7 +650,7 @@
               </label>
               <label>
                 <span data-i18n="githubToken">GitHub Token（可选）</span>
-                <input id="githubTokenInput" type="password" autocomplete="off" placeholder="ghp_… 或留空" />
+                <input id="githubTokenInput" type="password" autocomplete="off" data-i18n-placeholder="tokenPlaceholder" placeholder="ghp_… 或留空" />
               </label>
               <label class="span-2" style="display:flex;align-items:center;gap:8px">
                 <input id="clearGithubToken" type="checkbox" />
@@ -704,7 +704,7 @@
             <div class="form-grid" style="padding:12px 16px">
               <label>
                 <span data-i18n="backupPassword">备份密码</span>
-                <input id="backupPasswordInput" type="password" autocomplete="new-password" minlength="4" placeholder="至少 4 位" />
+                <input id="backupPasswordInput" type="password" autocomplete="new-password" minlength="4" data-i18n-placeholder="pwdPlaceholder" placeholder="至少 4 位" />
               </label>
               <label class="span-2" style="display:flex;align-items:center;gap:8px">
                 <input id="backupIncludeProfiles" type="checkbox" />
