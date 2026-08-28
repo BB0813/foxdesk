@@ -27,7 +27,7 @@
 
 | 项 | 值 | 备注 |
 |---|---|---|
-| **主对照** | **Multilogin** · 版本 _安装后填写_ | 用户侧第一对比对象 |
+| **主对照** | **Multilogin** · 版本 **6.4.5.7（Luna，2026-08-28 安装）· Mimic 142 / Stealthfox 144** | 用户侧第一对比对象 |
 | **备对照** | **GoLogin** · 版本 _安装后填写_ | 防单一产品偏差 |
 | 技术侧面基线 | 本机 **Google Chrome** 稳定版 + FoxDesk **Camoufox** | 非商业指纹浏览器；仅辅助 |
 | FoxDesk 被测配置 | Chromium · `chromium_backend=auto/patchright` · headed · persistent | 与对照同 OS/分辨率尽量一致 |

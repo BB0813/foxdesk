@@ -40,6 +40,7 @@
 | `tools/bstatic_probe.py` | B-static 门禁（含 Phase C webdriver） |
 | `tools/smoke_phase_a_headed.py` | Phase A 有头冒烟 |
 | `tools/smoke_phase_c_headed.py` | Phase C worker + patchright 有头冒烟 |
+| `tools/d1_probe_server.py` | D1 对照探针页（在 Multilogin 等任意浏览器中打开即可采集同套指标） |
 
 ## 总册
 

@@ -50,9 +50,9 @@
 | 与 `l3-kpi.md` / B-* 对齐说明 | **done**（见下） |
 | 工程 backlog `phase-d-engineering-backlog.md` | **done** |
 | 候选栈桌面评估（不装危险载荷） | partial（backlog D-B*） |
-| 对照产品族锁定 Multilogin / GoLogin | **done**（版本号 pending） |
+| 对照产品族锁定 Multilogin / GoLogin | **done**（版本号已回填 `l3-kpi.md` §1） |
 | 场景锁定 AI 注册/订阅 | **done**（`l3-kpi.md` §0） |
-| Multilogin/GoLogin 安装版本号 | pending（用户环境） |
+| Multilogin/GoLogin 安装版本号 | **Multilogin done**：6.4.5.7（Luna，Mimic 142 / Stealthfox 144，2026-08-28 静默安装）· GoLogin pending（可选） |
 | B-compare / B-ai-signup 实测 | pending |
 | 内核/补丁编码 | **未开始**（等 D1 触发） |
 
