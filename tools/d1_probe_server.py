@@ -220,6 +220,11 @@ class ProbeHandler(BaseHTTPRequestHandler):
 def main() -> int:
     parser = argparse.ArgumentParser(description="FoxDesk D1 compare probe server")
     parser.add_argument("--port", type=int, default=8807)
+    parser.add_argument(
+        "--bind",
+        default="127.0.0.1",
+        help="bind address; use a LAN IP (or 0.0.0.0) for browsers that block loopback (e.g. GoLogin Orbita)",
+    )
     parser.add_argument("--label", default="d1-target", help="e.g. mimic-142 / stealthfox-144 / plain-chrome")
     parser.add_argument(
         "--out",
@@ -234,8 +239,8 @@ def main() -> int:
     ProbeHandler.out_path = out
     ProbeHandler.label = args.label
 
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), ProbeHandler)
-    print(f"[D1] probe page: http://127.0.0.1:{args.port}/probe  (open it in the browser under test)")
+    server = ThreadingHTTPServer((args.bind, args.port), ProbeHandler)
+    print(f"[D1] probe page: http://{args.bind}:{args.port}/probe  (open it in the browser under test)")
     print(f"[D1] output: {out}")
     try:
         server.serve_forever()

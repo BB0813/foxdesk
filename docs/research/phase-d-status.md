@@ -53,7 +53,7 @@
 | 对照产品族锁定 Multilogin / GoLogin | **done**（版本号已回填 `l3-kpi.md` §1） |
 | 场景锁定 AI 注册/订阅 | **done**（`l3-kpi.md` §0） |
 | Multilogin/GoLogin 安装版本号 | **GoLogin done（改为主对照）**：4.6.0.6 Saturn（2026-08-28，winget 安装）。原 Multilogin 6.4.5.7 已卸载：其 6.x 云端服务停摆（api 520/522 直连/代理同源）无法登录，官方强推需付费试用的 Multilogin X，改选 GoLogin 免费套餐 |
-| B-compare / B-ai-signup 实测 | pending |
+| B-compare / B-ai-signup 实测 | **B-compare 静态轮 done**（2026-08-28：GoLogin Orbita 150 vs FoxDesk vs Chrome 151 三方对照，静态面无 HARD_FAIL 差异，见 gap-matrix §2.6；B-ai-signup 待用户自有账号样本） |
 | 内核/补丁编码 | **未开始**（等 D1 触发） |
 
 ---
