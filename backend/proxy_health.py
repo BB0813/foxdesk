@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable
+
+
+# Parallel probe ceiling: enough to cut a large pool's worst-case sweep time,
+# small enough not to exhaust sockets or trip proxy provider rate limits.
+_MAX_PROBE_WORKERS = 8
 
 
 class ProxyHealthScheduler:
@@ -14,12 +20,16 @@ class ProxyHealthScheduler:
         list_proxies: Callable[[], list[dict[str, Any]]],
         test_proxy: Callable[[dict[str, Any]], dict[str, Any]],
         mark_result: Callable[[str, dict[str, Any]], Any],
+        mark_results: Callable[[dict[str, dict[str, Any]]], Any] | None = None,
         interval_seconds: float = 300.0,
         enabled_provider: Callable[[], bool] | None = None,
     ) -> None:
         self.list_proxies = list_proxies
         self.test_proxy = test_proxy
         self.mark_result = mark_result
+        # Optional batch flush (one read-modify-write for the whole pass);
+        # falls back to per-item mark_result when not provided.
+        self.mark_results = mark_results
         self.interval_seconds = interval_seconds
         self.enabled_provider = enabled_provider or (lambda: True)
         self._thread: threading.Thread | None = None
@@ -60,16 +70,25 @@ class ProxyHealthScheduler:
             self._running_pass = True
         try:
             items = self.list_proxies() or []
+            targets = [item for item in items if item.get("id")]
             ok = 0
             fail = 0
             details: list[dict[str, Any]] = []
-            for item in items:
-                proxy_id = item.get("id")
-                if not proxy_id:
-                    continue
-                try:
-                    result = self.test_proxy(item)
-                    self.mark_result(str(proxy_id), result)
+            outcomes: dict[str, dict[str, Any]] = {}
+            if len(targets) > 1:
+                # Parallel probes (bounded); results flushed in one batch write.
+                def _probe(item: dict[str, Any]) -> dict[str, Any]:
+                    try:
+                        return self.test_proxy(item)
+                    except Exception as exc:
+                        return {"ok": False, "error": str(exc)}
+
+                workers = max(1, min(_MAX_PROBE_WORKERS, len(targets)))
+                with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="proxy-health") as pool:
+                    probe_results = list(pool.map(_probe, targets))
+                for item, result in zip(targets, probe_results):
+                    proxy_id = str(item["id"])
+                    outcomes[proxy_id] = result
                     if result.get("ok"):
                         ok += 1
                     else:
@@ -82,14 +101,34 @@ class ProxyHealthScheduler:
                             "error": result.get("error"),
                         }
                     )
-                except Exception as exc:
-                    fail += 1
-                    err = {"ok": False, "error": str(exc)}
+                self._flush_results(outcomes)
+            else:
+                # Sequential path (single item or none) — unchanged semantics.
+                for item in targets:
+                    proxy_id = str(item["id"])
                     try:
-                        self.mark_result(str(proxy_id), err)
-                    except Exception:
-                        pass
-                    details.append({"id": proxy_id, "ok": False, "error": str(exc)})
+                        result = self.test_proxy(item)
+                        self.mark_result(proxy_id, result)
+                        if result.get("ok"):
+                            ok += 1
+                        else:
+                            fail += 1
+                        details.append(
+                            {
+                                "id": proxy_id,
+                                "ok": bool(result.get("ok")),
+                                "latency_ms": result.get("latency_ms"),
+                                "error": result.get("error"),
+                            }
+                        )
+                    except Exception as exc:
+                        fail += 1
+                        err = {"ok": False, "error": str(exc)}
+                        try:
+                            self.mark_result(proxy_id, err)
+                        except Exception:
+                            pass
+                        details.append({"id": proxy_id, "ok": False, "error": str(exc)})
             summary = {
                 "ok": True,
                 "checked": ok + fail,
@@ -103,6 +142,23 @@ class ProxyHealthScheduler:
         finally:
             with self._lock:
                 self._running_pass = False
+
+    def _flush_results(self, outcomes: dict[str, dict[str, Any]]) -> None:
+        if not outcomes:
+            return
+        flush = getattr(self, "mark_results", None)
+        if flush is not None:
+            try:
+                flush(outcomes)
+                return
+            except Exception:
+                pass
+        # Fallback: per-item apply (best effort).
+        for proxy_id, result in outcomes.items():
+            try:
+                self.mark_result(proxy_id, result)
+            except Exception:
+                pass
 
     def _loop(self) -> None:
         # First run delayed so app can finish boot.

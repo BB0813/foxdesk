@@ -72,6 +72,30 @@ def score_probe(probe: dict) -> dict:
     plugins = int(probe.get("pluginsLength") or 0)
     add("plugins_nonempty", plugins > 0, f"pluginsLength={plugins}", "low")
 
+    # D-B1 / D-B2 deep probes (Phase D research; measured, never gated)
+    deep = probe.get("deep") if isinstance(probe.get("deep"), dict) else {}
+    cdp = deep.get("cdp_console_tostring")
+    add(
+        "cdp_runtime_no_leak",
+        cdp is True,
+        "console.debug toString trick: hits>0 means a Runtime.enable-style CDP leak",
+        "medium",
+    )
+    iframe = deep.get("iframe_srcdoc_consistent")
+    add(
+        "iframe_srcdoc_consistent",
+        iframe is True,
+        "srcdoc iframe navigator matches main frame (init-script coverage)",
+        "medium",
+    )
+    worker = deep.get("worker_consistent")
+    add(
+        "worker_consistent",
+        worker is True,
+        "Worker-scope navigator values match main frame",
+        "medium",
+    )
+
     high_fail = [c for c in checks if not c["ok"] and c["severity"] == "high"]
     med_fail = [c for c in checks if not c["ok"] and c["severity"] == "medium"]
     passed = sum(1 for c in checks if c["ok"])
@@ -87,6 +111,102 @@ def score_probe(probe: dict) -> dict:
         "phase_c_needed": any(c["code"] == "webdriver_false" and not c["ok"] for c in checks),
         "note": "phase_b_gate ignores webdriver (Phase C). No payment guarantee.",
     }
+
+
+def probe_deep(page) -> dict:
+    """D-B1 (CDP traces) + D-B2 (iframe/Worker consistency) probes.
+
+    Each key is True when no leak/mismatch was found, False when the
+    detection surface reports a problem, None when the probe could not run.
+    Research measurements only — not an anti-detect claim.
+    """
+    deep: dict = {}
+    # D-B1: Runtime.enable-style CDP leak. With Runtime.enable active the
+    # CDP agent deep-serializes console.debug arguments, invoking toString.
+    # A real Chrome (or patchright with Runtime.enable held back) reports 0.
+    try:
+        deep["cdp_console_tostring"] = page.evaluate(
+            """async () => {
+              let hits = 0;
+              const spooky = { toString() { hits += 1; return 'spooky'; } };
+              try { console.debug(spooky); } catch (e) {}
+              try { console.log(spooky); } catch (e) {}
+              await new Promise(r => setTimeout(r, 250));
+              return hits === 0;
+            }"""
+        )
+    except Exception:
+        deep["cdp_console_tostring"] = None
+    # D-B2a: srcdoc iframe realm. Known Chromium gap: init scripts may not
+    # run inside srcdoc/sandbox iframes, leaving a fresh navigator realm
+    # that detection suites compare against the main frame.
+    try:
+        deep["iframe_srcdoc_consistent"] = page.evaluate(
+            """async () => {
+              const iframe = document.createElement('iframe');
+              iframe.srcdoc = 'page intentionally left blank';
+              iframe.style.display = 'none';
+              document.body.appendChild(iframe);
+              try {
+                await new Promise(r => {
+                  let done = false;
+                  iframe.onload = () => { done = true; r(); };
+                  setTimeout(() => { if (!done) r(); }, 1500);
+                });
+                const w = iframe.contentWindow;
+                if (!w || !w.navigator) return null;
+                const main = navigator;
+                const inner = w.navigator;
+                const keys = ['webdriver', 'hardwareConcurrency', 'userAgent', 'platform'];
+                for (const k of keys) {
+                  let a, b;
+                  try { a = String(main[k]); } catch (e) { a = 'undef'; }
+                  try { b = String(inner[k]); } catch (e) { b = 'undef'; }
+                  if (a !== b) return false;
+                }
+                const mUad = main.userAgentData ? String(main.userAgentData.platform) : '';
+                const iUad = inner.userAgentData ? String(inner.userAgentData.platform) : '';
+                if (mUad !== iUad) return false;
+                return true;
+              } finally {
+                iframe.remove();
+              }
+            }"""
+        )
+    except Exception:
+        deep["iframe_srcdoc_consistent"] = None
+    # D-B2b: dedicated Worker realm. Init scripts never run inside workers;
+    # spoofed main-frame values that the host cannot back (e.g. overridden
+    # hardwareConcurrency/userAgent) diverge here.
+    try:
+        deep["worker_consistent"] = page.evaluate(
+            """async () => {
+              const src = `self.onmessage = () => self.postMessage({
+                ua: navigator.userAgent,
+                hc: navigator.hardwareConcurrency,
+                plat: String(navigator.platform),
+              });`;
+              const blob = new Blob([src], { type: 'application/javascript' });
+              const url = URL.createObjectURL(blob);
+              const worker = new Worker(url);
+              const data = await new Promise((resolve) => {
+                worker.onmessage = (e) => resolve(e.data);
+                worker.postMessage('go');
+                setTimeout(() => resolve(null), 2000);
+              });
+              worker.terminate();
+              URL.revokeObjectURL(url);
+              if (!data) return null;
+              const main = navigator;
+              return (
+                String(data.ua) === String(main.userAgent) &&
+                String(data.plat) === String(main.platform)
+              );
+            }"""
+        )
+    except Exception:
+        deep["worker_consistent"] = None
+    return deep
 
 
 def main() -> int:
@@ -198,6 +318,7 @@ def main() -> int:
             except Exception as exc:
                 probe["fontsCheck"] = {"error": str(exc)}
             probe["hasChrome"] = page.evaluate("() => typeof window.chrome === 'object' && window.chrome !== null")
+            probe["deep"] = probe_deep(page)
             result["probe"] = probe
             result["score"] = score_probe(probe)
             result["ok"] = True

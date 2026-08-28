@@ -41,3 +41,21 @@ def test_headless_is_high():
     risks = environment_risks_for_profile(_base(headless=True))
     codes = {r["code"] for r in risks if r["level"] == "high"}
     assert "headless" in codes
+
+
+def test_worker_exposed_override_flagged_on_chromium_only():
+    # D-B2: hardware_concurrency/device_memory are JS-layer overrides that
+    # Web Workers can see through — flagged (low) on chromium only.
+    chromium_profile = _base(engine="chromium", chromium_backend="patchright", hardware_concurrency=8)
+    codes = {r["code"] for r in environment_risks_for_profile(chromium_profile)}
+    assert "worker_exposed_override" in codes
+
+    camoufox_profile = _base(hardware_concurrency=8)
+    codes = {r["code"] for r in environment_risks_for_profile(camoufox_profile)}
+    assert "worker_exposed_override" not in codes
+
+
+def test_worker_exposed_override_absent_when_defaults():
+    chromium_profile = _base(engine="chromium", chromium_backend="patchright")
+    codes = {r["code"] for r in environment_risks_for_profile(chromium_profile)}
+    assert "worker_exposed_override" not in codes

@@ -726,6 +726,7 @@ const state = {
   updatePollTimer: null,
   updateModalOpen: false,
   lastAutoUpdateCheck: 0,
+  activePage: "profiles",
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -3149,6 +3150,7 @@ function renderIcons() {
 }
 
 function switchPage(page) {
+  state.activePage = page;
   $$(".tab-nav button").forEach((b) => b.classList.remove("active"));
   $$(".tab-page").forEach((p) => p.classList.remove("active"));
   const btn = $(`.tab-nav button[data-page="${page}"]`);
@@ -3371,6 +3373,14 @@ bindEvents();
 applyTheme(state.theme);
 setLanguage(state.lang);
 refreshAll().catch((error) => toast(error.message));
+// Polling strategy (lazy by page):
+// - sessions always poll (top-bar running badge + sessions page live logs)
+// - tasks only poll while the system page is visible (they render nowhere else)
+// - everything pauses while the window is hidden (tray mode) — the backend
+//   keeps sessions alive; the UI simply stops fetching data nobody sees.
 window.setInterval(() => {
-  Promise.all([loadSessions(), loadTasks()]).catch(() => {});
+  if (document.hidden) return;
+  const jobs = [loadSessions()];
+  if (state.activePage === "system") jobs.push(loadTasks());
+  Promise.all(jobs).catch(() => {});
 }, 4000);

@@ -31,8 +31,10 @@ def test_humanize_chrome_channel():
 
 
 def test_validate_chrome_channel_without_install(monkeypatch):
+    # detect_google_chrome_install lives in backend.profile_logic since the
+    # backend.app split; patch it there.
     monkeypatch.setattr(
-        "backend.app.detect_google_chrome_install",
+        "backend.profile_logic.detect_google_chrome_install",
         lambda: {"installed": False, "paths": []},
     )
     p = Profile(

@@ -235,3 +235,32 @@ class ProxyPoolStore:
             self._write(items)
             return item
         raise KeyError(proxy_id)
+
+    def mark_test_results(self, results: dict[str, dict[str, Any]]) -> int:
+        """Batch-apply health-check results in a single read-modify-write.
+
+        Concurrent per-item mark_test_result calls would race between the
+        locked read and locked write (lost updates); health checks probe in
+        parallel and flush once instead. Returns number of items updated.
+        """
+        if not results:
+            return 0
+        with self.lock:
+            items = self._read()
+            applied = 0
+            for idx, item in enumerate(items):
+                result = results.get(item.get("id"))
+                if result is None:
+                    continue
+                item = dict(item)
+                item["last_ok"] = bool(result.get("ok"))
+                item["last_latency_ms"] = result.get("latency_ms")
+                item["last_exit_ip"] = result.get("exit_ip")
+                item["last_error"] = result.get("error")
+                item["last_checked_at"] = now_iso()
+                item["updated_at"] = now_iso()
+                items[idx] = item
+                applied += 1
+            if applied:
+                self._write(items)
+            return applied

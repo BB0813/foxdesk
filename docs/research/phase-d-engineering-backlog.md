@@ -24,8 +24,8 @@
 
 | ID | 项 | 为何像商业机常做 | 依赖 | 优先级 |
 |---|---|---|---|---|
-| D-B1 | CDP / Runtime 自动化痕迹调研与缓解评估 | 商业栈常处理 | 桌面研究 | P1 |
-| D-B2 | iframe / Worker 内 navigator 一致性 | 部分站点嵌框检测 | init 深化 | P1 |
+| D-B1 | CDP / Runtime 自动化痕迹调研与缓解评估 | 商业栈常处理 | 桌面研究 | **调研 done**（`d-b1-d-b2-notes.md`；结论：维持 patchright 主路径，探针已落地） |
+| D-B2 | iframe / Worker 内 navigator 一致性 | 部分站点嵌框检测 | init 深化 | **调研 done**（探针 + `worker_exposed_override` 风险提示；深修待 D1 数据） |
 | D-B3 | 权限/Notification/传感器默认面 | 桌面像真机 | 配置策略 | P2 |
 | D-B4 | TLS / HTTP2 / JA3 侧面（可选 B-leak） | 深度对照 | 工具链 | P2 |
 | D-B5 | channel=chrome 一键建议 + 启动失败可读 | 真 Chrome 指纹 | 本机 Chrome | P2 |

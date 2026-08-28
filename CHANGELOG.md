@@ -1,5 +1,36 @@
 # Changelog
 
+## Unreleased
+
+### Backend modularization (no behavior change)
+- `backend/app.py` (3869 lines, 67 routes) split into domain modules:
+  - `backend/models.py` — Pydantic models
+  - `backend/core.py` — paths, legacy migration, `ProfileStore`, `ManagedProcess`/`ProcessRegistry`, `ChannelStore`, `ActivityLog`, store singletons
+  - `backend/local_auth.py` — per-process `X-FoxDesk-Token` + loopback/origin middleware
+  - `backend/engine_meta.py` — pure engine/backend naming + error humanization
+  - `backend/engine_tools.py` — availability probes, worker commands, process lifecycle
+  - `backend/profile_logic.py` — launch validation, environment risks, proxy-pool assignment
+  - `backend/proxy_test.py` — HTTP/SOCKS4/SOCKS5 proxy testing
+  - `backend/cookie_io.py` — cookie SQLite/Netscape helpers
+  - `backend/backup_util.py` — backup collection + restore-target sanitization
+  - `backend/wiring.py` — update/setup/proxy-health singletons
+  - `backend/routes/{pages,system,profiles,sessions,proxies,backups}.py` — one `APIRouter` per domain
+- `backend.app` still re-exports all previously public names (tests/tooling/frozen entry unchanged)
+- **`profiles.json` schema versioning**: files now persist as `{"schema_version": 2, "profiles": [...]}`; legacy bare-list files are read transparently and upgraded on the next write
+- New tests: `tests/test_profile_schema.py` (seed/legacy-read/upgrade/roundtrip)
+
+### Phase D research (D-B1 / D-B2, no behavior promises changed)
+- New doc `docs/research/d-b1-d-b2-notes.md`: CDP `Runtime.enable` leak mechanism + ecosystem mitigation comparison (conclusion: keep patchright as primary path); srcdoc-iframe / Web-Worker navigator-consistency mechanisms + mitigation trade-offs
+- `tools/bstatic_probe.py` new `probe_deep()`: `cdp_console_tostring` (Runtime.enable leak), `iframe_srcdoc_consistent`, `worker_consistent` — scored as medium, **not** gating
+- `environment_risks_for_profile` gains `worker_exposed_override` (low): chromium + JS-layer hardware_concurrency/device_memory overrides are visible through Web Workers
+- Backlog D-B1/D-B2 marked research-done; gap-matrix rows can now be filled locally
+
+### Performance / hardening
+- `ProxyHealthScheduler.run_once` now probes **in parallel** (bounded, 8 workers); results flush via new `ProxyPoolStore.mark_test_results` batch read-modify-write (per-item RMW would race under concurrency); sequential path kept for 0/1 targets; fallback to per-item apply if batch flush fails
+- New tests: `tests/test_proxy_health_parallel.py` (batching, speedup, exception mapping, single-item path, flush-failure fallback)
+- API-token file ACL documented: `%TEMP%` inherits the user-profile DACL (owner + SYSTEM + Administrators only) — no cross-user exposure; no code change needed
+- Frontend polling is now lazy: tasks poll only while the system page is active; all polling pauses when the window is hidden (tray mode); sessions keep polling for the top-bar badge
+
 ## 1.4.1 — 2026-08-22 (security & stability hardening, post-1.4.0 audit)
 
 Full-project audit findings fixed in priority order. No behavior promises changed: still local-only, no cloud control, no anti-detect/payment/signup SLA.

@@ -28,6 +28,7 @@
 | [phase-d-gap-matrix.md](./phase-d-gap-matrix.md) | D 差距清单（对照后填） |
 | [ai-platform-runbook.md](./ai-platform-runbook.md) | AI 注册/订阅实验手册（可选对照） |
 | [phase-d-engineering-backlog.md](./phase-d-engineering-backlog.md) | D 工程 backlog（无商业机也可迭代） |
+| [d-b1-d-b2-notes.md](./d-b1-d-b2-notes.md) | D-B1/D-B2 桌面调研：CDP 痕迹 + iframe/Worker 一致性（探针已落地） |
 
 ## 工具
 
