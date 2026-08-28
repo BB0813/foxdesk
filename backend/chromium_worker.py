@@ -340,10 +340,13 @@ def build_fingerprint_init_script(profile: dict[str, Any]) -> str | None:
       let major = '153';
       const m = ua.match(/Chrome\\/(\\d+)/);
       if (m) major = m[1];
+      // D1 baseline (real Chrome 151, 2026-08-28): brands are
+      // [Not=A?Brand:99, Google Chrome:<major>, Chromium:<major>] — GREASE
+      // token, order and platformVersion matched to current stable.
       const brands = [
-        {{ brand: 'Chromium', version: major }},
-        {{ brand: 'Not.A/Brand', version: '24' }},
+        {{ brand: 'Not=A?Brand', version: '99' }},
         {{ brand: 'Google Chrome', version: major }},
+        {{ brand: 'Chromium', version: major }},
       ];
       const platformName = (o.uaCh && o.uaCh.platform) ? o.uaCh.platform : 'Windows';
       const mobileFlag = !!(o.uaCh && o.uaCh.mobile);
@@ -359,7 +362,7 @@ def build_fingerprint_init_script(profile: dict[str, Any]) -> str | None:
               if (h === 'architecture') out.architecture = 'x86';
               if (h === 'bitness') out.bitness = '64';
               if (h === 'model') out.model = '';
-              if (h === 'platformVersion') out.platformVersion = platformName === 'Windows' ? '15.0.0' : '14.0.0';
+              if (h === 'platformVersion') out.platformVersion = platformName === 'Windows' ? '19.0.0' : '14.0.0';
               if (h === 'uaFullVersion') out.uaFullVersion = fullVersion;
               if (h === 'fullVersionList') out.fullVersionList = brands.map((b) => ({{ brand: b.brand, version: fullVersion }}));
             }}

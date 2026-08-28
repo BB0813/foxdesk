@@ -115,6 +115,16 @@ class TestInitScriptPermissionPatch:
         assert "Notification.permission === 'denied'" in script
         assert "state: () => 'granted'" not in script
 
+    def test_ua_ch_brands_match_real_chrome_d1_baseline(self):
+        """D1 Chrome-151 baseline: GREASE token 'Not=A?Brand':99 first, then
+        Google Chrome + Chromium; Windows platformVersion 19.0.0."""
+        from backend.chromium_worker import build_fingerprint_init_script
+
+        script = build_fingerprint_init_script({})
+        assert "Not=A?Brand" in script
+        assert "Not.A/Brand" not in script
+        assert "'19.0.0'" in script
+
 
 # ---------- D-B7: UA drift parsing ----------
 

@@ -42,6 +42,23 @@
 
 ---
 
+## 2.5 D1 技术侧基线（Chrome 151 真机 · 2026-08-28）
+
+用 `tools/d1_probe_server.py` 采集的本机 Google Chrome 151.0.7922.175 真值（l3-kpi §1 技术侧基线）：
+
+| 信号 | 真机 Chrome 151 值 | FoxDesk patchright 现状 | 对齐动作 |
+|---|---|---|---|
+| UA-CH brands | `Not=A?Brand:99 → Google Chrome:151 → Chromium:151`（GREASE 在前） | ~~`Chromium → Not.A/Brand:24 → Google Chrome`（旧格式）~~ | **已修**：init 脚本改为真机格式 |
+| UA-CH platformVersion (Windows) | `19.0.0` | ~~`15.0.0`~~ | **已修**：默认 19.0.0 |
+| Notification / query | `default` / `prompt`（一致） | D-B3 已内置一致性对齐 | 维持 |
+| webdriver | false | false（CI 实测） | 维持 |
+| CDP 痕迹 / iframe / Worker | 三探针全净 | 三探针全净（CI 实测） | 维持 |
+| plugins | 5 | 本机非空 | 维持 |
+
+> 基线原始 JSON：`docs/research/_d1_chrome-151.json`（gitignored，留存本地）
+
+---
+
 ## 3. B-leak（公开指纹页，选 2）
 
 | 站点 | FoxDesk 记录 | 对照机 | 异常 diff | 说明 |
