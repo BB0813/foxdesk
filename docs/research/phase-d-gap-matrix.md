@@ -33,8 +33,8 @@
 | plugins | 本机非空 | | | | |
 | mediaDevices | 策略 random；偶发 0 | | | | hook 加固 |
 | fonts.check | pack 有效 | | | | |
-| CDP / Runtime 痕迹 | 未系统测 | | | | **D 重点** |
-| iframe 一致性 | 未系统测 | | | | D |
+| CDP / Runtime 痕迹 | **无泄漏**（CI 2026-08-28：`cdp_console_tostring=true`，patchright） | _待测_ | _待测_ | | 维持 patchright 主路径 |
+| iframe 一致性 | **srcdoc 一致**（CI 2026-08-28：`iframe_srcdoc_consistent=true`）· Worker 一致（`worker_consistent=true`） | | | | 已测通过；跨域 iframe 待 B-leak |
 | Permissions / Notification | 未系统测 | | | | D |
 | WebRTC 真 IP | 软 flags；待 B-webrtc | | | | B+D |
 

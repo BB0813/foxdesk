@@ -93,9 +93,20 @@ Playwright / Puppeteer 启动上下文时默认发送两类 CDP 命令：
 | D-B2 桌面调研 + 方案对比 | done（本文档） |
 | `probe_deep()` 三个探针落地 `tools/bstatic_probe.py` | done |
 | 评分器接入（medium，不 gate） | done |
-| 本机跑探针，回填 gap-matrix 第 2 节 CDP / iframe 两行 | pending（需 headed 环境） |
-| `environment_risks_for_profile` 增加 worker 可采样字段覆写提示 | pending（小改动，可与下轮迭代） |
+| 本机跑探针，回填 gap-matrix 第 2 节 CDP / iframe 两行 | **done**（CI runner 2026-08-28：三项探针全部通过，见下） |
+| `environment_risks_for_profile` 增加 worker 可采样字段覆写提示 | done（`worker_exposed_override`，low） |
 | D1 对照（Multilogin 同探针并排） | pending（用户环境） |
+
+### CI 实测记录（2026-08-28 · GitHub Actions windows-latest · backend=patchright）
+
+| 探针 | 结果 |
+|---|---|
+| `navigator.webdriver` | **false** |
+| `cdp_console_tostring`（D-B1） | **true**（无 Runtime.enable 型泄漏） |
+| `iframe_srcdoc_consistent`（D-B2a） | **true**（srcdoc 子 realm 与主框一致，含 UA-CH） |
+| `worker_consistent`（D-B2b） | **true**（Worker scope UA/platform 与主框一致） |
+
+> 结论：Chromium 线在 patchright 后端下，本调研关注的三个检测面在本机与 CI 环境均未发现泄漏。剩余深测项：跨域 iframe、shared worker、行为时序（待 B-leak / D1）。
 
 ## 4. 明确不做
 
