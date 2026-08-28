@@ -90,6 +90,14 @@ FoxDesk 是**本机桌面工具**：
 
 **不要**把本服务端口映射到公网。本机恶意软件仍可能读取数据目录。
 
+## 环境质量实测（内部对照，非保证）
+
+2026-08-28 静态指纹对照实测（探针：webdriver / CDP 痕迹 / iframe·Worker 一致性 / 通知一致性 / UA-CH，详见 [docs/research/phase-d-gap-matrix.md](docs/research/phase-d-gap-matrix.md) §2.5–2.6）：
+
+- **FoxDesk Chromium（patchright）与商业对照 GoLogin Orbita 150 结果一致**：所有可自动化静态探针均未发现泄漏（webdriver=false、无 CDP Runtime 痕迹、srcdoc iframe 与 Worker 内指纹一致、通知权限面一致）
+- 与真机 Google Chrome 151 基线对照后，已修复 UA-CH GREASE 品牌串与 platformVersion 两处过时值
+- 以上仅为静态层测量，**不构成**过检/注册/支付/订阅任何形式的保证；已知边界（全版本号截断、内核级伪装差异）见 gap-matrix
+
 ## 已知限制
 
 - Server 模式在部分 Camoufox 版本下仍可能延迟/无法捕获 `ws_endpoint`（可点「刷新端点」）
