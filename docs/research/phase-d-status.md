@@ -52,7 +52,7 @@
 | 候选栈桌面评估（不装危险载荷） | partial（backlog D-B*） |
 | 对照产品族锁定 Multilogin / GoLogin | **done**（版本号已回填 `l3-kpi.md` §1） |
 | 场景锁定 AI 注册/订阅 | **done**（`l3-kpi.md` §0） |
-| Multilogin/GoLogin 安装版本号 | **Multilogin done**：6.4.5.7（Luna，Mimic 142 / Stealthfox 144，2026-08-28 静默安装）· GoLogin pending（可选） |
+| Multilogin/GoLogin 安装版本号 | **GoLogin done（改为主对照）**：4.6.0.6 Saturn（2026-08-28，winget 安装）。原 Multilogin 6.4.5.7 已卸载：其 6.x 云端服务停摆（api 520/522 直连/代理同源）无法登录，官方强推需付费试用的 Multilogin X，改选 GoLogin 免费套餐 |
 | B-compare / B-ai-signup 实测 | pending |
 | 内核/补丁编码 | **未开始**（等 D1 触发） |
 

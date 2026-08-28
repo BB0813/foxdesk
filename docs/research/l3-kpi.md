@@ -27,8 +27,8 @@
 
 | 项 | 值 | 备注 |
 |---|---|---|
-| **主对照** | **Multilogin** · 版本 **6.4.5.7（Luna，2026-08-28 安装）· Mimic 142 / Stealthfox 144** | 用户侧第一对比对象 |
-| **备对照** | **GoLogin** · 版本 _安装后填写_ | 防单一产品偏差 |
+| **主对照** | **GoLogin** · 版本 **4.6.0.6（Saturn，2026-08-28 安装）· Orbita 内核** · 免费套餐 | 用户侧第一对比对象。原定 Multilogin：6.x 后端服务已停摆（api 520/522，走代理同），官方强制迁移 Multilogin X（需付费试用）→ 换 GoLogin（2026-08-28 决定） |
+| **备对照** | Multilogin X · 版本 _待注册评估_（需付费试用 €1.99/3天） | GoLogin 数据不足时再考虑 |
 | 技术侧面基线 | 本机 **Google Chrome** 稳定版 + FoxDesk **Camoufox** | 非商业指纹浏览器；仅辅助 |
 | FoxDesk 被测配置 | Chromium · `chromium_backend=auto/patchright` · headed · persistent | 与对照同 OS/分辨率尽量一致 |
 | 代理规格 | _住宅优先 / 国家 / 协议_ · 全程同一出口 | 机房 IP 单独记账（R7） |
