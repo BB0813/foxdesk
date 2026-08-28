@@ -2,7 +2,7 @@
 
 本地 Camoufox 指纹浏览器管理器 — 免费、开源、隐私优先。
 
-**当前版本：`1.4.2`（Stable）**
+**当前版本：`1.4.3`（Stable）**
 
 <p align="center">
   <img src="static/logo.png" width="120" alt="FoxDesk Logo">
@@ -63,13 +63,13 @@ build.bat
 产物：
 
 - 便携版：`dist/FoxDesk/FoxDesk.exe`
-- 安装包：`installer_output/FoxDesk-1.4.2-Setup.exe`
+- 安装包：`installer_output/FoxDesk-1.4.3-Setup.exe`
 
 ### CI/CD
 
 ```bash
-git tag v1.4.2
-git push origin v1.4.2
+git tag v1.4.3
+git push origin v1.4.3
 ```
 
 - Workflow：`.github/workflows/build.yml`
@@ -96,7 +96,7 @@ FoxDesk 是**本机桌面工具**：
 - 指纹检测为静态一致性评分，**不是**反检测保证；Chromium + Patchright 仅降低部分自动化标记，**不保证**对齐商业指纹浏览器或支付通过
 - 无 Token 时仍可能遇到 GitHub 限流；1.2.0+ 会回退网页/Atom + ghproxy
 - 会话 `evaluate` / 截图仅限 browser 模式本地控制通道，**不是**远程 RPA 沙箱
-- 从旧版升级：建议直接装 1.4.2；Program Files 旧安装请先卸载
+- 从旧版升级：建议直接装 1.4.3；Program Files 旧安装请先卸载
 
 完整变更见 [CHANGELOG.md](CHANGELOG.md)。
 

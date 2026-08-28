@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.4.3 — 2026-08-28 (Phase D backlog closeout: D-B3/B4/B5/B6/B7)
 
 ### Phase D backlog closeout (D-B3/B4/B5/B6/B7)
 - **D-B6 (P1)** proxy quality productization: `backend/proxy_quality.py` classifies exit IPs (residential/datacenter/mobile/unknown) via https free IP-info services; `POST /api/proxies/{id}/quality-check` stores quality on pool items; `environment_risks_for_profile` gains `datacenter_proxy` (medium) / `residential_proxy` (low) hints
