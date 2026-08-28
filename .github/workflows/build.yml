@@ -62,7 +62,7 @@ jobs:
           Set-Content -Path VERSION -Value $version -NoNewline
 
           # App-facing version string (may include beta/rc)
-          foreach ($file in @('desktop.py', 'backend/app.py', 'README.md')) {
+          foreach ($file in @('desktop.py', 'backend/core.py', 'README.md')) {
             if (Test-Path $file) {
               $content = Get-Content $file -Raw
               $content = $content -replace 'APP_VERSION\s*=\s*"[^"]+"', "APP_VERSION = `"$version`""

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.4.2 — 2026-08-28 (backend modularization, D-B1/D-B2 research, performance & UX)
 
 ### Backend modularization (no behavior change)
 - `backend/app.py` (3869 lines, 67 routes) split into domain modules:
