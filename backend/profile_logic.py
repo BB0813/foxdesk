@@ -204,8 +204,11 @@ def environment_risks_for_profile(profile: Profile) -> list[dict[str, str]]:
     """
     risks: list[dict[str, str]] = []
 
-    def add(code: str, level: str, message: str) -> None:
-        risks.append({"code": code, "level": level, "message": message})
+    def add(code: str, level: str, message: str, suggestion: str | None = None) -> None:
+        entry = {"code": code, "level": level, "message": message}
+        if suggestion:
+            entry["suggestion"] = suggestion
+        risks.append(entry)
 
     tags = {str(t).lower() for t in (getattr(profile, "tags", None) or [])}
     ai_scene = bool(tags & {"ai", "chatgpt", "claude", "gemini", "openai", "anthropic"})
@@ -243,6 +246,7 @@ def environment_risks_for_profile(profile: Profile) -> list[dict[str, str]]:
                     "chromium_bundled_build",
                     "low",
                     "Using bundled Chromium (not channel=chrome). Google Chrome detected on this machine — optional: set chromium_channel=chrome.",
+                    suggestion="chromium_channel=chrome",
                 )
             else:
                 add(
@@ -353,6 +357,27 @@ def environment_risks_for_profile(profile: Profile) -> list[dict[str, str]]:
             "medium",
             "Proxy without explicit locale/language. Align Accept-Language with the proxy region.",
         )
+    # D-B6: exit-IP quality hints from the proxy pool (heuristic ASN/org
+    # classification; see backend/proxy_quality.py). Datacenter exits are a
+    # top hard-fail cause for payment / AI flows — surface them early.
+    if profile.proxy_id:
+        try:
+            pool_item = proxy_pool.get(profile.proxy_id)
+        except KeyError:
+            pool_item = None
+        quality = (pool_item or {}).get("quality")
+        if quality == "datacenter":
+            add(
+                "datacenter_proxy",
+                "medium",
+                "Exit IP classified as datacenter/hosting ASN — payment & AI risk engines weight IP reputation heavily and fingerprint work cannot compensate. Prefer a residential/mobile proxy for high-risk flows.",
+            )
+        elif quality == "residential":
+            add(
+                "residential_proxy",
+                "low",
+                "Exit IP classified as residential — good signal for payment / AI flows (heuristic; no guarantee).",
+            )
     if not profile.block_webrtc and profile.webrtc_mode == "default":
         add(
             "webrtc_leak_risk",

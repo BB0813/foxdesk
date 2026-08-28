@@ -28,12 +28,14 @@ from backend.core import (
 from backend.cookie_io import find_cookies_sqlite, parse_netscape_cookies
 from backend.engine_meta import normalize_engine_name
 from backend.models import (
+    ApplySuggestionRequest,
     BulkProxyRequest,
     ImportProfilesRequest,
     ProfileIn,
 )
 from backend.profile_logic import (
     apply_proxy_pool_to_profile,
+    detect_google_chrome_install,
     environment_risks_for_profile,
     resolve_user_data_dir,
 )
@@ -146,19 +148,19 @@ COMMON_TIMEZONES = [
 ]
 
 WINDOWS_USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:154.0) Gecko/20100101 Firefox/154.0",
 ]
 
 MACOS_USER_AGENTS = [
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.2 Safari/605.1.15",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/19.2 Safari/605.1.15",
 ]
 
 LINUX_USER_AGENTS = [
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64; rv:133.0) Gecko/20100101 Firefox/133.0",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64; rv:154.0) Gecko/20100101 Firefox/154.0",
 ]
 
 WEBGL_VENDORS = ["Google Inc. (NVIDIA)", "Google Inc. (AMD)", "Google Inc. (Intel)", "Apple Inc."]
@@ -397,6 +399,37 @@ def bulk_proxy_import(request: BulkProxyRequest) -> dict[str, Any]:
             break
     store.save_all(profiles)
     return {"ok": True, "updated": updated}
+
+
+# --- D-B5: one-click risk-suggestion application ---
+_SUGGESTION_APPLIERS = {
+    "chromium_bundled_build": lambda profile: {"chromium_channel": "chrome"},
+}
+
+
+@router.post("/api/profiles/{profile_id}/apply-suggestion")
+def apply_risk_suggestion(profile_id: str, request: ApplySuggestionRequest) -> Profile:
+    """Apply a whitelisted environment-risk suggestion to a profile (D-B5).
+
+    Currently supports: chromium_bundled_build -> chromium_channel=chrome
+    (requires local Google Chrome detection to succeed).
+    """
+    applier = _SUGGESTION_APPLIERS.get((request.code or "").strip())
+    if applier is None:
+        raise HTTPException(status_code=400, detail=f"no automated suggestion for code: {request.code}")
+    try:
+        profile = store.get(profile_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="profile not found") from None
+    if (profile.engine or "") != "chromium":
+        raise HTTPException(status_code=409, detail="suggestion applies to chromium-engine profiles only")
+    if request.code == "chromium_bundled_build" and not detect_google_chrome_install().get("installed"):
+        raise HTTPException(status_code=409, detail="Google Chrome was not detected on this machine")
+    data = profile.model_dump()
+    data.update(applier(profile))
+    updated = store.update(profile_id, ProfileIn(**data))
+    activity.log("risk_suggestion_apply", f"{profile.name}: {request.code}")
+    return updated
 
 
 # --- Fingerprint Check ---

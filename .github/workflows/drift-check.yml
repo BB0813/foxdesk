@@ -1,0 +1,35 @@
+name: D-B7 drift check (Chrome / automation stack)
+
+# Monthly watch so UA pools and the Chromium stack never silently rot.
+# Failure means "UA majors trail Chrome stable beyond threshold" — a
+# maintainer should refresh routes/profiles.py UA pools + bundled stack.
+
+on:
+  schedule:
+    # 03:23 UTC on the 3rd of every month (after Chrome stable landings).
+    - cron: '23 3 3 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drift-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run drift check
+        run: python tools/chrome_drift_check.py --json-out docs/research/_drift_check.json
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: drift-check-report
+          path: docs/research/_drift_check.json
+          retention-days: 90

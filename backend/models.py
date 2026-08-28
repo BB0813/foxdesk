@@ -242,6 +242,10 @@ class BulkProxyRequest(BaseModel):
     profile_ids: list[str] = Field(default_factory=list)
 
 
+class ApplySuggestionRequest(BaseModel):
+    code: str
+
+
 class NavigateRequest(BaseModel):
     url: str
 

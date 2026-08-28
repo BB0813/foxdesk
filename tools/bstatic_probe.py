@@ -227,7 +227,7 @@ def main() -> int:
             "chromium_backend": args.backend,
             "user_agent": (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
+                "(KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36"
             ),
             "webgl_vendor": "Google Inc. (Intel)",
             "webgl_renderer": "ANGLE (Intel, Intel(R) UHD Graphics 630 Direct3D11 vs_5_0 ps_5_0)",

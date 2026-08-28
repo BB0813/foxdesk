@@ -236,6 +236,23 @@ class ProxyPoolStore:
             return item
         raise KeyError(proxy_id)
 
+    def mark_quality(self, proxy_id: str, record: dict[str, Any]) -> dict[str, Any]:
+        """Store exit-IP quality classification (D-B6) on a pool item."""
+        items = self._read()
+        for idx, item in enumerate(items):
+            if item.get("id") != proxy_id:
+                continue
+            item = dict(item)
+            item["quality"] = record.get("quality")
+            item["quality_org"] = record.get("org")
+            item["quality_source"] = record.get("source")
+            item["quality_checked_at"] = record.get("checked_at")
+            item["updated_at"] = now_iso()
+            items[idx] = item
+            self._write(items)
+            return item
+        raise KeyError(proxy_id)
+
     def mark_test_results(self, results: dict[str, dict[str, Any]]) -> int:
         """Batch-apply health-check results in a single read-modify-write.
 

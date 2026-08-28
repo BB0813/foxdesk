@@ -64,6 +64,7 @@ from backend.models import (  # noqa: F401  (re-exports)
     ProxyPoolImportRequest,
     ProxyAssignRequest,
     BulkProxyRequest,
+    ApplySuggestionRequest,
     NavigateRequest,
     EvaluateRequest,
     ScreenshotRequest,

@@ -84,6 +84,7 @@ hiddenimports = [
     'backend.fingerprint_presets',
     'backend.process_utils',
     'backend.proxy_pool',
+    'backend.proxy_quality',
     'backend.templates_data',
     'backend.setup_manager',
     'backend.update_manager',

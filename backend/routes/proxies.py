@@ -74,6 +74,34 @@ def test_proxy_pool_item(proxy_id: str) -> dict[str, Any]:
     return result
 
 
+@router.post("/api/proxies/{proxy_id}/quality-check")
+def quality_check_proxy(proxy_id: str) -> dict[str, Any]:
+    """D-B6: run a proxy test, then classify the exit IP (residential vs
+    datacenter) and store the quality record on the pool item."""
+    from backend.proxy_quality import classify_exit_ip
+
+    try:
+        item = proxy_pool.get(proxy_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="proxy not found") from None
+    result = _test_proxy_connection(item.get("server") or "", item.get("username") or "", item.get("password") or "")
+    try:
+        proxy_pool.mark_test_result(proxy_id, result)
+    except KeyError:
+        pass
+    quality = classify_exit_ip(str(result.get("exit_ip") or ""))
+    if result.get("ok"):
+        try:
+            proxy_pool.mark_quality(proxy_id, quality)
+        except KeyError:
+            pass
+    activity.log(
+        "proxy_quality_check",
+        f"{proxy_id} quality={quality.get('quality')} org={quality.get('org')[:60]}",
+    )
+    return {"ok": bool(result.get("ok")), "test": result, "quality": quality}
+
+
 @router.post("/api/proxies/assign")
 def assign_proxy_to_profiles(request: ProxyAssignRequest) -> dict[str, Any]:
     if request.proxy_id:

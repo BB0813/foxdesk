@@ -29,6 +29,7 @@
 | [ai-platform-runbook.md](./ai-platform-runbook.md) | AI 注册/订阅实验手册（可选对照） |
 | [phase-d-engineering-backlog.md](./phase-d-engineering-backlog.md) | D 工程 backlog（无商业机也可迭代） |
 | [d-b1-d-b2-notes.md](./d-b1-d-b2-notes.md) | D-B1/D-B2 桌面调研：CDP 痕迹 + iframe/Worker 一致性（探针已落地） |
+| [d-b3-b4-b5-b6-b7-notes.md](./d-b3-b4-b5-b6-b7-notes.md) | D-B3~B7 实现记录：权限一致性、TLS 探针、代理质量分级、跟版流水线 |
 
 ## 工具
 

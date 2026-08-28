@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Phase D backlog closeout (D-B3/B4/B5/B6/B7)
+- **D-B6 (P1)** proxy quality productization: `backend/proxy_quality.py` classifies exit IPs (residential/datacenter/mobile/unknown) via https free IP-info services; `POST /api/proxies/{id}/quality-check` stores quality on pool items; `environment_risks_for_profile` gains `datacenter_proxy` (medium) / `residential_proxy` (low) hints
+- **D-B5** one-click suggestions: risk entries carry `suggestion` field; `POST /api/profiles/{id}/apply-suggestion` applies whitelisted codes (`chromium_bundled_build` → `chromium_channel=chrome`, gated on local Chrome detection)
+- **D-B3** permission-surface consistency in the Chromium init script: aligns `permissions.query(notifications)` with a denied `Notification.permission` (classic headless mismatch) — never claims granted
+- **D-B4** TLS/HTTP2 research + `tools/tls_probe.py` (manual JA3/JA4/Akamai echo comparison; automation stacks don't alter TLS — version skew is the risk)
+- **D-B7** version-drift watch: `tools/chrome_drift_check.py` compares embedded UA majors vs Chrome stable via versionhistory API (threshold 2 majors), monthly `drift-check.yml` workflow; UA pools refreshed on first run — real stable was Chrome **153** vs embedded 131 (7 majors stale!), now Chrome 153/152, Firefox 154, Safari 19.2
+- New tests: `tests/test_db_extras.py` (11 cases)
+
 ## 1.4.2 — 2026-08-28 (backend modularization, D-B1/D-B2 research, performance & UX)
 
 ### Backend modularization (no behavior change)

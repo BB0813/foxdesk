@@ -337,7 +337,7 @@ def build_fingerprint_init_script(profile: dict[str, Any]) -> str | None:
     // UA-CH: some patched Chromiums strip userAgentData; re-install aggressively.
     try {{
       const ua = String(navigator.userAgent || '');
-      let major = '127';
+      let major = '153';
       const m = ua.match(/Chrome\\/(\\d+)/);
       if (m) major = m[1];
       const brands = [
@@ -451,6 +451,37 @@ def build_fingerprint_init_script(profile: dict[str, Any]) -> str | None:
         try {{ setTimeout(() => {{ try {{ patchMd(navigator.mediaDevices); }} catch (e) {{}} }}, 0); }} catch (e) {{}}
       }} catch (e) {{}}
     }}
+    // D-B3: permission-surface consistency. Real desktop Chrome reports
+    // Notification.permission='default' with permissions.query('notifications')
+    // state='prompt'. Headless Chromium leaks 'denied' + 'prompt' mismatch.
+    // Only aligns the inconsistency — never claims granted (no spoofing of
+    // user-granted permissions on daily-browsing profiles).
+    try {{
+      if ('Notification' in window && navigator.permissions && navigator.permissions.query) {{
+        const origQuery = navigator.permissions.query.bind(navigator.permissions);
+        navigator.permissions.query = function (desc) {{
+          const res = origQuery(desc);
+          if (res && res.then && desc && desc.name === 'notifications') {{
+            try {{
+              if (Notification.permission === 'denied') {{
+                return res.then((status) => {{
+                  try {{
+                    if (status && status.state === 'prompt') {{
+                      const aligned = Object.create(Object.getPrototypeOf(status) || Object.prototype);
+                      Object.defineProperty(aligned, 'state', {{ get: () => 'denied', configurable: true }});
+                      Object.defineProperty(aligned, 'onchange', {{ get: () => null, set: () => {{}}, configurable: true }});
+                      return aligned;
+                    }}
+                  }} catch (e) {{}}
+                  return status;
+                }});
+              }}
+            }} catch (e) {{}}
+          }}
+          return res;
+        }};
+      }}
+    }} catch (e) {{}}
     if (Array.isArray(o.fonts) && o.fonts.length) {{
       // Best-effort font presence probe surface for scripts that use document.fonts.check
       try {{
