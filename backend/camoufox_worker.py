@@ -373,10 +373,59 @@ def probe_fingerprint(page: Any) -> dict[str, Any]:
         webglVendor,
         webglRenderer,
         href: location.href || '',
+        // Cross-engine parity with the chromium probe (Firefox semantics).
+        engine: 'camoufox',
+        webdriver: nav.webdriver === undefined ? null : !!nav.webdriver,
+        vendor: nav.vendor || '',
+        maxTouchPoints: nav.maxTouchPoints || 0,
+        uaCh: null,
+        hasChrome: false,
       };
     }
     """
-    return page.evaluate(script)
+    base = page.evaluate(script)
+    # Optional media / fonts probes — same shape as the chromium worker so
+    # cross-engine reports can be diffed side by side.
+    try:
+        media = page.evaluate(
+            """async () => {
+              try {
+                if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+                  return { count: 0, kinds: [] };
+                }
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                return {
+                  count: devices.length,
+                  kinds: devices.map((d) => d.kind),
+                  labelsSample: devices.slice(0, 5).map((d) => d.label || ''),
+                };
+              } catch (e) {
+                return { error: String(e) };
+              }
+            }"""
+        )
+        base["mediaDevices"] = media
+    except Exception as exc:
+        base["mediaDevices"] = {"error": str(exc)}
+    try:
+        fonts_check = page.evaluate(
+            """() => {
+              const samples = ['Arial', 'Segoe UI', 'Times New Roman', 'Helvetica', 'Noto Sans'];
+              const out = {};
+              for (const name of samples) {
+                try {
+                  out[name] = !!(document.fonts && document.fonts.check(`16px "${name}"`));
+                } catch (e) {
+                  out[name] = null;
+                }
+              }
+              return out;
+            }"""
+        )
+        base["fontsCheck"] = fonts_check
+    except Exception as exc:
+        base["fontsCheck"] = {"error": str(exc)}
+    return base
 
 
 def handle_command(cmd: dict[str, Any], profile_path: Path) -> None:

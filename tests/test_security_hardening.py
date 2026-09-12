@@ -142,3 +142,77 @@ class TestChecksumEnforcement:
         from backend.app import update_manager
 
         assert update_manager.require_checksum is True
+
+
+class TestGeoAndBatchEndpoints:
+    def test_geo_endpoint_shape(self):
+        """Geo endpoint exists, auth-gated, and returns ok=False for a dead proxy."""
+        from fastapi.testclient import TestClient
+
+        from backend.app import app
+
+        with TestClient(app, base_url="http://127.0.0.1") as client:
+            h = {"X-FoxDesk-Token": API_TOKEN}
+            assert client.post("/api/proxy/geo", json={"server": "http://127.0.0.1:9"}).status_code == 401
+            r = client.post(
+                "/api/proxy/geo",
+                json={"server": "http://127.0.0.1:9", "username": "", "password": ""},
+                headers=h,
+            )
+            assert r.status_code == 200
+            body = r.json()
+            assert body["ok"] is False and body["error"]
+
+    def test_batch_update_endpoint(self):
+        from fastapi.testclient import TestClient
+
+        from backend.app import app
+
+        with TestClient(app, base_url="http://127.0.0.1") as client:
+            h = {"X-FoxDesk-Token": API_TOKEN}
+            # Create then batch-update.
+            p = client.post(
+                "/api/profiles",
+                json={"name": "geo-batch-test", "timezone": "Asia/Taipei"},
+                headers=h,
+            ).json()
+            r = client.post(
+                "/api/profiles/batch-update",
+                json={"profile_ids": [p["id"]], "timezone": "Europe/Berlin", "locale": "de-DE", "font_pack": "auto"},
+                headers=h,
+            )
+            assert r.status_code == 200
+            assert r.json()["updated"] >= 1
+            after = client.get("/api/profiles", headers=h).json()
+            mine = next(x for x in after if x["id"] == p["id"])
+            assert mine["timezone"] == "Europe/Berlin" and mine["locale"] == "de-DE" and mine["font_pack"] == "auto"
+            # Invalid font_pack rejected.
+            bad = client.post(
+                "/api/profiles/batch-update",
+                json={"profile_ids": [p["id"]], "font_pack": "nonsense"},
+                headers=h,
+            )
+            assert bad.status_code == 422
+            client.delete(f"/api/profiles/{p['id']}", headers=h)
+
+
+def test_timezone_geo_mismatch_risk(monkeypatch):
+    """Profile timezone differing from the proxy's recorded geo flags high risk."""
+    from backend.core import Profile
+    from backend.profile_logic import environment_risks_for_profile
+
+    class FakePool:
+        def get(self, proxy_id):
+            if proxy_id == "p1":
+                return {"id": "p1", "last_geo": {"ok": True, "timezone": "Europe/Berlin"}}
+            raise KeyError(proxy_id)
+
+    from backend import profile_logic
+
+    monkeypatch.setattr(profile_logic, "proxy_pool", FakePool())
+    profile = Profile(
+        id="x", name="t", created_at="2026-01-01T00:00:00+00:00", updated_at="2026-01-01T00:00:00+00:00",
+        engine="chromium", mode="browser", proxy_id="p1", timezone="Asia/Taipei",
+    )
+    codes = {r["code"]: r["level"] for r in environment_risks_for_profile(profile)}
+    assert codes.get("timezone_geo_mismatch") == "high"

@@ -270,6 +270,14 @@ def start_process(
         env.setdefault("FOXDESK_BROWSERS_PATH", str(browsers))
     kwargs["env"] = env
     process = subprocess.Popen(**kwargs)
+    # Windows: bound the worker + its browser children to a kill-on-close job
+    # so a crashed/force-killed manager cannot orphan the browser tree.
+    try:
+        from backend.process_utils import assign_job_object
+
+        assign_job_object(process)
+    except Exception:
+        pass
     item = ManagedProcess(
         id=item_id,
         kind=kind,

@@ -14,7 +14,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from backend.core import (
     PROFILES_DIR,
@@ -530,3 +530,53 @@ def fingerprint_check(profile_id: str) -> dict[str, Any]:
             "Camoufox is Firefox-based; many payment stacks score Chromium fingerprints differently."
         ),
     }
+
+
+class BatchUpdateRequest(BaseModel):
+    profile_ids: list[str] = Field(default_factory=list)
+    timezone: str | None = None
+    locale: str | None = None
+    font_pack: str | None = None
+
+    @field_validator("font_pack", mode="before")
+    @classmethod
+    def _norm_font_pack(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        raw = str(value).strip().lower()
+        if raw in {"", "none", "off", "manual", "custom"}:
+            return ""
+        if raw in {"auto", "os", "default_pack"}:
+            return "auto"
+        if raw in {"windows", "macos", "linux"}:
+            return raw
+        raise ValueError("font_pack must be empty, auto, windows, macos, or linux")
+
+
+@router.post("/api/profiles/batch-update")
+def batch_update_profiles(request: BatchUpdateRequest) -> dict[str, Any]:
+    """Apply timezone/locale/font_pack to the selected profiles (or all)."""
+    updates: dict[str, Any] = {}
+    for key in ("timezone", "locale", "font_pack"):
+        value = getattr(request, key)
+        if value is not None:
+            updates[key] = str(value).strip()
+    if not updates:
+        raise HTTPException(status_code=400, detail="nothing to update (timezone/locale/font_pack)")
+    profiles = store.all()
+    target_ids = set(request.profile_ids) if request.profile_ids else {p.id for p in profiles}
+    updated = 0
+    for idx, profile in enumerate(profiles):
+        if profile.id not in target_ids:
+            continue
+        dump = profile.model_dump()
+        dump.update(updates)
+        dump["updated_at"] = now_iso()
+        try:
+            profiles[idx] = Profile(**dump)
+        except Exception:
+            continue  # skip invalid combos without aborting the batch
+        updated += 1
+    store.save_all(profiles)
+    activity.log("batch_update", f"fields={sorted(updates)} updated={updated}")
+    return {"ok": True, "updated": updated, "fields": sorted(updates)}

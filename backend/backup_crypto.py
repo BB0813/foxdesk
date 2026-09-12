@@ -12,11 +12,21 @@ from typing import Any
 
 
 MAGIC = b"FOXDESK1"
+MAGIC_V2 = b"FOXDESK2"  # AES-256-GCM (std cryptography lib), zlib inside AAD-free ciphertext
 KDF_ITERATIONS = 200_000
 SALT_LEN = 16
-NONCE_LEN = 16
+NONCE_LEN = 16  # v1 HMAC-CTR
+GCM_NONCE_LEN = 12  # v2 AES-GCM standard
 MAC_LEN = 32
 KEY_LEN = 32
+
+try:  # v2 needs the cryptography package (bundled with FoxDesk); v1 stays stdlib-only.
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    _AESGCM_OK = True
+except Exception:  # pragma: no cover - falls back to v1 writes on odd installs
+    AESGCM = None
+    _AESGCM_OK = False
 
 
 def _derive_keys(password: str, salt: bytes) -> tuple[bytes, bytes]:
@@ -32,7 +42,7 @@ def _derive_keys(password: str, salt: bytes) -> tuple[bytes, bytes]:
 
 
 def _keystream(enc_key: bytes, nonce: bytes, length: int) -> bytes:
-    """HMAC-SHA256 counter mode keystream (stdlib-only AEAD building block)."""
+    """HMAC-SHA256 counter mode keystream (v1 stdlib-only AEAD building block)."""
     out = bytearray()
     counter = 0
     while len(out) < length:
@@ -43,21 +53,33 @@ def _keystream(enc_key: bytes, nonce: bytes, length: int) -> bytes:
 
 
 def encrypt_blob(password: str, plaintext: bytes) -> bytes:
-    """Password-based encrypt-then-MAC. Returns binary package."""
-    if not password or len(password) < 4:
-        raise ValueError("password must be at least 4 characters")
+    """Password-based authenticated encryption. v2 (AES-GCM) when available."""
+    if not password or len(password) < 8:
+        raise ValueError("password must be at least 8 characters")
+    compressed = zlib.compress(plaintext, level=9)
+    if _AESGCM_OK:
+        salt = secrets.token_bytes(SALT_LEN)
+        nonce = secrets.token_bytes(GCM_NONCE_LEN)
+        enc_key, _mac_key = _derive_keys(password, salt)
+        # AAD binds format + salt so ciphertext can't be replayed into a
+        # different container; AES-GCM provides the authentication tag.
+        aad = MAGIC_V2 + salt
+        ciphertext = AESGCM(enc_key).encrypt(nonce, compressed, aad)
+        # Binary layout v2: MAGIC2 | salt | nonce | u32 ct_len | ciphertext(+tag)
+        return MAGIC_V2 + salt + nonce + struct.pack(">I", len(ciphertext)) + ciphertext
+    # v1 fallback (identical to the historical format).
     salt = secrets.token_bytes(SALT_LEN)
     nonce = secrets.token_bytes(NONCE_LEN)
     enc_key, mac_key = _derive_keys(password, salt)
-    compressed = zlib.compress(plaintext, level=9)
     stream = _keystream(enc_key, nonce, len(compressed))
     ciphertext = bytes(a ^ b for a, b in zip(compressed, stream))
     mac = hmac.new(mac_key, salt + nonce + ciphertext, hashlib.sha256).digest()
-    # Binary layout: MAGIC | salt | nonce | u32 ct_len | ciphertext | mac
     return MAGIC + salt + nonce + struct.pack(">I", len(ciphertext)) + ciphertext + mac
 
 
 def decrypt_blob(password: str, package: bytes) -> bytes:
+    if package.startswith(MAGIC_V2):
+        return _decrypt_v2(password, package)
     if not package.startswith(MAGIC):
         raise ValueError("not a FoxDesk encrypted backup")
     offset = len(MAGIC)
@@ -80,6 +102,33 @@ def decrypt_blob(password: str, package: bytes) -> bytes:
         raise ValueError("wrong password or corrupted backup")
     stream = _keystream(enc_key, nonce, len(ciphertext))
     compressed = bytes(a ^ b for a, b in zip(ciphertext, stream))
+    try:
+        return zlib.decompress(compressed)
+    except zlib.error as exc:
+        raise ValueError("failed to decompress backup") from exc
+
+
+def _decrypt_v2(password: str, package: bytes) -> bytes:
+    if not _AESGCM_OK:
+        raise ValueError("AES-GCM backend unavailable for this backup; upgrade the cryptography package")
+    offset = len(MAGIC_V2)
+    salt = package[offset : offset + SALT_LEN]
+    offset += SALT_LEN
+    nonce = package[offset : offset + GCM_NONCE_LEN]
+    offset += GCM_NONCE_LEN
+    (ct_len,) = struct.unpack(">I", package[offset : offset + 4])
+    offset += 4
+    ciphertext = package[offset : offset + ct_len]
+    if len(salt) != SALT_LEN or len(nonce) != GCM_NONCE_LEN:
+        raise ValueError("corrupt backup package")
+    if len(ciphertext) != ct_len:
+        raise ValueError("truncated backup package")
+    enc_key, _mac_key = _derive_keys(password, salt)
+    aad = MAGIC_V2 + salt
+    try:
+        compressed = AESGCM(enc_key).decrypt(nonce, ciphertext, aad)
+    except Exception as exc:
+        raise ValueError("wrong password or corrupted backup") from exc
     try:
         return zlib.decompress(compressed)
     except zlib.error as exc:
@@ -120,7 +169,7 @@ def write_encrypted_backup(path: Path, password: str, files: dict[str, bytes], m
 def read_encrypted_backup(path: Path, password: str) -> tuple[dict[str, Any], dict[str, bytes]]:
     package = Path(path).read_bytes()
     # Support legacy zip backups (no MAGIC) by raising a typed error for callers.
-    if not package.startswith(MAGIC):
+    if not package.startswith(MAGIC) and not package.startswith(MAGIC_V2):
         raise ValueError("legacy_or_plain_zip")
     plain = decrypt_blob(password, package)
     return unpack_files(plain)

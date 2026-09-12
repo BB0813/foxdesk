@@ -185,6 +185,20 @@
                 <i data-lucide="play"></i>
                 <span data-i18n="batchStart">批量启动</span>
               </button>
+              <span style="width:1px;height:20px;background:var(--border)"></span>
+              <input id="batchTimezoneInput" data-i18n-placeholder="timezone" placeholder="时区" style="width:150px;min-height:28px;font-size:12px" />
+              <input id="batchLocaleInput" data-i18n-placeholder="locale" placeholder="语言区域" style="width:110px;min-height:28px;font-size:12px" />
+              <select id="batchFontPackSelect" style="min-height:28px;font-size:12px;width:110px">
+                <option value="" data-i18n-option="fontPackNone">无（手动列表）</option>
+                <option value="auto" data-i18n-option="fontPackAuto">自动（按 OS）</option>
+                <option value="windows">Windows</option>
+                <option value="macos">macOS</option>
+                <option value="linux">Linux</option>
+              </select>
+              <button class="button secondary" id="batchApplyEnvBtn" type="button" style="min-height:28px;font-size:12px">
+                <i data-lucide="wand-2"></i>
+                <span data-i18n="batchApplyEnv">套用环境</span>
+              </button>
             </div>
             <input id="importFile" type="file" accept="application/json,.json" hidden />
           </div>
@@ -267,6 +281,10 @@
                       <option value="chrome" data-i18n-option="channelChrome">Google Chrome</option>
                       <option value="msedge" data-i18n-option="channelMsedge">Microsoft Edge</option>
                     </select>
+                    <button class="button secondary" id="useChromeChannelBtn" type="button" style="display:none;margin-top:6px;min-height:26px;font-size:12px">
+                      <i data-lucide="chrome"></i>
+                      <span data-i18n="useChromeChannel">使用本机 Chrome</span>
+                    </button>
                   </label>
                   <label>
                     <span data-i18n="targetOs">目标系统</span>
@@ -331,6 +349,14 @@
                     <button class="button secondary" id="testProxyBtn" type="button" style="white-space:nowrap">
                       <i data-lucide="activity"></i>
                       <span data-i18n="testProxy">测试代理</span>
+                    </button>
+                    <button class="button secondary" id="proxyGeoBtn" type="button" style="white-space:nowrap">
+                      <i data-lucide="globe"></i>
+                      <span data-i18n="proxyGeo">检测出口归属</span>
+                    </button>
+                    <button class="button secondary" id="matchEnvBtn" type="button" style="white-space:nowrap;display:none">
+                      <i data-lucide="wand-2"></i>
+                      <span data-i18n="matchEnv">匹配环境</span>
                     </button>
                     <div id="proxyResult" style="flex:1"></div>
                   </div>
@@ -704,7 +730,7 @@
             <div class="form-grid" style="padding:12px 16px">
               <label>
                 <span data-i18n="backupPassword">备份密码</span>
-                <input id="backupPasswordInput" type="password" autocomplete="new-password" minlength="4" data-i18n-placeholder="pwdPlaceholder" placeholder="至少 4 位" />
+                <input id="backupPasswordInput" type="password" autocomplete="new-password" minlength="8" data-i18n-placeholder="pwdPlaceholder" placeholder="至少 8 位" />
               </label>
               <label class="span-2" style="display:flex;align-items:center;gap:8px">
                 <input id="backupIncludeProfiles" type="checkbox" />

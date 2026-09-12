@@ -25,6 +25,16 @@ const i18n = {
     backendPlaywright: "Playwright",
     chromiumChannel: "Chromium 通道",
     channelBundled: "捆绑 Chromium",
+    proxyGeo: "检测出口归属",
+    matchEnv: "匹配环境",
+    envMatched: "环境已应用",
+    geoResidential: "住宅 IP",
+    geoHosting: "机房/托管 IP（风控权重高）",
+    geoUnknownType: "IP 类型未知",
+    geoHostingWarn: "注意：这是机房 IP，部分平台风控较敏感",
+    batchApplyEnv: "套用环境",
+    useChromeChannel: "使用本机 Chrome",
+    chromeChannelSet: "已切换为 channel=chrome（本机 Chrome）",
     channelChrome: "Google Chrome",
     channelMsedge: "Microsoft Edge",
     consistencyPolicy: "一致性策略",
@@ -373,6 +383,16 @@ const i18n = {
     backendPlaywright: "Playwright",
     chromiumChannel: "Chromium channel",
     channelBundled: "Bundled Chromium",
+    proxyGeo: "Check exit geo",
+    matchEnv: "Match environment",
+    envMatched: "Environment applied",
+    geoResidential: "residential IP",
+    geoHosting: "hosting/datacenter IP (risk engines weight it)",
+    geoUnknownType: "IP type unknown",
+    geoHostingWarn: "Note: hosting IP — some platforms are stricter",
+    batchApplyEnv: "Apply env",
+    useChromeChannel: "Use local Chrome",
+    chromeChannelSet: "Switched to channel=chrome (local Chrome)",
     channelChrome: "Google Chrome",
     channelMsedge: "Microsoft Edge",
     consistencyPolicy: "Consistency policy",
@@ -1015,11 +1035,14 @@ function syncEngineUi() {
   const channelSel = form.elements.chromium_channel;
   if (channelSel) {
     const chromeOpt = Array.from(channelSel.options || []).find((o) => o.value === "chrome");
+    const detected = Boolean(state.system?.google_chrome?.installed);
     if (chromeOpt) {
-      const detected = Boolean(state.system?.google_chrome?.installed);
-      chromeOpt.textContent = detected
-        ? `${t("channelChrome")} ✓`
-        : t("channelChrome");
+      chromeOpt.textContent = detected ? `${t("channelChrome")} ✓` : t("channelChrome");
+    }
+    // One-click "use local Chrome" while engine=chromium, channel empty.
+    const useBtn = $("#useChromeChannelBtn");
+    if (useBtn) {
+      useBtn.style.display = engine === "chromium" && detected && !channelSel.value ? "" : "none";
     }
   }
 }
@@ -1789,6 +1812,12 @@ function renderProcesses(selector, processes, stopLabel = t("stop"), isSession =
   const openDetails = new Set(
     $$(".session-detail.open").map((el) => el.id).filter(Boolean)
   );
+  const logScroll = new Map(
+    $$("pre.log").map((el) => {
+      const pane = el.closest(".session-detail");
+      return pane?.id ? [pane.id, el.scrollTop] : null;
+    }).filter(Boolean)
+  );
   if (!processes.length) {
     list.innerHTML = `<div class="empty">${t("noProcesses")}</div>`;
     return;
@@ -1887,7 +1916,11 @@ function renderProcesses(selector, processes, stopLabel = t("stop"), isSession =
 
   openDetails.forEach((id) => {
     const el = document.getElementById(id);
-    if (el) el.classList.add("open");
+    if (el) {
+      el.classList.add("open");
+      const log = el.querySelector("pre.log");
+      if (log && logScroll.has(id)) log.scrollTop = logScroll.get(id);
+    }
   });
 
   $$(".stop-process").forEach((button) => {
@@ -2161,6 +2194,86 @@ async function testProxy() {
     resultEl.innerHTML = `<span class="proxy-result fail">${t("proxyFailed")} · ${escapeHtml(err.message)}</span>`;
   } finally {
     btn.disabled = false;
+  }
+}
+
+// --- Proxy geo + one-click environment matching ---
+let lastProxyGeo = null;
+
+async function fetchProxyGeo() {
+  const form = $("#profileForm");
+  const data = new FormData(form);
+  const server = data.get("proxy_server") || "";
+  const username = data.get("proxy_username") || "";
+  const password = data.get("proxy_password") || "";
+  if (!server) return toast(t("proxyFailed"));
+  const resultEl = $("#proxyResult");
+  const btn = $("#proxyGeoBtn");
+  btn.disabled = true;
+  resultEl.innerHTML = `<span class="proxy-result" style="background:var(--surface-strong);color:var(--muted)">${t("testing")}</span>`;
+  try {
+    const geo = await api("/api/proxy/geo", {
+      method: "POST",
+      body: JSON.stringify({ server, username, password }),
+    });
+    if (!geo.ok) {
+      lastProxyGeo = null;
+      $("#matchEnvBtn").style.display = "none";
+      resultEl.innerHTML = `<span class="proxy-result fail">${t("proxyFailed")} · ${escapeHtml(geo.error)}</span>`;
+      return;
+    }
+    lastProxyGeo = geo;
+    const ctype = geo.connection_type === "residential" ? t("geoResidential")
+      : (geo.connection_type === "datacenter" || geo.connection_type === "hosting") ? t("geoHosting")
+      : t("geoUnknownType");
+    resultEl.innerHTML = `<span class="proxy-result ok">${escapeHtml(geo.country || "")} (${escapeHtml(geo.country_code || "")}) · ${t("timezone")}: ${escapeHtml(geo.timezone || "?")} · ${ctype}${geo.org ? " · " + escapeHtml(geo.org) : ""}</span>`;
+    $("#matchEnvBtn").style.display = "";
+  } catch (err) {
+    lastProxyGeo = null;
+    resultEl.innerHTML = `<span class="proxy-result fail">${t("proxyFailed")} · ${escapeHtml(err.message)}</span>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function matchProxyEnv() {
+  if (!lastProxyGeo) return;
+  const form = $("#profileForm");
+  if (lastProxyGeo.timezone && form.elements.timezone) {
+    form.elements.timezone.value = lastProxyGeo.timezone;
+  }
+  if (lastProxyGeo.suggested_locale && form.elements.locale) {
+    form.elements.locale.value = lastProxyGeo.suggested_locale;
+    if (form.elements.fp_locale) form.elements.fp_locale.value = lastProxyGeo.suggested_locale;
+  }
+  markFormDirty();
+  toast(
+    `${t("envMatched")}: ${lastProxyGeo.timezone || "?"} / ${lastProxyGeo.suggested_locale || "?"}` +
+      (lastProxyGeo.connection_type !== "residential" ? ` · ${t("geoHostingWarn")}` : "")
+  );
+}
+
+// --- Batch apply timezone/locale/font pack ---
+async function batchApplyEnv() {
+  const ids = [...state.selectedProfiles];
+  if (!ids.length) return;
+  const tz = $("#batchTimezoneInput")?.value?.trim() || "";
+  const locale = $("#batchLocaleInput")?.value?.trim() || "";
+  const fontPack = $("#batchFontPackSelect")?.value;
+  const body = { profile_ids: ids };
+  if (tz) body.timezone = tz;
+  if (locale) body.locale = locale;
+  if (fontPack !== undefined && fontPack !== null && fontPack !== "") body.font_pack = fontPack;
+  try {
+    const result = await api("/api/profiles/batch-update", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    toast(`${t("envMatched")}: ${result.updated} / ${ids.length}`);
+    await loadProfiles();
+    updateBatchBar();
+  } catch (err) {
+    toast(err.message);
   }
 }
 
@@ -3134,7 +3247,9 @@ async function refreshAll() {
 }
 
 function renderIcons() {
-  if (window.lucide) {
+  // lucide.createIcons() always scans the whole document; skip entirely when
+  // there are no unrendered <i data-lucide> stubs (typical poll tick).
+  if (window.lucide && $("[data-lucide]")) {
     window.lucide.createIcons();
   }
   // Re-apply translations to any dynamically rendered content
@@ -3174,6 +3289,9 @@ function bindEvents() {
   $("#newProfileBtn").addEventListener("click", () => loadProfile(null));
   $("#themeToggle").addEventListener("click", toggleTheme);
   $("#testProxyBtn").addEventListener("click", testProxy);
+  $("#proxyGeoBtn")?.addEventListener("click", fetchProxyGeo);
+  $("#matchEnvBtn")?.addEventListener("click", matchProxyEnv);
+  $("#batchApplyEnvBtn")?.addEventListener("click", batchApplyEnv);
   $("#channelFetchBtn").addEventListener("click", channelFetch);
   $("#batchStartBtn").addEventListener("click", batchStart);
   $("#randomFpBtn")?.addEventListener("click", randomFingerprint);
@@ -3339,6 +3457,20 @@ function bindEvents() {
       form.elements.engine.addEventListener("change", () => {
         syncEngineUi();
         markFormDirty();
+      });
+    }
+    if (form.elements.chromium_channel) {
+      form.elements.chromium_channel.addEventListener("change", syncEngineUi);
+    }
+    const useChromeBtn = $("#useChromeChannelBtn");
+    if (useChromeBtn) {
+      useChromeBtn.addEventListener("click", () => {
+        if (form.elements.chromium_channel) {
+          form.elements.chromium_channel.value = "chrome";
+          syncEngineUi();
+          markFormDirty();
+          toast(t("chromeChannelSet"));
+        }
       });
     }
     syncEngineUi();

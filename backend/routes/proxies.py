@@ -141,6 +141,127 @@ def proxy_test(request: ProxyTestRequest) -> dict[str, Any]:
     return _test_proxy_connection(server, request.username, request.password)
 
 
+# --- Exit-IP geo + one-click environment matching (⑤⑥) ---
+_GEO_HOST = "ipwho.is"
+
+# Rough country-code → BCP-47 locale defaults for the env matcher.
+_COUNTRY_LOCALES = {
+    "US": "en-US", "GB": "en-GB", "CA": "en-CA", "AU": "en-AU", "NZ": "en-NZ",
+    "DE": "de-DE", "AT": "de-AT", "CH": "de-CH", "FR": "fr-FR", "BE": "fr-BE",
+    "ES": "es-ES", "MX": "es-MX", "AR": "es-AR", "IT": "it-IT", "NL": "nl-NL",
+    "PT": "pt-PT", "BR": "pt-BR", "PL": "pl-PL", "CZ": "cs-CZ", "SK": "sk-SK",
+    "HU": "hu-HU", "RO": "ro-RO", "BG": "bg-BG", "GR": "el-GR", "TR": "tr-TR",
+    "RU": "ru-RU", "UA": "ru-UA", "SE": "sv-SE", "NO": "nb-NO", "DK": "da-DK",
+    "FI": "fi-FI", "JP": "ja-JP", "KR": "ko-KR", "CN": "zh-CN", "TW": "zh-TW",
+    "HK": "zh-HK", "SG": "zh-SG", "IN": "en-IN", "ID": "id-ID", "TH": "th-TH",
+    "VN": "vi-VN", "PH": "en-PH", "MY": "ms-MY", "AE": "ar-AE", "SA": "ar-SA",
+    "IL": "he-IL", "ZA": "en-ZA", "IE": "en-IE",
+}
+
+
+def _fetch_geo_via_proxy(proxy_url: str, username: str = "", password: str = "", timeout: float = 10.0) -> dict[str, Any]:
+    """Fetch exit-IP geo (ipwho.is over https) through the proxy itself.
+
+    Same trust level as the proxy test — the query goes through the user's
+    own proxy, over TLS. Quality classification reuses proxy_quality.
+    """
+    import json
+    import time as _time
+    from urllib.parse import quote, urlparse
+    from urllib.request import ProxyHandler, Request, build_opener
+
+    from backend.proxy_quality import classify_org
+    from backend.proxy_test import _socks4_connect, _socks5_connect, _tls_wrap
+
+    parsed = urlparse(proxy_url)
+    scheme = parsed.scheme.lower()
+    host = parsed.hostname or ""
+    port = parsed.port or (1080 if "socks" in scheme else 8080)
+    user = username or (parsed.username or "")
+    pwd = password if password is not None else (parsed.password or "")
+
+    start = _time.monotonic()
+    data: dict[str, Any] = {}
+    try:
+        if scheme in ("http", "https"):
+            auth = f"{quote(user, safe='')}:{quote(pwd or '', safe='')}@" if user else ""
+            proxy_handler = ProxyHandler(
+                {"http": f"http://{auth}{host}:{port}", "https": f"http://{auth}{host}:{port}"}
+            )
+            opener = build_opener(proxy_handler)
+            resp = opener.open(Request(f"https://{_GEO_HOST}/"), timeout=timeout)
+            data = json.loads(resp.read())
+        elif scheme in ("socks5", "socks4"):
+            if scheme == "socks5":
+                sock = _socks5_connect(host, port, _GEO_HOST, 443, timeout=timeout, username=user, password=pwd or "")
+            else:
+                sock = _socks4_connect(host, port, _GEO_HOST, 443, timeout=timeout)
+            sock = _tls_wrap(sock, _GEO_HOST)
+            sock.sendall(f"GET / HTTP/1.1\r\nHost: {_GEO_HOST}\r\nConnection: close\r\n\r\n".encode())
+            response = b""
+            while True:
+                chunk = sock.recv(4096)
+                if not chunk:
+                    break
+                response += chunk
+            sock.close()
+            body = response.split(b"\r\n\r\n", 1)[-1] if b"\r\n\r\n" in response else b"{}"
+            data = json.loads(body)
+        else:
+            return {"ok": False, "error": f"Unsupported proxy scheme: {scheme}"}
+
+        latency = int((_time.monotonic() - start) * 1000)
+        if not data.get("success", True):
+            return {"ok": False, "error": str(data.get("message") or "geo lookup failed"), "latency_ms": latency}
+        tz_block = data.get("timezone") or {}
+        conn = data.get("connection") or {}
+        org = str(conn.get("org") or conn.get("isp") or "")
+        return {
+            "ok": True,
+            "exit_ip": data.get("ip"),
+            "country": data.get("country"),
+            "country_code": data.get("country_code"),
+            "timezone": tz_block.get("id"),
+            "utc_offset": tz_block.get("utc"),
+            "org": org,
+            "asn": conn.get("asn"),
+            "connection_type": classify_org(org),
+            "latency_ms": latency,
+        }
+    except Exception as exc:
+        return {"ok": False, "error": str(exc), "latency_ms": int((_time.monotonic() - start) * 1000)}
+
+
+def _persist_proxy_geo(proxy_url: str, geo: dict[str, Any]) -> None:
+    """Remember last geo on the matching pool item so environment_risks can
+    compare profile.timezone against the proxy's actual region."""
+    if not geo.get("ok"):
+        return
+    tail = proxy_url.split("//")[-1]
+    for item in proxy_pool.all():
+        server = item.get("server") or ""
+        if server and (server in proxy_url or tail.endswith(server.split("//")[-1])):
+            try:
+                proxy_pool.update(item["id"], {"last_geo": geo})
+            except Exception:
+                pass
+            return
+
+
+@router.post("/api/proxy/geo")
+def proxy_geo(request: ProxyTestRequest) -> dict[str, Any]:
+    server = request.server.strip()
+    if not server:
+        raise HTTPException(status_code=400, detail="proxy server is required")
+    if "://" not in server:
+        server = f"http://{server}"
+    geo = _fetch_geo_via_proxy(server, request.username, request.password)
+    if geo.get("ok") and geo.get("country_code"):
+        geo["suggested_locale"] = _COUNTRY_LOCALES.get(str(geo["country_code"]).upper(), "en-US")
+    _persist_proxy_geo(server, geo)
+    return geo
+
+
 @router.post("/api/proxies/health-check")
 def proxies_health_check_now() -> dict[str, Any]:
     result = proxy_health.run_once()

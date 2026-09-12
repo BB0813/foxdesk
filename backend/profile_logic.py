@@ -351,6 +351,29 @@ def environment_risks_for_profile(profile: Profile) -> list[dict[str, str]]:
             "medium",
             "Proxy without explicit timezone. Prefer a timezone that matches the proxy region (or enable geoip).",
         )
+    # Compare the profile timezone against the proxy exit region when a geo
+    # lookup has been recorded on the pool item (via /api/proxy/geo).
+    if has_proxy and (profile.timezone or "").strip():
+        proxy_geo_tz = None
+        if profile.proxy_id:
+            try:
+                proxy_geo_tz = (proxy_pool.get(profile.proxy_id).get("last_geo") or {}).get("timezone")
+            except Exception:
+                proxy_geo_tz = None
+        if not proxy_geo_tz and profile.proxy and profile.proxy.server:
+            server_tail = profile.proxy.server.split("//")[-1]
+            pool_scan = getattr(proxy_pool, "all", None)
+            for item in (pool_scan() or {}) if callable(pool_scan) else []:
+                item_server = item.get("server") or ""
+                if item_server and item_server.split("//")[-1] == server_tail:
+                    proxy_geo_tz = (item.get("last_geo") or {}).get("timezone")
+                    break
+        if proxy_geo_tz and proxy_geo_tz != (profile.timezone or "").strip():
+            add(
+                "timezone_geo_mismatch",
+                "high",
+                f"Profile timezone '{profile.timezone}' does not match the proxy exit region timezone '{proxy_geo_tz}'. Use 检测出口归属 → 匹配环境 to align.",
+            )
     if has_proxy and not (profile.locale or "").strip():
         add(
             "proxy_without_locale",

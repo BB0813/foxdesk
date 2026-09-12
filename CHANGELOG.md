@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased — proxy geo matching, batch env apply, backup v2 (rebased onto modular backend)
+
+### Features
+- **Proxy exit geo**: `POST /api/proxy/geo` resolves exit IP via ipwho.is (https, THROUGH the proxy; http/https/socks5/socks4) — country/timezone/org + quality via `proxy_quality.classify_org`. Pool items persist `last_geo`.
+- **One-click environment matching**: 检测出口归属 → 匹配环境 sets timezone/locale from exit region (45-locale country map).
+- **Timezone mismatch risk**: `timezone_geo_mismatch` (high) when profile timezone ≠ proxy exit region timezone.
+- **Batch env apply**: `POST /api/profiles/batch-update` (timezone/locale/font_pack) + batch-bar inputs.
+- **channel=chrome one-click** in profile form when Chrome detected.
+
+### Engineering
+- **Backup v2 (AES-256-GCM)** with format-bound AAD; v1 read-compat tested; password minimum 4→8.
+- **Job Object (Windows)**: workers bound to KILL_ON_JOB_CLOSE — crashed manager cannot orphan browsers.
+- **Camoufox probe parity**: engine/webdriver/vendor/maxTouchPoints/uaCh/hasChrome/mediaDevices/fontsCheck aligned with chromium probe.
+- Polling: log scroll preservation, no-op icon scans skipped (visibility guard already present).
+
+
 ## 1.4.3 — 2026-08-28 (Phase D backlog closeout: D-B3/B4/B5/B6/B7)
 
 ### Phase D backlog closeout (D-B3/B4/B5/B6/B7)
