@@ -146,7 +146,7 @@ python desktop.py</pre>
       <p>用户数据目录：<code>%APPDATA%\FoxDesk</code>（旧版 <code>CamoufoxManager</code> 会自动迁移）。</p>
 
       <h3>方式二：下载 exe 安装包</h3>
-      <p>从 <a href="https://github.com/BB0813/foxdesk/releases">GitHub Releases</a> 下载版本：当前稳定线 <strong>v1.4.0</strong>（双引擎 + Patchright）。安装或解压后运行 <code>FoxDesk.exe</code>。</p>
+      <p>从 <a href="https://github.com/BB0813/foxdesk/releases">GitHub Releases</a> 下载版本：当前稳定线 <strong>v1.4.4</strong>（双引擎 + Patchright）。安装或解压后运行 <code>FoxDesk.exe</code>。</p>
       <p>无需安装 Python 环境（安装包形态）。</p>
 
       <h3>方式三：Web 调试模式</h3>
@@ -388,8 +388,8 @@ FoxDesk
 
       <h3>CI/CD 自动构建</h3>
       <p>推送 <code>v*</code> tag 自动触发 GitHub Actions：</p>
-      <pre>git tag v1.4.1
-git push origin v1.4.1</pre>
+      <pre>git tag v1.4.4
+git push origin v1.4.4</pre>
       <p>自动构建 Windows exe / 安装包并创建 GitHub Release（含 SHA256SUMS）。</p>
 
       <!-- CONTRIBUTING -->
@@ -405,7 +405,18 @@ git push origin v1.4.1</pre>
       <!-- CHANGELOG -->
       <h2 id="changelog">更新日志</h2>
       <div class="card">
-        <h3>v1.4.1 <span class="badge p0">最新</span></h3>
+        <h3>v1.4.4 <span class="badge p0">最新</span></h3>
+        <p style="color:var(--muted)">2026-09-13</p>
+        <ul>
+          <li>代理出口归属检测（住宅/机房）+ 一键匹配时区/语言环境</li>
+          <li>时区与出口地不一致 → 高危风险提示；批量套用环境设置</li>
+          <li>备份格式 v2：AES-256-GCM（旧备份兼容），口令下限 8 位</li>
+          <li>Windows Job Object：管理器崩溃不再孤儿化浏览器进程树</li>
+          <li>channel=chrome 一键建议；camoufox 探测报告与 chromium 对齐</li>
+        </ul>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <h3>v1.4.1</h3>
         <p style="color:var(--muted)">2026-08-22</p>
         <ul>
           <li>全项目安全审计修复：恢复路径穿越、DNS rebinding 防护、更新强制 SHA256</li>

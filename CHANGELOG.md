@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — proxy geo matching, batch env apply, backup v2 (rebased onto modular backend)
+## 1.4.4 — 2026-09-13 — proxy geo matching, batch env apply, backup v2 (on modular backend)
 
 ### Features
 - **Proxy exit geo**: `POST /api/proxy/geo` resolves exit IP via ipwho.is (https, THROUGH the proxy; http/https/socks5/socks4) — country/timezone/org + quality via `proxy_quality.classify_org`. Pool items persist `last_geo`.
