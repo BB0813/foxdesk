@@ -10,3 +10,5 @@ Pillow>=10.0
 playwright>=1.49
 # Phase C patched automation backend (preferred when present)
 patchright>=1.49
+# Backup format v2 (AES-256-GCM); v1 fallback if absent
+cryptography>=42
