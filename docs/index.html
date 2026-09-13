@@ -146,7 +146,7 @@ python desktop.py</pre>
       <p>用户数据目录：<code>%APPDATA%\FoxDesk</code>（旧版 <code>CamoufoxManager</code> 会自动迁移）。</p>
 
       <h3>方式二：下载 exe 安装包</h3>
-      <p>从 <a href="https://github.com/BB0813/foxdesk/releases">GitHub Releases</a> 下载版本：当前稳定线 <strong>v1.4.4</strong>（双引擎 + Patchright）。安装或解压后运行 <code>FoxDesk.exe</code>。</p>
+      <p>从 <a href="https://github.com/BB0813/foxdesk/releases">GitHub Releases</a> 下载版本：当前稳定线 <strong>v1.4.5</strong>（双引擎 + Patchright）。安装或解压后运行 <code>FoxDesk.exe</code>。</p>
       <p>无需安装 Python 环境（安装包形态）。</p>
 
       <h3>方式三：Web 调试模式</h3>
@@ -388,8 +388,8 @@ FoxDesk
 
       <h3>CI/CD 自动构建</h3>
       <p>推送 <code>v*</code> tag 自动触发 GitHub Actions：</p>
-      <pre>git tag v1.4.4
-git push origin v1.4.4</pre>
+      <pre>git tag v1.4.5
+git push origin v1.4.5</pre>
       <p>自动构建 Windows exe / 安装包并创建 GitHub Release（含 SHA256SUMS）。</p>
 
       <!-- CONTRIBUTING -->
@@ -405,7 +405,18 @@ git push origin v1.4.4</pre>
       <!-- CHANGELOG -->
       <h2 id="changelog">更新日志</h2>
       <div class="card">
-        <h3>v1.4.4 <span class="badge p0">最新</span></h3>
+        <h3>v1.4.5 <span class="badge p0">最新</span></h3>
+        <p style="color:var(--muted)">2026-09-13</p>
+        <ul>
+          <li>修复：出口归属数据未持久化导致环境匹配失效（mark_geo）</li>
+          <li>修复：过期 geo 污染匹配、批量上限忽略设置、空闲停止改优雅</li>
+          <li>安全：profiles.json 代理口令加密落盘、会话日志剥离代理凭据</li>
+          <li>健壮：stdout 捕获线程护栏；batch 与单发路径完全对齐</li>
+          <li>前端：转义/safeUrl 补全、i18n 重复键清除、日志下载超时</li>
+        </ul>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <h3>v1.4.4</h3>
         <p style="color:var(--muted)">2026-09-13</p>
         <ul>
           <li>代理出口归属检测（住宅/机房）+ 一键匹配时区/语言环境</li>

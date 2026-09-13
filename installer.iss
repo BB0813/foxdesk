@@ -2,7 +2,7 @@
 ; Requires: Inno Setup 6+
 
 #define MyAppName "FoxDesk"
-#define MyAppVersion "1.4.4"
+#define MyAppVersion "1.4.5"
 #define MyAppPublisher "FoxDesk"
 #define MyAppURL "https://github.com/BB0813/foxdesk"
 #define MyAppExeName "FoxDesk.exe"
@@ -41,8 +41,8 @@ CreateUninstallRegKey=yes
 UninstallDisplayName={#MyAppName}
 InfoBeforeFile=
 ; Windows VERSIONINFO fields must be numeric (x.y.z[.w]); beta labels stay in AppVersion/AppVerName.
-VersionInfoVersion=1.4.4.0
-VersionInfoProductVersion=1.4.4.0
+VersionInfoVersion=1.4.5.0
+VersionInfoProductVersion=1.4.5.0
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

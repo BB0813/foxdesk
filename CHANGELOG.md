@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — post-v1.4.4 review fixes
+## 1.4.5 — 2026-09-13 — post-v1.4.4 review fixes
 
 Second full audit round over the modularized backend (routes/*, engine_tools,
 proxy_quality, local_auth). Priority-ordered fixes, all with regression tests:
