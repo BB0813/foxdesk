@@ -133,7 +133,14 @@ def launch_session(request: LaunchRequest) -> dict[str, Any]:
         if channel:
             item.logs.append(f"[chromium_channel] {channel}")
         if profile.proxy and profile.proxy.server:
-            item.logs.append(f"[proxy] {profile.proxy.server}")
+            # Strip any userinfo before logging — users often embed
+            # user:pass@ in the server string and logs are downloadable.
+            from urllib.parse import urlsplit, urlunsplit
+
+            parts = urlsplit(profile.proxy.server)
+            host_port = parts.netloc.rsplit("@", 1)[-1]
+            safe_server = urlunsplit((parts.scheme, host_port, parts.path, "", ""))
+            item.logs.append(f"[proxy] {safe_server}")
         tags = {str(t).lower() for t in (profile.tags or [])}
         if tags & {"ai", "chatgpt", "claude", "gemini"}:
             item.logs.append(
@@ -203,9 +210,13 @@ def get_session(process_id: str) -> dict[str, Any]:
     for runtime_file in RUNTIME_DIR.glob("*.json"):
         try:
             data = json.loads(runtime_file.read_text(encoding="utf-8"))
-            if data.get("name") == item.label or data.get("id") and data.get("name") == item.label:
+            # Prefer the runtime file that actually belongs to this session's
+            # profile — same-name profiles must not cross snapshots.
+            if item.profile_id and data.get("_profile_id") == item.profile_id:
                 view["profile_snapshot"] = data
-                break
+                return view
+            if data.get("name") == item.label and "profile_snapshot" not in view:
+                view["profile_snapshot"] = data
         except Exception:
             continue
     return view
@@ -225,16 +236,19 @@ def download_session_logs(process_id: str):
 
 
 # --- Batch Operations ---
-MAX_CONCURRENT_SESSIONS = 5
+def _batch_available_slots() -> int:
+    settings_view = settings_store.get()
+    max_sessions = int(settings_view.get("max_concurrent_sessions") or 8)
+    current_sessions = registry.list("session")
+    running = sum(1 for s in current_sessions if s["status"] == "running")
+    return max(0, max_sessions - running), max_sessions
 
 
 @router.post("/api/sessions/batch")
 def batch_launch(request: BatchLaunchRequest) -> dict[str, Any]:
-    current_sessions = registry.list("session")
-    running = sum(1 for s in current_sessions if s["status"] == "running")
-    available = MAX_CONCURRENT_SESSIONS - running
+    available, max_sessions = _batch_available_slots()
     if available <= 0:
-        raise HTTPException(status_code=409, detail=f"Max {MAX_CONCURRENT_SESSIONS} concurrent sessions reached")
+        raise HTTPException(status_code=409, detail=f"Max {max_sessions} concurrent sessions reached")
     results = []
     started = 0
     failed = 0
@@ -267,6 +281,7 @@ def batch_launch(request: BatchLaunchRequest) -> dict[str, Any]:
             continue
         if profile.persistent_context and profile.user_data_dir:
             Path(profile.user_data_dir).expanduser().mkdir(parents=True, exist_ok=True)
+        cleanup_runtime_files(max_age_hours=24.0)
         runtime_id = str(uuid.uuid4())
         runtime_path = RUNTIME_DIR / f"{runtime_id}.json"
         payload = profile.model_dump()
@@ -275,8 +290,11 @@ def batch_launch(request: BatchLaunchRequest) -> dict[str, Any]:
             payload["chromium_backend"] = resolved_backend
         payload["_runtime_id"] = runtime_id
         payload["_profile_id"] = profile.id
+        tags = {str(t).lower() for t in (profile.tags or [])}
+        if "probe" in tags or "fingerprint" in tags:
+            payload["_auto_fingerprint_probe"] = True
         _wrap_runtime_proxy_secret(payload)
-        runtime_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic_write_json(runtime_path, payload)
         runtime_path.with_suffix(".cmd.jsonl").write_text("", encoding="utf-8")
         runtime_path.with_suffix(".result.jsonl").write_text("", encoding="utf-8")
         command = worker_command(runtime_path, engine=engine)

@@ -242,7 +242,7 @@ def _persist_proxy_geo(proxy_url: str, geo: dict[str, Any]) -> None:
         server = item.get("server") or ""
         if server and (server in proxy_url or tail.endswith(server.split("//")[-1])):
             try:
-                proxy_pool.update(item["id"], {"last_geo": geo})
+                proxy_pool.mark_geo(item["id"], geo)
             except Exception:
                 pass
             return

@@ -314,7 +314,9 @@ def system_health() -> dict[str, Any]:
 
 @router.post("/api/system/cleanup-runtime")
 def system_cleanup_runtime(max_age_hours: float = 24.0) -> dict[str, Any]:
-    result = cleanup_runtime_files(max_age_hours=max_age_hours)
+    # Clamp: a negative value would push the cutoff into the future and wipe
+    # every non-active runtime file (incl. fresh cookie exports).
+    result = cleanup_runtime_files(max_age_hours=max(0.1, float(max_age_hours or 24.0)))
     activity.log("runtime_cleanup", f"removed={result['removed']} kept={result['kept']}")
     return {"ok": True, **result}
 

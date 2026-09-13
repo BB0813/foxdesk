@@ -25,6 +25,7 @@ Notes:
 ## Other runtime dependencies
 
 FastAPI/Starlette/Pydantic (MIT), uvicorn (BSD), requests (Apache-2.0),
+cryptography (Apache-2.0 / BSD-3, backup v2),
 Pillow (MIT-CMU), pystray (LGPL-3.0), and their transitive dependencies as
 published on PyPI.
 

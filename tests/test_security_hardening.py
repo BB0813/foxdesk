@@ -216,3 +216,43 @@ def test_timezone_geo_mismatch_risk(monkeypatch):
     )
     codes = {r["code"]: r["level"] for r in environment_risks_for_profile(profile)}
     assert codes.get("timezone_geo_mismatch") == "high"
+
+
+def test_proxy_pool_mark_geo_persists(tmp_path):
+    """mark_geo must persist last_geo — update() silently drops unknown keys."""
+    from backend.proxy_pool import ProxyPoolStore
+
+    store = ProxyPoolStore(tmp_path / "proxies.json")
+    item = store.create({"name": "geo", "server": "http://1.2.3.4:8080"})
+    store.mark_geo(item["id"], {"ok": True, "timezone": "Europe/Berlin", "country_code": "DE"})
+    after = store.get(item["id"])
+    assert after["last_geo"]["timezone"] == "Europe/Berlin"
+    assert after["last_geo_at"]
+
+
+def test_profile_password_sealed_at_rest(tmp_path):
+    from backend.core import ProfileStore
+    from backend.models import Profile, ProxyConfig
+    from backend.storage_util import is_protected_secret
+
+    store = ProfileStore(tmp_path / "profiles.json")
+    store.save_all([
+        Profile(
+            id="p1", name="t", created_at="2026-01-01T00:00:00+00:00", updated_at="2026-01-01T00:00:00+00:00",
+            proxy=ProxyConfig(server="http://1.2.3.4:8080", username="u", password="plain-pw-123"),
+        )
+    ])
+    raw = (tmp_path / "profiles.json").read_text(encoding="utf-8")
+    assert "plain-pw-123" not in raw and "enc:" in raw
+    assert store.all()[0].proxy.password == "plain-pw-123"
+
+
+def test_batch_concurrency_uses_settings(monkeypatch):
+    """Batch gate must follow max_concurrent_sessions, not a hardcoded 5."""
+    import backend.routes.sessions as sess
+
+    captured = {}
+    monkeypatch.setattr(sess.settings_store, "get", lambda: {"max_concurrent_sessions": 12})
+    monkeypatch.setattr(sess.registry, "list", lambda kind: [])
+    available, max_sessions = sess._batch_available_slots()
+    assert max_sessions == 12 and available == 12

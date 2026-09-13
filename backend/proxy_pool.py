@@ -184,6 +184,21 @@ class ProxyPoolStore:
             return item
         raise KeyError(proxy_id)
 
+    def mark_geo(self, proxy_id: str, geo: dict[str, Any]) -> dict[str, Any]:
+        """Record the last exit-IP geo lookup (used by env-matching risks)."""
+        items = self._read()
+        for idx, item in enumerate(items):
+            if item.get("id") != proxy_id:
+                continue
+            item = dict(item)
+            item["last_geo"] = geo if geo.get("ok") else None
+            item["last_geo_at"] = now_iso()
+            item["updated_at"] = now_iso()
+            items[idx] = item
+            self._write(items)
+            return item
+        raise KeyError(proxy_id)
+
     def delete(self, proxy_id: str) -> None:
         items = self._read()
         remaining = [item for item in items if item.get("id") != proxy_id]

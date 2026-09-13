@@ -128,6 +128,35 @@ def now_iso() -> str:
 PROFILE_SCHEMA_VERSION = 2
 
 
+def _seal_profile_password(profile_dump: dict[str, Any]) -> dict[str, Any]:
+    """DPAPI-seal the embedded proxy password before profiles.json hits disk.
+
+    The runtime JSON and proxy pool already seal theirs; this closes the last
+    plaintext-at-rest copy. Sealed values unseal transparently on read.
+    """
+    proxy = profile_dump.get("proxy")
+    if isinstance(proxy, dict) and proxy.get("password"):
+        try:
+            from backend.storage_util import protect_secret
+
+            proxy["password"] = protect_secret(str(proxy["password"]))
+        except Exception:
+            pass
+    return profile_dump
+
+
+def _unseal_profile_password(profile_dump: dict[str, Any]) -> dict[str, Any]:
+    proxy = profile_dump.get("proxy")
+    if isinstance(proxy, dict) and proxy.get("password"):
+        try:
+            from backend.storage_util import unprotect_secret
+
+            proxy["password"] = unprotect_secret(str(proxy["password"]))
+        except Exception:
+            pass
+    return profile_dump
+
+
 class ProfileStore:
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -176,7 +205,10 @@ class ProfileStore:
 
     def all(self) -> list[Profile]:
         with self.lock:
-            return [Profile(**item) for item in self._read_raw()]
+            profiles = []
+            for item in self._read_raw():
+                profiles.append(Profile(**_unseal_profile_password(item)))
+            return profiles
 
     def save_all(self, profiles: list[Profile]) -> None:
         from backend.storage_util import atomic_write_json
@@ -184,7 +216,7 @@ class ProfileStore:
         with self.lock:
             payload = {
                 "schema_version": PROFILE_SCHEMA_VERSION,
-                "profiles": [profile.model_dump() for profile in profiles],
+                "profiles": [_seal_profile_password(p.model_dump()) for p in profiles],
             }
             atomic_write_json(self.path, payload)
 
@@ -380,13 +412,18 @@ class ProcessRegistry:
                     idle_seconds > 0
                     and item.kind == "session"
                     and item.process.poll() is None
+                    and (item.mode or "browser") != "server"
                     and (time.time() - item.last_activity_at) > idle_seconds
                 ):
                     item.logs.append(
                         f"[IDLE] Session idle for >{idle_minutes} min, auto-stopping..."
                     )
                     try:
-                        stop_popen(item.process, grace=5)
+                        # Graceful path: ask the worker to close its browser
+                        # context first (registry.stop sends the stop command);
+                        # server-mode sessions are exempt above because their
+                        # stdout stays silent while ws clients are active.
+                        self.stop(item.id)
                         item.logs.append("[IDLE] Session stopped")
                     except Exception as exc:
                         item.logs.append(f"[IDLE] stop failed: {exc}")
@@ -401,58 +438,72 @@ class ProcessRegistry:
 
         assert item.process.stdout is not None
         for line in item.process.stdout:
-            line = line.rstrip()
-            if len(line) > self._MAX_LOG_LINE:
-                line = line[: self._MAX_LOG_LINE] + f"…(+{len(line) - self._MAX_LOG_LINE} bytes)"
-            with self.lock:
-                item.logs.append(line)
-                if len(item.logs) > 1000:
-                    item.logs = item.logs[-1000:]
-                event = parse_worker_event(line)
-                if not event:
-                    # Also scrape bare ws endpoints from non-JSON lines.
-                    if "ws://" in line or "wss://" in line:
-                        import re
+            try:
+                line = line.rstrip()
+                if len(line) > self._MAX_LOG_LINE:
+                    line = line[: self._MAX_LOG_LINE] + f"…(+{len(line) - self._MAX_LOG_LINE} bytes)"
+                with self.lock:
+                    item.logs.append(line)
+                    if len(item.logs) > 1000:
+                        item.logs = item.logs[-1000:]
+                    event = parse_worker_event(line)
+                    if not event:
+                        # Also scrape bare ws endpoints from non-JSON lines.
+                        if "ws://" in line or "wss://" in line:
+                            import re
 
-                        m = re.search(r"(wss?://[^\s\"'<>]+)", line, re.I)
-                        if m:
-                            item.ws_endpoint = m.group(1).rstrip(").,]}\"';")
-                            item.touch()
-                    continue
-                item.last_event = str(event.get("event") or item.last_event)
-                item.touch()
-                if event.get("event") == "ready":
-                    item.ready = True
-                    if event.get("ws_endpoint"):
-                        item.ws_endpoint = str(event.get("ws_endpoint"))
-                    if event.get("mode"):
-                        item.mode = str(event.get("mode"))
-                if event.get("event") == "error":
-                    raw_msg = str(event.get("message") or "worker error")
-                    be = event.get("backend") or ""
-                    if be:
-                        # Chromium workers tag errors with their backend; only
-                        # those get chromium-specific install hints.
-                        item.error_message = humanize_chromium_launch_error(raw_msg, str(be))
-                    else:
-                        item.error_message = raw_msg
-                    # Keep a short hint line in logs for the UI log pane.
-                    try:
-                        item.logs.append(f"[error-hint] {item.error_message[:500]}")
-                    except Exception:
-                        pass
-                if event.get("event") in {"endpoint", "ready"} and event.get("ws_endpoint"):
+                            m = re.search(r"(wss?://[^\s\"'<>]+)", line, re.I)
+                            if m:
+                                item.ws_endpoint = m.group(1).rstrip(").,]}\"';")
+                                item.touch()
+                        continue
+                    self._handle_worker_event(item, event)
+            except Exception as exc:
+                # The capture thread must never die: once it does, the worker's
+                # stdout PIPE fills up and the whole session wedges silently.
+                try:
+                    sys.stderr.write(f"[capture] error: {exc}\n")
+                except Exception:
+                    pass
+
+    def _handle_worker_event(self, item: ManagedProcess, event: dict[str, Any]) -> None:
+        from backend.engine_meta import humanize_chromium_launch_error
+
+        with self.lock:
+            item.last_event = str(event.get("event") or item.last_event)
+            item.touch()
+            if event.get("event") == "ready":
+                item.ready = True
+                if event.get("ws_endpoint"):
                     item.ws_endpoint = str(event.get("ws_endpoint"))
-                if event.get("event") == "fingerprint_report" and isinstance(event.get("report"), dict):
+                if event.get("mode"):
+                    item.mode = str(event.get("mode"))
+            if event.get("event") == "error":
+                raw_msg = str(event.get("message") or "worker error")
+                be = event.get("backend") or ""
+                if be:
+                    # Chromium workers tag errors with their backend; only
+                    # those get chromium-specific install hints.
+                    item.error_message = humanize_chromium_launch_error(raw_msg, str(be))
+                else:
+                    item.error_message = raw_msg
+                # Keep a short hint line in logs for the UI log pane.
+                try:
+                    item.logs.append(f"[error-hint] {item.error_message[:500]}")
+                except Exception:
+                    pass
+            if event.get("event") in {"endpoint", "ready"} and event.get("ws_endpoint"):
+                item.ws_endpoint = str(event.get("ws_endpoint"))
+            if event.get("event") == "fingerprint_report" and isinstance(event.get("report"), dict):
+                item.fingerprint_report = event.get("report")
+            if event.get("event") == "navigate":
+                item.touch()
+            if event.get("event") == "command_result":
+                item.touch()
+                if event.get("cmd") in {"fingerprint", "fingerprint_probe", "probe"} and isinstance(
+                    event.get("report"), dict
+                ):
                     item.fingerprint_report = event.get("report")
-                if event.get("event") == "navigate":
-                    item.touch()
-                if event.get("event") == "command_result":
-                    item.touch()
-                    if event.get("cmd") in {"fingerprint", "fingerprint_probe", "probe"} and isinstance(
-                        event.get("report"), dict
-                    ):
-                        item.fingerprint_report = event.get("report")
 
     def list(self, kind: str | None = None) -> list[dict[str, Any]]:
         with self.lock:

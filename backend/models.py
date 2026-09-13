@@ -259,12 +259,12 @@ class ScreenshotRequest(BaseModel):
 
 
 class BackupRequest(BaseModel):
-    password: str = Field(min_length=4, max_length=128)
+    password: str = Field(min_length=8, max_length=128)
     include_profiles_dirs: bool = False
 
 
 class BackupRestoreRequest(BaseModel):
-    password: str = Field(min_length=4, max_length=128)
+    password: str = Field(min_length=8, max_length=128)
     path: str = Field(min_length=1, max_length=1024)
     # When true, write restored files over current data_dir (after pre-restore snapshot).
     overwrite: bool = True

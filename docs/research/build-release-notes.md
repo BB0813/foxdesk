@@ -1,4 +1,4 @@
-# 1.4.0-dev 打包与发布说明（阶段 A）
+# 打包与发布说明（1.4.0-dev → 1.4.4）
 
 **目标**：在 B（安装/错误体验）完成后，做可重复的打包与安装验证。  
 **不保证**：注册/订阅/对齐 Multilogin。
@@ -66,6 +66,14 @@ build.bat
 ---
 
 ## 5. 本机执行记录
+
+### v1.4.2 – v1.4.4（远端协作线发布记录补录）
+
+| 版本 | 记录 |
+|---|---|
+| v1.4.2 | Phase D backlog closeout（D-B1–B7 调研/门禁入 CI）；CI 版本同步脚本修复（backend/core.py） |
+| v1.4.3 | 后端模块化（routes/* + wiring + core），proxy_health 并行化，lazy polling；UA-CH GREASE/platformVersion 对齐 Chrome 151（D1 结论）；GoLogin 4.6.0.6 三方 B-static 对照（无 HARD_FAIL 缺口，D3 不触发） |
+| v1.4.4 | 代理出口 geo + 环境一键匹配 + 批量套用；备份 v2（AES-256-GCM）+ 口令≥8；Job Object；CI 修复：requirements 显式加 cryptography |
 
 ### 2026-08-22 — v1.4.1 发布（CI）
 

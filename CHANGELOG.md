@@ -1,5 +1,43 @@
 # Changelog
 
+## Unreleased — post-v1.4.4 review fixes
+
+Second full audit round over the modularized backend (routes/*, engine_tools,
+proxy_quality, local_auth). Priority-ordered fixes, all with regression tests:
+
+- **last_geo persistence (functional bug)**: `ProxyPoolStore.update()` silently
+  dropped unknown keys, so `/api/proxy/geo` never recorded exit-region data and
+  the timezone-mismatch risk never fired. New `mark_geo()` method; env matching
+  now actually works end to end.
+- **Stale geo in the UI**: matched geo was kept after switching profiles or
+  editing proxy fields — "Match environment" could write the previous proxy's
+  timezone/locale into the current profile. Invalidated on field input, pool
+  selection and profile load.
+- **Batch concurrency gate** followed a hardcoded 5 instead of
+  `max_concurrent_sessions`; batch launch also lacked the single-launch
+  treatments (atomic runtime write, auto fingerprint-probe tag, runtime
+  cleanup) — aligned.
+- **Idle auto-stop now graceful**: monitor uses registry.stop (worker stop
+  command) instead of hard kill, protecting persistent profiles; server-mode
+  sessions are exempt (their stdout is silent while ws clients are active).
+- **Capture thread hardened**: a throw inside the stdout loop would silently
+  kill it and wedge the worker on a full PIPE; loop body is now guarded.
+- **profiles.json proxy password now DPAPI-sealed at rest** (runtime JSON and
+  pool were already sealed); backup crypto min password length unified at 8.
+- **Proxy userinfo stripped from session logs** (users embedding user:pass@
+  leaked it into downloadable logs).
+- Frontend: remaining unescaped interpolations escaped; release_url routed
+  through safeUrl; batch env no-ops guarded + editor refreshed after batch;
+  ghost profile ids pruned from batch bar; log download gains timeout + 401
+  reload; i18n duplicate keys removed (zh/en dicts now literal-dup-free);
+  icon-scan skip actually effective (`i[data-lucide]`).
+- Hygiene: ThirdPartyNotices + cryptography; build-release-notes 1.4.2–1.4.4
+  records; README features; dead CI regex removed; robot-review leftover
+  untracked; stale feature branch deleted.
+
+Tests: 148 passed, 1 skipped.
+
+## 1.4.4 — 2026-09-13 — proxy geo matching, batch env apply, backup v2 (on modular backend)
 ## 1.4.4 — 2026-09-13 — proxy geo matching, batch env apply, backup v2 (on modular backend)
 
 ### Features

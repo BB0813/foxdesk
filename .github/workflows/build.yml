@@ -66,7 +66,6 @@ jobs:
             if (Test-Path $file) {
               $content = Get-Content $file -Raw
               $content = $content -replace 'APP_VERSION\s*=\s*"[^"]+"', "APP_VERSION = `"$version`""
-              $content = $content -replace '1\.1\.0-beta\.\d+', $version
               $content = $content -replace '(?m)\*\*当前版本：`[^`]+`\*\*', "**当前版本：``$version``**"
               Set-Content -Path $file -Value $content -NoNewline
             }

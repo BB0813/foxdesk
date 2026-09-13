@@ -325,10 +325,6 @@ const i18n = {
     allChecksPassed: "检查通过",
     issues: "项问题",
     openInBrowser: "在浏览器打开",
-    navigatorPlatform: "平台",
-    navigatorVendor: "厂商",
-    screenWidth: "宽",
-    screenHeight: "高",
     addonsPlaceholder: "逗号或换行分隔",
     tokenPlaceholder: "ghp_… 或留空",
     pwdPlaceholder: "至少 4 位",
@@ -683,10 +679,6 @@ const i18n = {
     allChecksPassed: "All checks passed",
     issues: "issue(s)",
     openInBrowser: "Open in browser",
-    navigatorPlatform: "Platform",
-    navigatorVendor: "Vendor",
-    screenWidth: "W",
-    screenHeight: "H",
     addonsPlaceholder: "Comma or newline separated",
     tokenPlaceholder: "ghp_… or leave empty",
     pwdPlaceholder: "At least 4 characters",
@@ -1129,6 +1121,7 @@ function loadProfile(profile, fillForm = true) {
     // Clear proxy test result
     const proxyResult = $("#proxyResult");
     if (proxyResult) proxyResult.innerHTML = "";
+    invalidateProxyGeo();
     captureFormSnapshot();
   }
 
@@ -1490,7 +1483,7 @@ function renderInstallFlow() {
       const done = Boolean(step.done);
       const current = !done && state.system.install_flow.slice(0, index).every((item) => item.done);
       return `
-        <button class="install-step ${done ? "done" : ""} ${current ? "current" : ""}" data-flow-task="${step.task}" type="button">
+        <button class="install-step ${done ? "done" : ""} ${current ? "current" : ""}" data-flow-task="${escapeAttr(step.task)}" type="button">
           <span class="step-index">${done ? "✓" : index + 1}</span>
           <span>
             <strong>${escapeHtml(labels[step.task] || step.label)}</strong>
@@ -1945,10 +1938,18 @@ function renderProcesses(selector, processes, stopLabel = t("stop"), isSession =
         const headers = {};
         const token = apiToken();
         if (token) headers["X-FoxDesk-Token"] = token;
-        const response = await fetch(`/api/sessions/${button.dataset.logId}/logs/download`, {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+        const response = await fetch(`/api/sessions/${escapeAttr(button.dataset.logId)}/logs/download`, {
           method: "GET",
           headers,
-        });
+          signal: controller.signal,
+        }).finally(() => clearTimeout(timeoutId));
+        if (response.status === 401) {
+          toast(t("sessionExpired"));
+          setTimeout(() => window.location.reload(), 900);
+          throw new Error(t("sessionExpired"));
+        }
         if (!response.ok) {
           let detail = response.statusText;
           try {
@@ -2186,7 +2187,7 @@ async function testProxy() {
       body: JSON.stringify({ server, username, password }),
     });
     if (result.ok) {
-      resultEl.innerHTML = `<span class="proxy-result ok">${t("proxyOk")} · ${t("exitIp")}: ${escapeHtml(result.exit_ip)} · ${t("latency")}: ${result.latency_ms}ms</span>`;
+      resultEl.innerHTML = `<span class="proxy-result ok">${t("proxyOk")} · ${t("exitIp")}: ${escapeHtml(result.exit_ip)} · ${t("latency")}: ${escapeHtml(result.latency_ms)}ms</span>`;
     } else {
       resultEl.innerHTML = `<span class="proxy-result fail">${t("proxyFailed")} · ${escapeHtml(result.error)}</span>`;
     }
@@ -2199,6 +2200,12 @@ async function testProxy() {
 
 // --- Proxy geo + one-click environment matching ---
 let lastProxyGeo = null;
+
+function invalidateProxyGeo() {
+  lastProxyGeo = null;
+  const btn = $("#matchEnvBtn");
+  if (btn) btn.style.display = "none";
+}
 
 async function fetchProxyGeo() {
   const form = $("#profileForm");
@@ -2785,11 +2792,11 @@ function applyUpdateInfo(info) {
     !["up_to_date", "checking"].includes(info.status);
 
   if (text && info.latest) text.textContent = `${info.current || ""} → ${info.latest}`;
-  if (link) link.href = releaseUrl;
+  if (link) link.href = safeUrl(releaseUrl);
   if (banner) banner.classList.toggle("hidden", !showBanner);
 
   const openBtn = $("#updateOpenReleaseBtn");
-  if (openBtn) openBtn.href = releaseUrl;
+  if (openBtn) openBtn.href = safeUrl(releaseUrl);
 
   $("#updateCurrentVer") && ($("#updateCurrentVer").textContent = info.current || "—");
   $("#updateLatestVer") && ($("#updateLatestVer").textContent = info.latest || "—");
@@ -2915,7 +2922,7 @@ async function startOneClickUpdate() {
       return;
     }
     if (!info.can_one_click && info.release_url) {
-      window.open(info.release_url, "_blank", "noopener,noreferrer");
+      window.open(safeUrl(info.release_url), "_blank", "noopener,noreferrer");
       toast(t("openRelease"));
       return;
     }
@@ -2965,6 +2972,7 @@ function onProxyPoolSelectChange() {
     form.elements.proxy_server.value = proxy.server || "";
     form.elements.proxy_username.value = proxy.username || "";
     form.elements.proxy_password.value = proxy.password || "";
+    invalidateProxyGeo();
   }
   markFormDirty();
 }
@@ -3168,8 +3176,8 @@ async function checkFingerprint() {
     el.innerHTML = `
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
         <div class="fp-score">
-          <div class="fp-score-bar"><div class="fp-score-fill" style="width:${result.score}%;background:${scoreColor}"></div></div>
-          <span style="color:${scoreColor}">${result.score}/100</span>
+          <div class="fp-score-bar"><div class="fp-score-fill" style="width:${escapeHtml(result.score)}%;background:${scoreColor}"></div></div>
+          <span style="color:${scoreColor}">${escapeHtml(result.score)}/100</span>
         </div>
         <span style="font-size:12px;color:var(--muted)">${issues.length === 0 ? "✓ " + t("allChecksPassed") : `${issues.length} ${t("issues")}`}</span>
         <a href="${safeUrl(result.check_url)}" target="_blank" rel="noopener noreferrer" style="margin-left:auto;font-size:12px">${t("openInBrowser")} →</a>
@@ -3249,7 +3257,9 @@ async function refreshAll() {
 function renderIcons() {
   // lucide.createIcons() always scans the whole document; skip entirely when
   // there are no unrendered <i data-lucide> stubs (typical poll tick).
-  if (window.lucide && $("[data-lucide]")) {
+  // Lucide merges data-lucide onto the rendered <svg>, so match the
+  // unrendered <i> stubs only — otherwise this rescans the doc every tick.
+  if (window.lucide && $("i[data-lucide]")) {
     window.lucide.createIcons();
   }
   // Re-apply translations to any dynamically rendered content
@@ -3474,6 +3484,10 @@ function bindEvents() {
       });
     }
     syncEngineUi();
+      ["proxy_server", "proxy_username", "proxy_password"].forEach((fieldName) => {
+      const field = form.elements[fieldName];
+      if (field) field.addEventListener("input", invalidateProxyGeo);
+    });
     if (form.elements.locale && form.elements.fp_locale) {
       form.elements.locale.addEventListener("input", () => {
         form.elements.fp_locale.value = form.elements.locale.value;

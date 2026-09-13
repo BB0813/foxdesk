@@ -34,3 +34,4 @@ artifacts/
 .marking
 # Regenerable research/probe artifacts
 docs/research/_*.json
+.benchmarks/
