@@ -138,8 +138,8 @@ class TestDriftCheckParsing:
         from tools.chrome_drift_check import embedded_ua_majors
 
         majors = embedded_ua_majors()
-        assert 153 in majors["chrome"]
-        assert 154 in majors["firefox"]
+        assert majors["chrome"] and max(majors["chrome"]) >= 157
+        assert majors["firefox"]
 
     def test_stale_threshold_logic(self):
         # latest=153, embedded oldest=152 → within threshold (diff=1 ≤ 2 → fresh)

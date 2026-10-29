@@ -337,7 +337,7 @@ def build_fingerprint_init_script(profile: dict[str, Any]) -> str | None:
     // UA-CH: some patched Chromiums strip userAgentData; re-install aggressively.
     try {{
       const ua = String(navigator.userAgent || '');
-      let major = '153';
+      let major = '157';
       const m = ua.match(/Chrome\\/(\\d+)/);
       if (m) major = m[1];
       // D1 baseline (real Chrome 151, 2026-08-28): brands are
