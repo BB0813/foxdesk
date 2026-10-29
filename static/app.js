@@ -25,6 +25,9 @@ const i18n = {
     backendPlaywright: "Playwright",
     chromiumChannel: "Chromium 通道",
     channelBundled: "捆绑 Chromium",
+    probeCompare: "探测对比（跨引擎）",
+    probeComparePick: "选择要对比的会话报告…",
+    probeField: "字段",
     proxyGeo: "检测出口归属",
     matchEnv: "匹配环境",
     envMatched: "环境已应用",
@@ -379,6 +382,9 @@ const i18n = {
     backendPlaywright: "Playwright",
     chromiumChannel: "Chromium channel",
     channelBundled: "Bundled Chromium",
+    probeCompare: "Probe compare (cross-engine)",
+    probeComparePick: "Pick a session report to compare…",
+    probeField: "Field",
     proxyGeo: "Check exit geo",
     matchEnv: "Match environment",
     envMatched: "Environment applied",
@@ -713,6 +719,7 @@ const state = {
   lang: localStorage.getItem("cm-lang") || "zh",
   theme: localStorage.getItem("cm-theme") || "light",
   selectedSessions: new Set(),
+  probeReports: [],
   profiles: [],
   selectedId: null,
   system: null,
@@ -1799,6 +1806,73 @@ async function batchStopSessions() {
   }
 }
 
+// --- Probe report rendering + cross-engine compare ---
+function _flattenProbe(report, prefix = "") {
+  const out = {};
+  for (const [key, value] of Object.entries(report || {})) {
+    const path = prefix ? `${prefix}.${key}` : key;
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      Object.assign(out, _flattenProbe(value, path));
+    } else {
+      out[path] = Array.isArray(value) ? value.join(", ") : String(value);
+    }
+  }
+  return out;
+}
+
+function _probeEngineLabel(entry) {
+  const engine = (entry.engine || "chromium").toLowerCase();
+  return engine.startsWith("camoufox") || engine.includes("firefox") ? "Camoufox" : "Chromium";
+}
+
+function renderProbeReport(item, report) {
+  const others = state.probeReports.filter((r) => r.processId !== item.id);
+  if (!others.length) {
+    return `<pre class="log" style="max-height:140px">${escapeHtml(JSON.stringify(report, null, 2))}</pre>`;
+  }
+  const options = others
+    .map((r) => `<option value="${escapeAttr(r.processId)}">${escapeHtml(_probeEngineLabel(r) + " · " + r.label + " · " + new Date(r.at).toLocaleTimeString())}</option>`)
+    .join("");
+  return `
+    <details class="probe-compare">
+      <summary style="cursor:pointer;font-size:12px;font-weight:650;color:var(--muted);padding:4px 0">${t("probeCompare")}</summary>
+      <div style="display:flex;gap:8px;align-items:center;margin:6px 0">
+        <select class="probe-compare-select" data-probe-id="${escapeAttr(item.id)}" style="max-width:420px;min-height:28px;font-size:12px">
+          <option value="">${t("probeComparePick")}</option>
+          ${options}
+        </select>
+      </div>
+      <div class="probe-compare-body" data-compare-for="${escapeAttr(item.id)}"></div>
+    </details>`;
+}
+
+function renderProbeDiff(baseId, otherId) {
+  const base = state.probeReports.find((r) => r.processId === baseId);
+  const other = state.probeReports.find((r) => r.processId === otherId);
+  if (!base || !other) return "";
+  const a = _flattenProbe(base.report);
+  const b = _flattenProbe(other.report);
+  const keys = [...new Set([...Object.keys(a), ...Object.keys(b)])].sort();
+  const rows = keys
+    .map((k) => {
+      const va = a[k] ?? "—";
+      const vb = b[k] ?? "—";
+      const diff = va !== vb;
+      return `<tr style="${diff ? "background:var(--surface-strong)" : ""}">
+        <td style="padding:3px 8px;font-family:var(--mono);font-size:11px">${escapeHtml(k)}</td>
+        <td style="padding:3px 8px">${escapeHtml(va)}</td>
+        <td style="padding:3px 8px${diff ? ";font-weight:650" : ""}">${escapeHtml(vb)}</td>
+      </tr>`;
+    })
+    .join("");
+  return `<table style="width:100%;border-collapse:collapse;font-size:12px">
+    <thead><tr>
+      <th style="text-align:left;padding:3px 8px">${t("probeField")}</th>
+      <th style="text-align:left;padding:3px 8px">${escapeHtml(_probeEngineLabel(base))}</th>
+      <th style="text-align:left;padding:3px 8px">${escapeHtml(_probeEngineLabel(other))}</th>
+    </tr></thead><tbody>${rows}</tbody></table>`;
+}
+
 function renderProcesses(selector, processes, stopLabel = t("stop"), isSession = false) {
   const list = $(selector);
   // Preserve user-expanded detail panes across polling re-renders.
@@ -1852,7 +1926,7 @@ function renderProcesses(selector, processes, stopLabel = t("stop"), isSession =
              </div>`
           : "";
       const fpReport = item.fingerprint_report
-        ? `<pre class="log" style="max-height:140px">${escapeHtml(JSON.stringify(item.fingerprint_report, null, 2))}</pre>`
+        ? renderProbeReport(item, item.fingerprint_report)
         : "";
       const idleStr =
         isSession && item.idle_seconds != null
@@ -2118,6 +2192,25 @@ async function loadSessions() {
   const sessions = await api("/api/sessions");
   state.sessions = sessions;
   updateSessionBadge(sessions);
+  // Harvest probe reports for the cross-engine compare view (keep last 24).
+  for (const item of sessions || []) {
+    if (!item.fingerprint_report) continue;
+    const prev = state.probeReports.find((r) => r.processId === item.id);
+    if (prev) {
+      prev.report = item.fingerprint_report;
+      prev.engine = item.engine || prev.engine;
+    } else {
+      state.probeReports.unshift({
+        processId: item.id,
+        profileId: item.profile_id || "",
+        label: item.label || "",
+        engine: item.engine || "",
+        report: item.fingerprint_report,
+        at: Date.now(),
+      });
+      if (state.probeReports.length > 24) state.probeReports.pop();
+    }
+  }
   renderProcesses("#sessionList", sessions, t("stop"), true);
   loadSessionResources().catch(() => {});
   // Keep profile running badges fresh without full reload
@@ -3297,6 +3390,13 @@ function bindEvents() {
   $("#refreshBtn").addEventListener("click", refreshAll);
   $("#refreshSessionsBtn").addEventListener("click", loadSessions);
   $("#newProfileBtn").addEventListener("click", () => loadProfile(null));
+  document.addEventListener("change", (e) => {
+    const select = e.target.closest?.(".probe-compare-select");
+    if (!select) return;
+    const baseId = select.dataset.probeId;
+    const body = document.querySelector(`[data-compare-for="${CSS.escape(baseId)}"]`);
+    if (body) body.innerHTML = select.value ? renderProbeDiff(baseId, select.value) : "";
+  });
   $("#themeToggle").addEventListener("click", toggleTheme);
   $("#testProxyBtn").addEventListener("click", testProxy);
   $("#proxyGeoBtn")?.addEventListener("click", fetchProxyGeo);

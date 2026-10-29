@@ -2,7 +2,7 @@
 
 本地 Camoufox 指纹浏览器管理器 — 免费、开源、隐私优先。
 
-**当前版本：`1.4.5`（Stable）**
+**当前版本：`1.4.6`（Stable）**
 
 <p align="center">
   <img src="static/logo.png" width="120" alt="FoxDesk Logo">
@@ -64,13 +64,13 @@ build.bat
 产物：
 
 - 便携版：`dist/FoxDesk/FoxDesk.exe`
-- 安装包：`installer_output/FoxDesk-1.4.5-Setup.exe`
+- 安装包：`installer_output/FoxDesk-1.4.6-Setup.exe`
 
 ### CI/CD
 
 ```bash
-git tag v1.4.5
-git push origin v1.4.5
+git tag v1.4.6
+git push origin v1.4.6
 ```
 
 - Workflow：`.github/workflows/build.yml`
@@ -99,13 +99,27 @@ FoxDesk 是**本机桌面工具**：
 - 与真机 Google Chrome 151 基线对照后，已修复 UA-CH GREASE 品牌串与 platformVersion 两处过时值
 - 以上仅为静态层测量，**不构成**过检/注册/支付/订阅任何形式的保证；已知边界（全版本号截断、内核级伪装差异）见 gap-matrix
 
+## 研发状态（Phase D backlog 摘要）
+
+方向对标 Multilogin / GoLogin（仅产品北极星，不承诺对齐）。当前状态见 `docs/research/`：
+
+| 项 | 状态 |
+|---|---|
+| D-B1/B2 CDP 与 iframe/Worker 一致性调研 | done（维持 patchright 主路径；探针落地） |
+| D-B3 权限/Notification 默认面 | done（一致性对齐，不伪造授权） |
+| D-B4 TLS/JA3 侧面 | done（栈不改 TLS，风险是版本偏移） |
+| D-B5 channel=chrome 一键建议 | done |
+| D-B6 代理质量提示（住宅/机房） | done |
+| D-B7 Chrome 大版本跟版流水线 | done（UA 池 157 + 月度 drift-check CI） |
+| D-B8 自维护补丁 Chromium 内核 | **未触发**（书面条件见 backlog；D1 三方对照无 HARD_FAIL 缺口） |
+
 ## 已知限制
 
 - Server 模式在部分 Camoufox 版本下仍可能延迟/无法捕获 `ws_endpoint`（可点「刷新端点」）
 - 指纹检测为静态一致性评分，**不是**反检测保证；Chromium + Patchright 仅降低部分自动化标记，**不保证**对齐商业指纹浏览器或支付通过
 - 无 Token 时仍可能遇到 GitHub 限流；1.2.0+ 会回退网页/Atom + ghproxy
 - 会话 `evaluate` / 截图仅限 browser 模式本地控制通道，**不是**远程 RPA 沙箱
-- 从旧版升级：建议直接装 1.4.5；Program Files 旧安装请先卸载
+- 从旧版升级：建议直接装 1.4.6；Program Files 旧安装请先卸载
 
 完整变更见 [CHANGELOG.md](CHANGELOG.md)。
 

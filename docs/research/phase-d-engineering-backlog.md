@@ -30,7 +30,7 @@
 | D-B4 | TLS / HTTP2 / JA3 侧面（可选 B-leak） | 深度对照 | 工具链 | **done**（结论：栈不改 TLS，风险是版本偏移；`tools/tls_probe.py`） |
 | D-B5 | channel=chrome 一键建议 + 启动失败可读 | 真 Chrome 指纹 | 本机 Chrome | **done**（`suggestion` 字段 + `apply-suggestion` 端点） |
 | D-B6 | 代理质量提示（住宅 vs 机房）产品化 | R7 IP 权重大 | 代理池 | **done**（`proxy_quality.py` + `quality-check` 端点 + `datacenter_proxy` 风险提示） |
-| D-B7 | 跟 Chrome 大版本的 patchright/playwright 跟版流水线 | 防折旧 | CI | **done**（UA 池刷新至 146 + `chrome_drift_check.py` + 月度 workflow） |
+| D-B7 | 跟 Chrome 大版本的 patchright/playwright 跟版流水线 | 防折旧 | CI | **done**（UA 池刷新至 157 + `chrome_drift_check.py` 月度 workflow；2026-10-30 栈跟版 1.64.x 实测 webdriver=false 无退化） |
 | D-B8 | 自维护补丁 Chromium（真 R4） | 仅当 B1–B4 仍不够 | 编制 3–12+ 人月 | **P0 仅触发后** |
 
 ---

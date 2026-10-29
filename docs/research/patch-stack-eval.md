@@ -75,3 +75,14 @@ python tools/poc_chromium_launch.py --backend playwright --channel chrome --prob
 产品默认：chromium_backend=auto；不捆绑 Google Chrome
 进入 Phase C 编码：Y（已落地 worker/UI/probe）
 ```
+
+---
+
+## 5. 跟版验证（2026-10-30，1.61 → 1.64）
+
+| 项 | 本机实测 |
+|---|---|
+| 升级 | playwright 1.61.0 → **1.64.1**；patchright 1.61.2 → **1.64.3**；chromium 浏览器构建重装（driver v1248） |
+| bstatic 门禁 | `--backend patchright --require-webdriver-false` → **ok=true, webdriver=false** |
+| headed 冒烟 | `smoke_phase_c_headed.py` → **ok=true**；新驱动真实 UA = Chrome/**156**（D-B7 UA 池 157/156 与之同代） |
+| 结论 | Phase C 行为在 1.64.x 无退化；requirements `>=` 策略与 D-B7 漂移告警配合有效 |

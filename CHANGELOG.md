@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.4.6 — 2026-10-30 — UA refresh to Chrome 157, probe compare, stack follow-up verification
+
+### D-B7 drift alarm + follow-up
+- Chrome stable reached 157 while embedded UA pools sat at 153/152 (monthly drift-check CI correctly flagged). UA pools (Windows/macOS/Linux), the bstatic probe UA and the UA-CH fallback major refreshed to 157/156; the drift test assertion made structural (`max >= 157`) so future refreshes don't touch tests.
+- Local automation stack upgraded playwright 1.61.0→1.64.1 / patchright 1.61.2→1.64.3 with matching browser builds; both gates re-verified on the new stack: `bstatic_probe --backend patchright --require-webdriver-false` ok (webdriver=false) and `smoke_phase_c_headed` ok (real driver UA Chrome/156). Recorded in `patch-stack-eval.md` §5.
+
+### Features
+- Session detail: **cross-engine probe compare** — pick another session's fingerprint report to render a flattened field-by-field diff table (Camoufox vs Chromium, differences highlighted). Reports harvested in-app (last 24).
+
+### Docs
+- README gains a research-status table (D-B1..B7 done, D-B8 gated); backlog D-B7 note updated to the 157 / 1.64.x verification.
+
 ## 1.4.5 — 2026-09-13 — post-v1.4.4 review fixes
 
 Second full audit round over the modularized backend (routes/*, engine_tools,
