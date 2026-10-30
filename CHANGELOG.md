@@ -1,20 +1,27 @@
 # Changelog
 
-## Unreleased — UI redesign: commercial dark theme
+## Unreleased — UI redesign: Fluent 2 / Windows 11 design language
 
-- **styles.css rewritten** (dark-first design tokens, glass panels, sidebar
-  navigation, gradient accents, status pills, quiet danger buttons, styled
-  empty states, light theme preserved via existing toggle)
-- **Navigation moved from top bar to a left sidebar** (same `.tab-nav` /
-  `data-page` hooks — zero JS behavioral change); status pill + theme/lang
-  controls moved to the sidebar footer
-- Static assets get `?v=` cache-busting query (styles.css/app.js)
-- Fixes: `mem 124.19999… MB` float formatting; toggle switches rendering
-  vertically; editor form squeezed into one grid track
-- New default theme: dark (existing users who picked light keep light)
+First redesign attempt (generic glass/gradient) rejected after live review;
+replaced with a disciplined **Fluent 2 / WinUI implementation in CSS** —
+researched Windows component libraries and chose tokens over a web-components
+migration (`@fluentui/web-components` would require migrating every
+`form.elements`/`FormData`/innerHTML hook in 3.6k lines of JS; WinUI/XAML means
+abandoning pywebview; shadcn needs a build chain).
 
-Verified page-by-page in a live browser (dark + light): profiles, sessions,
-proxies, system. Tests: 148 passed, 1 skipped.
+- **Segoe UI Variable** type stack with the Fluent type ramp (Caption 12 /
+  Body 14 / Subtitle 20), 4px control radii, 1px low-alpha strokes
+- **Mica-layered surfaces**: #1f1f1f base / #2b2b2b layers (dark), #f3f3f3 /
+  #ffffff (light); accent = system accent blue (#4cc2ff dark / #005fb8 light)
+- NavigationView-style sidebar with accent-pill selection; info-bar styled
+  update banner; WinUI-style buttons (standard/accent-text/quiet-danger),
+  bottom-accent focus underline on inputs; fluent data rows & meta grids
+- Static assets `?v=` cache-busting; mem float formatting fixed; toggle and
+  editor-grid layout fixes carried over
+- Page-by-page live-browser verification in both themes (profiles, sessions,
+  proxies, system); light-theme `--layer-alt` gap found and fixed
+
+Tests: 148 passed, 1 skipped.
 
 ## 1.4.6 — 2026-10-30 — UA refresh to Chrome 157, probe compare, stack follow-up verification
 ## 1.4.6 — 2026-10-30 — UA refresh to Chrome 157, probe compare, stack follow-up verification
