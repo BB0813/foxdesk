@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>FoxDesk</title>
     <link rel="icon" type="image/png" href="/assets/logo.png" />
-    <link rel="stylesheet" href="/assets/styles.css" />
+    <link rel="stylesheet" href="/assets/styles.css?v=2" />
   </head>
   <body>
-    <!-- ═══ Top Bar ═══ -->
-    <header class="top-bar">
+    <!-- ═══ Sidebar ═══ -->
+    <aside class="side-nav">
       <div class="brand">
         <img class="brand-icon" src="/assets/logo.png" alt="FoxDesk" />
         <span class="brand-name">FoxDesk</span>
@@ -33,21 +33,25 @@
           <span data-i18n="tabSystem">系统</span>
         </button>
       </nav>
-      <div class="top-actions">
+      <div class="side-foot">
         <span class="status-pill" id="installStatus">Checking</span>
-        <button class="button secondary icon-only" id="themeToggle" type="button" title="Dark mode">
-          <i data-lucide="moon"></i>
-        </button>
-        <div class="segmented" aria-label="Language">
-          <button type="button" data-lang="zh" class="active">中</button>
-          <button type="button" data-lang="en">EN</button>
+        <div class="top-actions">
+          <button class="button secondary icon-only" id="themeToggle" type="button" title="Dark mode">
+            <i data-lucide="moon"></i>
+          </button>
+          <div class="segmented" aria-label="Language">
+            <button type="button" data-lang="zh" class="active">中</button>
+            <button type="button" data-lang="en">EN</button>
+          </div>
+          <button class="button secondary icon-only" id="refreshBtn" type="button" title="Refresh">
+            <i data-lucide="refresh-cw"></i>
+          </button>
         </div>
-        <button class="button secondary icon-only" id="refreshBtn" type="button" title="Refresh">
-          <i data-lucide="refresh-cw"></i>
-        </button>
       </div>
-    </header>
+    </aside>
 
+    <!-- ═══ Workspace ═══ -->
+    <div class="workspace">
     <div class="banner update hidden" id="updateBanner">
       <div>
         <strong data-i18n="updateAvailable">发现新版本</strong>
@@ -769,7 +773,7 @@
           </div>
         </div>
       </div>
-    </div>
+    </div><!-- /workspace -->
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <!-- Context Menu -->
@@ -783,6 +787,6 @@
       <button class="ctx-item danger" data-action="delete" type="button"><i data-lucide="trash-2"></i> <span data-i18n="delete">删除</span></button>
     </div>
     <script src="/assets/lucide.min.js"></script>
-    <script src="/assets/app.js"></script>
+    <script src="/assets/app.js?v=2"></script>
   </body>
 </html>

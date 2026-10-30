@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased — UI redesign: commercial dark theme
+
+- **styles.css rewritten** (dark-first design tokens, glass panels, sidebar
+  navigation, gradient accents, status pills, quiet danger buttons, styled
+  empty states, light theme preserved via existing toggle)
+- **Navigation moved from top bar to a left sidebar** (same `.tab-nav` /
+  `data-page` hooks — zero JS behavioral change); status pill + theme/lang
+  controls moved to the sidebar footer
+- Static assets get `?v=` cache-busting query (styles.css/app.js)
+- Fixes: `mem 124.19999… MB` float formatting; toggle switches rendering
+  vertically; editor form squeezed into one grid track
+- New default theme: dark (existing users who picked light keep light)
+
+Verified page-by-page in a live browser (dark + light): profiles, sessions,
+proxies, system. Tests: 148 passed, 1 skipped.
+
+## 1.4.6 — 2026-10-30 — UA refresh to Chrome 157, probe compare, stack follow-up verification
 ## 1.4.6 — 2026-10-30 — UA refresh to Chrome 157, probe compare, stack follow-up verification
 
 ### D-B7 drift alarm + follow-up

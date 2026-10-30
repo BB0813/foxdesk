@@ -717,7 +717,7 @@ const i18n = {
 
 const state = {
   lang: localStorage.getItem("cm-lang") || "zh",
-  theme: localStorage.getItem("cm-theme") || "light",
+  theme: localStorage.getItem("cm-theme") || "dark",
   selectedSessions: new Set(),
   probeReports: [],
   profiles: [],
@@ -1752,7 +1752,7 @@ async function loadSessionResources() {
   if (!el) return null;
   try {
     const data = await api("/api/system/resources");
-    const mem = data.manager_memory_mb != null ? `${data.manager_memory_mb} MB` : "—";
+    const mem = data.manager_memory_mb != null ? `${Number(data.manager_memory_mb).toFixed(1)} MB` : "—";
     const idle = data.idle_session_minutes ? `${data.idle_session_minutes}m` : "off";
     el.textContent = `${t("resourceHint")}: ${data.running_sessions ?? 0}/${data.max_concurrent_sessions ?? "?"} · mem ${mem} · idle ${idle}`;
     return data;
