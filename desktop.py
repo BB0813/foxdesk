@@ -142,7 +142,9 @@ def acquire_single_instance_lock() -> bool:
     return True
 
 
-def wait_until_ready(port: int, timeout: float = 20.0) -> None:
+def wait_until_ready(port: int, timeout: float = 120.0) -> None:
+    """Wait for the API server. First launch on a network drive can take
+    60s+ (SMB file reads + Defender rescans), so keep a generous ceiling."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -437,7 +439,14 @@ def main() -> int:
     global _server_process
     _server_process = server
     try:
-        wait_until_ready(port)
+        try:
+            wait_until_ready(port)
+        except RuntimeError:
+            # Don't leave a half-started server child bound to the port.
+            from backend.process_utils import stop_popen
+
+            stop_popen(server, grace=3)
+            raise
         url = f"http://{HOST}:{port}"
         try:
             _prepare_frozen_dotnet()
