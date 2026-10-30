@@ -4,6 +4,9 @@ import json
 import time
 import uuid
 from pathlib import Path
+
+# Per-result-file read offsets (incremental scans for long sessions)
+_read_offsets: dict[str, int] = {}
 from typing import Any
 
 
@@ -32,12 +35,17 @@ def send_worker_command(
     cmd_file = command_path(runtime_path)
     res_file = result_path(runtime_path)
 
-    # Record current result file size so we only read new lines.
-    start_offset = res_file.stat().st_size if res_file.exists() else 0
+    # Long-lived automation sessions grow the result file unboundedly; reading
+    # the whole file on every poll is O(n^2). Track per-file read offsets.
+    key = str(res_file)
+    start_offset = _read_offsets.get(key)
+    if start_offset is None:
+        start_offset = res_file.stat().st_size if res_file.exists() else 0
     with open(cmd_file, "a", encoding="utf-8") as fh:
         fh.write(json.dumps(body, ensure_ascii=False) + "\n")
 
     deadline = time.time() + max(1.0, timeout)
+    consumed = 0
     while time.time() < deadline:
         if not res_file.exists():
             time.sleep(0.15)
@@ -50,6 +58,7 @@ def send_worker_command(
         if len(data) <= start_offset:
             time.sleep(0.15)
             continue
+        consumed = len(data) - start_offset
         chunk = data[start_offset:].decode("utf-8", errors="replace")
         for line in chunk.splitlines():
             line = line.strip()
@@ -60,9 +69,14 @@ def send_worker_command(
             except Exception:
                 continue
             if isinstance(row, dict) and row.get("id") == req_id:
+                _read_offsets[key] = start_offset + len(data)
                 return row
         time.sleep(0.15)
 
+    # Advance past consumed bytes even on timeout so the next command does
+    # not re-scan the same lines forever.
+    if consumed:
+        _read_offsets[key] = start_offset + consumed
     return {
         "id": req_id,
         "cmd": cmd,

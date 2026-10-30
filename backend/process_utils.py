@@ -95,7 +95,21 @@ def _wait(process: subprocess.Popen[Any], timeout: float) -> bool:
 
 # Windows Job Object: workers + their browser children live inside a job with
 # KILL_ON_JOB_CLOSE, so a crashed/force-killed manager cannot orphan browsers.
-_job_handles: list[Any] = []
+_job_handles: dict[int, Any] = {}  # worker pid -> job handle
+
+
+def release_job_handle(pid: int) -> None:
+    """Close (and thereby kill-on-close) the job bound to a finished worker."""
+    handle = _job_handles.pop(pid, None)
+    if handle is None:
+        return
+    try:
+        import ctypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.CloseHandle(handle)
+    except Exception:
+        pass
 
 
 def assign_job_object(process: subprocess.Popen[Any]) -> bool:
@@ -154,7 +168,7 @@ def assign_job_object(process: subprocess.Popen[Any]) -> bool:
             return False
         # Keep the handle open for the manager's lifetime: closing it would
         # immediately kill the assigned tree. Freed on process exit.
-        _job_handles.append(handle)
+        _job_handles[process.pid] = handle
         return True
     except Exception:
         return False

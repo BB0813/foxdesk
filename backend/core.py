@@ -405,9 +405,17 @@ class ProcessRegistry:
                 if item.timeout and item.kind == "task":
                     if time.time() - item.started_at > item.timeout:
                         if item.process.poll() is None:
-                            item.logs.append(f"[TIMEOUT] Process exceeded {item.timeout}s timeout, terminating...")
+                            with self.lock:
+                                item.logs.append(f"[TIMEOUT] Process exceeded {item.timeout}s timeout, terminating...")
                             stop_popen(item.process, grace=3)
-                            item.logs.append("[TIMEOUT] Process killed")
+                            with self.lock:
+                                item.logs.append("[TIMEOUT] Process killed")
+                            try:
+                                from backend.process_utils import release_job_handle
+
+                                release_job_handle(item.process.pid)
+                            except Exception:
+                                pass
                 if (
                     idle_seconds > 0
                     and item.kind == "session"
@@ -415,18 +423,21 @@ class ProcessRegistry:
                     and (item.mode or "browser") != "server"
                     and (time.time() - item.last_activity_at) > idle_seconds
                 ):
-                    item.logs.append(
-                        f"[IDLE] Session idle for >{idle_minutes} min, auto-stopping..."
-                    )
+                    with self.lock:
+                        item.logs.append(
+                            f"[IDLE] Session idle for >{idle_minutes} min, auto-stopping..."
+                        )
                     try:
                         # Graceful path: ask the worker to close its browser
                         # context first (registry.stop sends the stop command);
                         # server-mode sessions are exempt above because their
                         # stdout stays silent while ws clients are active.
                         self.stop(item.id)
-                        item.logs.append("[IDLE] Session stopped")
+                        with self.lock:
+                            item.logs.append("[IDLE] Session stopped")
                     except Exception as exc:
-                        item.logs.append(f"[IDLE] stop failed: {exc}")
+                        with self.lock:
+                            item.logs.append(f"[IDLE] stop failed: {exc}")
 
     # Per-line byte cap for the in-memory log ring: workers already keep
     # bulky payloads out of events, this bounds anything that slips through.
@@ -519,7 +530,7 @@ class ProcessRegistry:
             return self.items[item_id]
 
     def stop(self, item_id: str) -> None:
-        from backend.process_utils import stop_popen
+        from backend.process_utils import release_job_handle, stop_popen
         from backend.session_control import send_worker_command
 
         item = self.get(item_id)
@@ -532,9 +543,16 @@ class ProcessRegistry:
                 send_worker_command(Path(item.runtime_path), "stop", timeout=5.0)
             except Exception:
                 pass
-        item.logs.append("[stop] terminating process tree...")
+        with self.lock:
+            item.logs.append("[stop] terminating process tree...")
         stop_popen(item.process, grace=8)
-        item.logs.append("[stop] done")
+        # The kill-on-close job bound to this worker is no longer needed.
+        try:
+            release_job_handle(item.process.pid)
+        except Exception:
+            pass
+        with self.lock:
+            item.logs.append("[stop] done")
         if item.runtime_path:
             runtime = Path(item.runtime_path)
             for path in (

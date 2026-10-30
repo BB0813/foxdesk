@@ -477,14 +477,24 @@ def session_refresh_endpoint(process_id: str) -> dict[str, Any]:
 # --- Stop All Sessions ---
 @router.post("/api/sessions/stop-all")
 def stop_all_sessions() -> dict[str, Any]:
+    from concurrent.futures import ThreadPoolExecutor
+
     sessions = registry.list("session")
+    running = [s["id"] for s in sessions if s["status"] == "running"]
     stopped = 0
-    for s in sessions:
-        if s["status"] == "running":
-            try:
-                registry.stop(s["id"])
+    # Graceful stop waits up to ~5s per worker; run them concurrently so the
+    # caller (desktop tray, 20s timeout) is not serialized to minutes.
+    with ThreadPoolExecutor(max_workers=min(8, max(1, len(running)))) as pool:
+        for ok in pool.map(_stop_one, running):
+            if ok:
                 stopped += 1
-            except Exception:
-                pass
     activity.log("sessions_stop_all", f"stopped {stopped}")
     return {"stopped": stopped}
+
+
+def _stop_one(session_id: str) -> bool:
+    try:
+        registry.stop(session_id)
+        return True
+    except Exception:
+        return False

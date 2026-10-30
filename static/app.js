@@ -1228,6 +1228,7 @@ function renderProfiles() {
     });
   }
   renderTagFilter();
+  state._runningProfileIds = runningProfileIds();
   // Table view mode
   if (state.viewMode === "table") {
     renderProfileTable(profiles);
@@ -1903,10 +1904,11 @@ function renderProcesses(selector, processes, stopLabel = t("stop"), isSession =
     .map((item) => {
       const running = item.status === "running";
       const failed = Boolean(item.failed || item.error_message);
-      const started = new Date(item.started_at * 1000);
-      const uptimeMs = Date.now() - item.started_at * 1000;
-      const uptimeSec = Math.floor(uptimeMs / 1000);
-      const uptimeStr = `${Math.floor(uptimeSec / 3600)}h ${Math.floor((uptimeSec % 3600) / 60)}m ${uptimeSec % 60}s`;
+      const started = item.started_at ? new Date(item.started_at * 1000) : null;
+      const uptimeSec = item.started_at ? Math.max(0, Math.floor((Date.now() - item.started_at * 1000) / 1000)) : null;
+      const uptimeStr = uptimeSec != null
+        ? `${Math.floor(uptimeSec / 3600)}h ${Math.floor((uptimeSec % 3600) / 60)}m ${uptimeSec % 60}s`
+        : "—";
       const statusTag = failed
         ? `<span class="tag failed">${t("failed")}</span>`
         : running
@@ -1970,7 +1972,7 @@ function renderProcesses(selector, processes, stopLabel = t("stop"), isSession =
           <div class="session-detail" id="detail-${escapeAttr(item.id)}">
             <div class="session-meta-grid">
               <dt>${t("startTime")}</dt>
-              <dd>${started.toLocaleString()}</dd>
+              <dd>${started ? started.toLocaleString() : "—"}</dd>
               <dt>${t("uptime")}</dt>
               <dd>${uptimeStr}</dd>
               ${item.ws_endpoint ? `<dt>${t("wsEndpoint")}</dt><dd><code>${escapeHtml(item.ws_endpoint)}</code></dd>` : ""}
@@ -2224,7 +2226,7 @@ async function loadSessions() {
   renderProcesses("#sessionList", sessions, t("stop"), true);
   loadSessionResources().catch(() => {});
   // Keep profile running badges fresh without full reload
-  if ($("#profileList") && state.viewMode !== "table") {
+  if ($("#profileList")) {
     renderProfiles();
   }
 }
@@ -3186,6 +3188,13 @@ async function loadActivity() {
 
 // --- Table View Toggle ---
 state.viewMode = localStorage.getItem("cm-view") || "card";
+{
+  const btn = $("#viewToggleBtn");
+  if (btn) {
+    const icon = btn.querySelector("i");
+    if (icon) icon.setAttribute("data-lucide", state.viewMode === "card" ? "list" : "layout-grid");
+  }
+}
 
 function toggleView() {
   state.viewMode = state.viewMode === "card" ? "table" : "card";
@@ -3219,12 +3228,14 @@ function renderProfileTable(profiles) {
     const proxy = p.proxy?.server || "—";
     const proxyShort = proxy.length > 24 ? proxy.slice(0, 24) + "…" : proxy;
     const tags = (p.tags || []).join(", ") || "—";
+    const runningBadge = state._runningProfileIds?.has(p.id)
+      ? ` <span class="tag running" style="margin-left:6px">${t("runningBadge")}</span>` : "";
     html += `<tr data-profile-id="${escapeAttr(p.id)}" class="${p.id === state.selectedId ? "selected" : ""}">
       <td><input type="checkbox" class="batch-check" data-batch-id="${escapeAttr(p.id)}" ${state.selectedProfiles.has(p.id) ? "checked" : ""} /></td>
       <td title="${escapeHtml(p.name)}"><strong>${escapeHtml(p.name)}</strong><br><span style="color:var(--subtle);font-size:11px">${escapeHtml(p.startup_url || "")}</span></td>
       <td>${escapeHtml(p.os)}</td>
       <td title="${escapeHtml(proxy)}" style="color:${p.proxy?.server ? "var(--primary)" : "var(--subtle)"}">${escapeHtml(proxyShort)}</td>
-      <td>${escapeHtml(tags)}</td>
+      <td>${escapeHtml(tags)}${runningBadge}</td>
       <td><button class="button secondary icon-only delete-profile" data-delete-id="${escapeAttr(p.id)}" style="width:28px;min-height:28px" title="${t("delete")}"><i data-lucide="trash-2"></i></button></td>
     </tr>`;
   });

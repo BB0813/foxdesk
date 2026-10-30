@@ -1,5 +1,39 @@
 # Changelog
 
+## Unreleased — bug-sweep + incremental security review (post UI redesign)
+
+Third targeted pass: closed the remaining known low-severity items from the
+earlier audits plus hardened the newly added endpoints.
+
+### Backend
+- **Job handle leak fixed**: handles now tracked per-pid and closed via
+  `release_job_handle()` from registry.stop / timeout kill (was: one leaked
+  kernel handle per launch, forever)
+- **stop-all parallelized** (ThreadPool, 8 workers) — a full stop no longer
+  serializes to minutes; desktop tray timeout raised 8s → 20s to match
+- **Incremental result-file reads** in session_control (per-file offsets) —
+  long automation sessions were re-scanning the whole sidecar every poll
+- **Frozen `--camoufox-cli` now handled** by desktop.py (routed to
+  `camoufox.__main__:cli`); frozen /api/tasks version/path/test work again
+- `--serve` / `--worker` with a missing argument exit 64 with usage text
+  instead of silently falling into the GUI branch
+- Tray Quit flag (`_quit_requested`) wired into window close so the window
+  does not resurrect after quitting from the tray
+- Monitor/stop log appends now take the registry lock (race with capture
+  thread list-slicing)
+
+### Security
+- **batch-update input validation**: timezone validated against
+  `zoneinfo.ZoneInfo`, locale against a BCP-47 pattern — a free-form string
+  reached the worker launch config before
+
+### Frontend
+- Table view shows running badges (was card-only) and the view-toggle icon
+  now matches the stored mode on startup
+- NaN/Invalid Date guards for sessions with missing pid/started_at
+- Dead sort-arrow CSS removed
+
+Tests: 151 passed, 1 skipped.
 ## Unreleased — UI redesign: Fluent 2 / Windows 11 design language
 
 First redesign attempt (generic glass/gradient) rejected after live review;

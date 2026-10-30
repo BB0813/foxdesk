@@ -423,11 +423,34 @@ def _prepare_frozen_dotnet() -> None:
 
 
 def main() -> int:
-    if len(sys.argv) >= 3 and sys.argv[1] == "--serve":
-        return run_serve_mode(int(sys.argv[2]))
+    if "--serve" in sys.argv[1:]:
+        idx = sys.argv.index("--serve")
+        if len(sys.argv) < idx + 2:
+            sys.stderr.write("usage: FoxDesk.exe --serve <port>\n")
+            return 64
+        return run_serve_mode(int(sys.argv[idx + 1]))
 
-    if len(sys.argv) >= 3 and sys.argv[1] == "--worker":
-        return run_worker_mode(sys.argv[2])
+    if "--worker" in sys.argv[1:]:
+        idx = sys.argv.index("--worker")
+        if len(sys.argv) < idx + 2:
+            sys.stderr.write("usage: FoxDesk.exe --worker <runtime.json>\n")
+            return 64
+        return run_worker_mode(sys.argv[idx + 1])
+
+    if "--camoufox-cli" in sys.argv[1:]:
+        # Frozen builds have no `python -m camoufox`; route the CLI through
+        # the bundled package (engine_tools.camoufox_command emits this).
+        idx = sys.argv.index("--camoufox-cli")
+        sys.argv = [sys.argv[0], *sys.argv[idx + 1:]]
+        try:
+            from camoufox.__main__ import cli
+
+            cli(standalone_mode=True)
+            return 0
+        except SystemExit as exc:
+            return int(exc.code or 0)
+        except Exception:
+            return 1
 
     if not acquire_single_instance_lock():
         print("Another instance of FoxDesk is already running.")
@@ -464,6 +487,10 @@ def main() -> int:
             start_tray(port, window)
 
             def on_closing() -> bool:
+                # Tray Quit sets _quit_requested: actually close instead of
+                # hide-to-tray, otherwise the window would resurrect.
+                if _quit_requested:
+                    return True
                 # Minimize-like behavior: keep process if tray is active
                 if _tray_icon is not None:
                     try:

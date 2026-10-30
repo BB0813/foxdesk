@@ -29,7 +29,7 @@ def test_job_object_kills_child_tree() -> None:
     try:
         proc.stdout.readline()  # child started
         assert assign_job_object(proc), "AssignProcessToJobObject failed"
-        handle = process_utils._job_handles[-1]
+        handle = process_utils._job_handles[proc.pid]
         kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
         # Simulate the manager dying: terminating/closing the job must take
         # the assigned child (and any grandchildren) with it.
@@ -38,7 +38,7 @@ def test_job_object_kills_child_tree() -> None:
     finally:
         if proc.poll() is None:
             proc.kill()
-        threading.Timer(0.1, lambda: process_utils._job_handles.remove(handle) if handle in process_utils._job_handles else None).start()
+        threading.Timer(0.1, lambda: process_utils._job_handles.pop(proc.pid, None)).start()
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX branch is a no-op by design")

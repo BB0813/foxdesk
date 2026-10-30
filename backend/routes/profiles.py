@@ -538,6 +538,38 @@ class BatchUpdateRequest(BaseModel):
     locale: str | None = None
     font_pack: str | None = None
 
+    @field_validator("timezone")
+    @classmethod
+    def _valid_timezone(cls, value: str | None) -> str | None:
+        # Timezone reaches the worker as an IANA id / launch config — a free
+        # string could carry command-line junk. Validate against zoneinfo.
+        if value is None:
+            return None
+        raw = value.strip()
+        if not raw:
+            return ""
+        from zoneinfo import ZoneInfo
+
+        try:
+            ZoneInfo(raw)
+        except Exception:
+            raise ValueError(f"unknown IANA timezone: {raw[:60]}") from None
+        return raw
+
+    @field_validator("locale")
+    @classmethod
+    def _valid_locale(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        raw = value.strip()
+        if not raw:
+            return ""
+        import re
+
+        if not re.fullmatch(r"[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*", raw):
+            raise ValueError(f"locale must look like a BCP-47 tag: {raw[:60]}")
+        return raw
+
     @field_validator("font_pack", mode="before")
     @classmethod
     def _norm_font_pack(cls, value: Any) -> str | None:

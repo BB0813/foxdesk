@@ -862,7 +862,6 @@ button.tag:hover { color: var(--text); background: var(--border); }
 /* misc */
 .top-actions { display: flex; align-items: center; gap: 8px; }
 .activity-line { border-bottom: 1px solid var(--divider); }
-.sort-arrow { font-size: 10px; margin-left: 3px; }
 
 @media (max-width: 1100px) {
   .profiles-layout { grid-template-columns: 300px minmax(0, 1fr); }

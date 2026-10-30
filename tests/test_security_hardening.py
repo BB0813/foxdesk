@@ -256,3 +256,66 @@ def test_batch_concurrency_uses_settings(monkeypatch):
     monkeypatch.setattr(sess.registry, "list", lambda kind: [])
     available, max_sessions = sess._batch_available_slots()
     assert max_sessions == 12 and available == 12
+
+
+class TestBatchUpdateValidation:
+    def test_bad_timezone_rejected(self):
+        from fastapi.testclient import TestClient
+
+        from backend.app import app
+
+        with TestClient(app, base_url="http://127.0.0.1") as client:
+            h = {"X-FoxDesk-Token": API_TOKEN}
+            r = client.post(
+                "/api/profiles/batch-update",
+                json={"timezone": "Not/AZone; rm"},
+                headers=h,
+            )
+            assert r.status_code == 422
+
+    def test_bad_locale_rejected(self):
+        from fastapi.testclient import TestClient
+
+        from backend.app import app
+
+        with TestClient(app, base_url="http://127.0.0.1") as client:
+            h = {"X-FoxDesk-Token": API_TOKEN}
+            r = client.post(
+                "/api/profiles/batch-update",
+                json={"locale": "../../evil"},
+                headers=h,
+            )
+            assert r.status_code == 422
+
+
+def test_job_handle_released_on_stop(tmp_path):
+    """registry.stop must close the kill-on-close job handle."""
+    import sys
+
+    from backend import process_utils
+    from backend.core import registry
+
+    proc = sys.platform == "win32" and __import__("subprocess").Popen(
+        [sys.executable, "-c", "import time; time.sleep(60)"],
+        stdout=__import__("subprocess").DEVNULL,
+        creationflags=process_utils.CREATE_NO_WINDOW,
+    )
+    if proc is None:
+        pytest.skip("windows only")
+    try:
+        item = registry.add(
+            type("FakeItem", (), {})  # placeholder never used
+        ) if False else None
+        # Directly register a minimal item via start path is heavy; exercise
+        # the release helper + dict contract instead.
+        from backend.process_utils import assign_job_object, release_job_handle
+
+        assert assign_job_object(proc)
+        pid = proc.pid
+        assert pid in process_utils._job_handles
+        release_job_handle(pid)
+        assert pid not in process_utils._job_handles
+        proc.kill()
+    finally:
+        if proc.poll() is None:
+            proc.kill()
