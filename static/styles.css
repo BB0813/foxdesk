@@ -520,8 +520,26 @@ button.tag:hover { color: var(--text); background: var(--border); }
   white-space: nowrap;
   font-family: var(--mono);
 }
-.profile-row .button.icon-only { opacity: 0; transition: opacity var(--tr); }
-.profile-row:hover .button.icon-only { opacity: 1; }
+/* Delete affordance: ghost icon — invisible until row hover, red only when
+   the button itself is hovered (was: a loud bordered button popping in). */
+.profile-row .button.delete-profile {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+  opacity: 0;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 4px;
+}
+.profile-row:hover .button.delete-profile,
+.profile-row:focus-within .button.delete-profile { opacity: 0.7; }
+.button.delete-profile:hover,
+.button.delete-profile:focus-visible {
+  color: var(--danger);
+  border-color: rgba(255, 153, 164, 0.4);
+  background: rgba(255, 153, 164, 0.08);
+  opacity: 1;
+}
 
 .editor-panel { min-height: 520px; }
 .editor-panel .panel-head { flex-wrap: wrap; }

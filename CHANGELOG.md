@@ -33,6 +33,10 @@ earlier audits plus hardened the newly added endpoints.
 - NaN/Invalid Date guards for sessions with missing pid/started_at
 - Dead sort-arrow CSS removed
 
+- Profile-card delete affordance demoted to a ghost icon: invisible until
+  row hover, muted grey, red only on direct hover (was a loud bordered
+  button popping in — user-flagged); keyboard focus still reveals it
+
 Tests: 151 passed, 1 skipped.
 ## Unreleased — UI redesign: Fluent 2 / Windows 11 design language
 
