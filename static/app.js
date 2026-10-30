@@ -71,6 +71,10 @@ const i18n = {
     unsaved: "新档案尚未保存",
     choose: "选择一个档案后编辑",
     noProfiles: "暂无档案。点击新建开始。",
+    noProcesses: "暂无进程",
+    emptySessionsHint: "到「配置档案」选择一个档案点启动，运行中的浏览器会显示在这里",
+    noProxiesShort: "暂无代理",
+    emptyProxiesHint: "在上方填写或批量导入代理，档案可通过 ID 引用",
     noProcesses: "暂无进程。",
     profileSaved: "档案已保存",
     profileDeleted: "档案已删除",
@@ -428,6 +432,10 @@ const i18n = {
     unsaved: "Unsaved new profile",
     choose: "Select a profile to edit",
     noProfiles: "No profiles yet. Create one to start.",
+    noProcesses: "No processes",
+    emptySessionsHint: "Pick a profile in Profiles and press Launch — running browsers appear here",
+    noProxiesShort: "No proxies yet",
+    emptyProxiesHint: "Fill the form above or import in bulk; profiles reference them by ID",
     noProcesses: "No processes.",
     profileSaved: "Profile saved",
     profileDeleted: "Profile deleted",
@@ -1557,6 +1565,8 @@ function renderSystem() {
     <dt>${t("updateMirror")}</dt><dd>${escapeHtml(mirror)}</dd>
     <dt>GitHub Token</dt><dd>${tokenSet ? t("yes") : t("no")}</dd>
   `;
+  const brandVer = $("#brandVersion");
+  if (brandVer) brandVer.textContent = sys?.app_version ? `v${sys.app_version}` : "";
   renderInstallFlow();
   renderSettingsForm();
   syncEngineUi();
@@ -1886,7 +1896,7 @@ function renderProcesses(selector, processes, stopLabel = t("stop"), isSession =
     }).filter(Boolean)
   );
   if (!processes.length) {
-    list.innerHTML = `<div class="empty">${t("noProcesses")}</div>`;
+    list.innerHTML = `<div class="empty"><strong>${t("noProcesses")}</strong><span class="empty-hint">${t("emptySessionsHint")}</span></div>`;
     return;
   }
   list.innerHTML = processes
@@ -2488,7 +2498,7 @@ function renderProxyPool() {
   const list = $("#proxyPoolList");
   if (!list) return;
   if (!state.proxies.length) {
-    list.innerHTML = `<div class="empty">${t("noProxies")}</div>`;
+    list.innerHTML = `<div class="empty"><strong>${t("noProxiesShort")}</strong><span class="empty-hint">${t("emptyProxiesHint")}</span></div>`;
     return;
   }
   list.innerHTML = state.proxies

@@ -21,6 +21,12 @@ abandoning pywebview; shadcn needs a build chain).
 - Page-by-page live-browser verification in both themes (profiles, sessions,
   proxies, system); light-theme `--layer-alt` gap found and fixed
 
+### Polish pass (same release line)
+- Brand area shows the running app version; Win11 double-ring `:focus-visible`
+  rings; subtle Fluent-curve page entrance; alternating system-grid rows;
+  empty states gained hint copy (sessions/proxies); larger checkboxes,
+  nav icon slide, stable scrollbar gutters.
+
 Tests: 148 passed, 1 skipped.
 
 ## 1.4.6 — 2026-10-30 — UA refresh to Chrome 157, probe compare, stack follow-up verification
