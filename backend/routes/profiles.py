@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from backend.core import (
     PROFILES_DIR,
+    proxy_pool,
     Profile,
     ProxyConfig,
     RUNTIME_DIR,
@@ -402,8 +403,47 @@ def bulk_proxy_import(request: BulkProxyRequest) -> dict[str, Any]:
 
 
 # --- D-B5: one-click risk-suggestion application ---
+def _apply_chrome_channel(profile: Profile) -> dict[str, Any]:
+    return {"chromium_channel": "chrome"}
+
+
+def _apply_timezone_geo_match(profile: Profile) -> dict[str, Any]:
+    """Align timezone/locale with the proxy exit region recorded by
+    /api/proxy/geo (or a quality-check) on the bound pool item."""
+    geo = None
+    if profile.proxy_id:
+        try:
+            geo = (proxy_pool.get(profile.proxy_id).get("last_geo") or {}) or None
+        except Exception:
+            geo = None
+    if not geo and profile.proxy and profile.proxy.server:
+        server_tail = profile.proxy.server.split("//")[-1]
+        for item in proxy_pool.all():
+            item_server = item.get("server") or ""
+            if item_server and item_server.split("//")[-1] == server_tail:
+                geo = item.get("last_geo")
+                break
+    if not geo or not geo.get("ok"):
+        raise HTTPException(
+            status_code=409,
+            detail="no exit-geo recorded — run 检测出口归属 on the proxy first",
+        )
+    from backend.proxy_quality import locale_for_country
+
+    updates: dict[str, Any] = {}
+    if geo.get("timezone"):
+        updates["timezone"] = str(geo["timezone"])
+    if geo.get("country_code"):
+        updates["locale"] = locale_for_country(geo.get("country_code"))
+    if not updates:
+        raise HTTPException(status_code=409, detail="exit-geo record has no timezone/country")
+    return updates
+
+
 _SUGGESTION_APPLIERS = {
-    "chromium_bundled_build": lambda profile: {"chromium_channel": "chrome"},
+    # code: (engine restriction or None, applier)
+    "chromium_bundled_build": ("chromium", _apply_chrome_channel),
+    "timezone_geo_mismatch": (None, _apply_timezone_geo_match),
 }
 
 
@@ -411,18 +451,23 @@ _SUGGESTION_APPLIERS = {
 def apply_risk_suggestion(profile_id: str, request: ApplySuggestionRequest) -> Profile:
     """Apply a whitelisted environment-risk suggestion to a profile (D-B5).
 
-    Currently supports: chromium_bundled_build -> chromium_channel=chrome
-    (requires local Google Chrome detection to succeed).
+    Supported codes:
+    - chromium_bundled_build -> chromium_channel=chrome (needs local Chrome)
+    - timezone_geo_mismatch  -> timezone/locale from the proxy exit-geo record
     """
-    applier = _SUGGESTION_APPLIERS.get((request.code or "").strip())
-    if applier is None:
+    entry = _SUGGESTION_APPLIERS.get((request.code or "").strip())
+    if entry is None:
         raise HTTPException(status_code=400, detail=f"no automated suggestion for code: {request.code}")
+    engine_scope, applier = entry
     try:
         profile = store.get(profile_id)
     except KeyError:
         raise HTTPException(status_code=404, detail="profile not found") from None
-    if (profile.engine or "") != "chromium":
-        raise HTTPException(status_code=409, detail="suggestion applies to chromium-engine profiles only")
+    if engine_scope and (profile.engine or "") != engine_scope:
+        raise HTTPException(
+            status_code=409,
+            detail=f"suggestion applies to {engine_scope}-engine profiles only",
+        )
     if request.code == "chromium_bundled_build" and not detect_google_chrome_install().get("installed"):
         raise HTTPException(status_code=409, detail="Google Chrome was not detected on this machine")
     data = profile.model_dump()

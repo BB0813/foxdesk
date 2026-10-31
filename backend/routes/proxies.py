@@ -145,18 +145,7 @@ def proxy_test(request: ProxyTestRequest) -> dict[str, Any]:
 _GEO_HOST = "ipwho.is"
 
 # Rough country-code → BCP-47 locale defaults for the env matcher.
-_COUNTRY_LOCALES = {
-    "US": "en-US", "GB": "en-GB", "CA": "en-CA", "AU": "en-AU", "NZ": "en-NZ",
-    "DE": "de-DE", "AT": "de-AT", "CH": "de-CH", "FR": "fr-FR", "BE": "fr-BE",
-    "ES": "es-ES", "MX": "es-MX", "AR": "es-AR", "IT": "it-IT", "NL": "nl-NL",
-    "PT": "pt-PT", "BR": "pt-BR", "PL": "pl-PL", "CZ": "cs-CZ", "SK": "sk-SK",
-    "HU": "hu-HU", "RO": "ro-RO", "BG": "bg-BG", "GR": "el-GR", "TR": "tr-TR",
-    "RU": "ru-RU", "UA": "ru-UA", "SE": "sv-SE", "NO": "nb-NO", "DK": "da-DK",
-    "FI": "fi-FI", "JP": "ja-JP", "KR": "ko-KR", "CN": "zh-CN", "TW": "zh-TW",
-    "HK": "zh-HK", "SG": "zh-SG", "IN": "en-IN", "ID": "id-ID", "TH": "th-TH",
-    "VN": "vi-VN", "PH": "en-PH", "MY": "ms-MY", "AE": "ar-AE", "SA": "ar-SA",
-    "IL": "he-IL", "ZA": "en-ZA", "IE": "en-IE",
-}
+# Country→locale map lives in backend.proxy_quality (shared).
 
 
 def _fetch_geo_via_proxy(proxy_url: str, username: str = "", password: str = "", timeout: float = 10.0) -> dict[str, Any]:
@@ -170,7 +159,7 @@ def _fetch_geo_via_proxy(proxy_url: str, username: str = "", password: str = "",
     from urllib.parse import quote, urlparse
     from urllib.request import ProxyHandler, Request, build_opener
 
-    from backend.proxy_quality import classify_org
+    from backend.proxy_quality import classify_org, locale_for_country
     from backend.proxy_test import _socks4_connect, _socks5_connect, _tls_wrap
 
     parsed = urlparse(proxy_url)
@@ -257,7 +246,7 @@ def proxy_geo(request: ProxyTestRequest) -> dict[str, Any]:
         server = f"http://{server}"
     geo = _fetch_geo_via_proxy(server, request.username, request.password)
     if geo.get("ok") and geo.get("country_code"):
-        geo["suggested_locale"] = _COUNTRY_LOCALES.get(str(geo["country_code"]).upper(), "en-US")
+        geo["suggested_locale"] = locale_for_country(geo.get("country_code"))
     _persist_proxy_geo(server, geo)
     return geo
 

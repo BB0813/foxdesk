@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased — one-click env fix + probe export
+
+- **timezone_geo_mismatch is now one-click fixable**: the D-B5
+  apply-suggestion endpoint gained a `timezone_geo_mismatch` applier that
+  reads the proxy pool's persisted exit-geo and sets timezone + locale
+  (country→locale map moved to shared `proxy_quality.locale_for_country`);
+  engine gating is now per-code (the chromium-only gate no longer blocks
+  camoufox profiles from timezone fixes)
+- Fingerprint-check risk rows render a 一键修复 button for actionable codes
+  (chromium_bundled_build, timezone_geo_mismatch) — the apply-suggestion
+  endpoint previously had no UI caller at all
+- Probe compare gains 导出对比 JSON (both full reports + metadata as a
+  downloadable file)
+- E2E verified: mismatch flagged high → apply → tz/locale set → risk cleared
+
+Tests: 152 passed, 1 skipped.
 ## Unreleased — proxy pool UI surfaces quality & geo
 
 Feature completion for the D-B6 chain: the backend already classified exit

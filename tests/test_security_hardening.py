@@ -319,3 +319,40 @@ def test_job_handle_released_on_stop(tmp_path):
     finally:
         if proc.poll() is None:
             proc.kill()
+
+
+def test_timezone_suggestion_end_to_end(monkeypatch):
+    """timezone_geo_mismatch risk → apply-suggestion fixes tz/locale from geo."""
+    from fastapi.testclient import TestClient
+
+    from backend.app import app, proxy_pool
+
+    with TestClient(app, base_url="http://127.0.0.1") as client:
+        h = {"X-FoxDesk-Token": API_TOKEN}
+        px = client.post("/api/proxies", json={"name": "geo-e2e", "server": "http://9.9.9.9:8080"}, headers=h).json()
+        proxy_pool.mark_geo(px["id"], {"ok": True, "timezone": "Europe/Berlin", "country_code": "DE"})
+        prof = client.post(
+            "/api/profiles",
+            json={"name": "tz-e2e", "engine": "chromium", "proxy_id": px["id"], "timezone": "Asia/Taipei"},
+            headers=h,
+        ).json()
+        try:
+            check = client.get(f"/api/profiles/{prof['id']}/fingerprint-check", headers=h).json()
+            assert "timezone_geo_mismatch" in {r["code"] for r in check["environment_risks"]}
+            applied = client.post(
+                f"/api/profiles/{prof['id']}/apply-suggestion",
+                json={"code": "timezone_geo_mismatch"},
+                headers=h,
+            )
+            assert applied.status_code == 200
+            assert applied.json()["timezone"] == "Europe/Berlin"
+            assert applied.json()["locale"] == "de-DE"
+            # unknown code rejected
+            assert client.post(
+                f"/api/profiles/{prof['id']}/apply-suggestion",
+                json={"code": "nope"},
+                headers=h,
+            ).status_code == 400
+        finally:
+            client.delete(f"/api/profiles/{prof['id']}", headers=h)
+            client.delete(f"/api/proxies/{px['id']}", headers=h)

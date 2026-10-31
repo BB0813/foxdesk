@@ -71,6 +71,9 @@ const i18n = {
     unsaved: "新档案尚未保存",
     choose: "选择一个档案后编辑",
     noProfiles: "暂无档案。点击新建开始。",
+    applyFix: "一键修复",
+    applied: "已应用",
+    probeExport: "导出对比 JSON",
     qualityCheck: "检测质量",
     qualityCheckDone: "质量检测完成",
     qualityResidential: "住宅 IP",
@@ -461,6 +464,9 @@ const i18n = {
     unsaved: "Unsaved new profile",
     choose: "Select a profile to edit",
     noProfiles: "No profiles yet. Create one to start.",
+    applyFix: "Auto-fix",
+    applied: "Applied",
+    probeExport: "Export JSON",
     qualityCheck: "Check quality",
     qualityCheckDone: "Quality check done",
     qualityResidential: "Residential IP",
@@ -1934,7 +1940,10 @@ function renderProbeDiff(baseId, otherId) {
       </tr>`;
     })
     .join("");
-  return `<table style="width:100%;border-collapse:collapse;font-size:12px">
+  return `<div style="display:flex;justify-content:flex-end;margin:4px 0">
+      <button class="button secondary probe-export" data-base="${escapeAttr(base.processId)}" data-other="${escapeAttr(other.processId)}" type="button" style="min-height:26px;padding:2px 10px;font-size:11px">${t("probeExport")}</button>
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
     <thead><tr>
       <th style="text-align:left;padding:3px 8px">${t("probeField")}</th>
       <th style="text-align:left;padding:3px 8px">${escapeHtml(_probeEngineLabel(base))}</th>
@@ -3461,12 +3470,17 @@ async function checkFingerprint() {
     const scoreColor = result.score >= 80 ? "var(--success)" : result.score >= 50 ? "var(--warning)" : "var(--danger)";
     const issues = result.issues || [];
     const risks = (result.environment_risks || []).filter((r) => r.level !== "info");
+    const APPLICABLE = ["chromium_bundled_build", "timezone_geo_mismatch"];
     const riskList = risks.length
       ? `<div style="margin:8px 0 4px;font-size:12px;font-weight:650">${t("envRisks")}</div>
          <ul class="fp-issues">${risks
            .map(
-             (r) =>
-               `<li><strong style="text-transform:uppercase;font-size:10px;opacity:.8">${escapeHtml(r.level)}</strong> ${escapeHtml(r.message || "")}</li>`,
+             (r) => {
+               const fixable = APPLICABLE.includes(r.code)
+                 ? ` <button class="button secondary apply-suggestion" data-code="${escapeAttr(r.code)}" data-profile-id="${escapeAttr(state.selectedId)}" type="button" style="min-height:24px;padding:2px 10px;font-size:11px;margin-left:6px">${t("applyFix")}</button>`
+                 : "";
+               return `<li><strong style="text-transform:uppercase;font-size:10px;opacity:.8">${escapeHtml(r.level)}</strong> ${escapeHtml(r.message || "")}${fixable}</li>`;
+             },
            )
            .join("")}</ul>`
       : "";
@@ -3600,6 +3614,47 @@ function bindEvents() {
     const baseId = select.dataset.probeId;
     const body = document.querySelector(`[data-compare-for="${CSS.escape(baseId)}"]`);
     if (body) body.innerHTML = select.value ? renderProbeDiff(baseId, select.value) : "";
+  });
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest?.(".probe-export");
+    if (!btn) return;
+    const base = state.probeReports.find((r) => r.processId === btn.dataset.base);
+    const other = state.probeReports.find((r) => r.processId === btn.dataset.other);
+    if (!base || !other) return;
+    const payload = {
+      exported_at: new Date().toISOString(),
+      base: { label: base.label, engine: base.engine, report: base.report },
+      compare: { label: other.label, engine: other.engine, report: other.report },
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `probe-compare-${base.processId.slice(0, 8)}-${other.processId.slice(0, 8)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  });
+  document.addEventListener("click", async (e) => {
+    const btn = e.target.closest?.(".apply-suggestion");
+    if (!btn) return;
+    const code = btn.dataset.code;
+    const profileId = btn.dataset.profileId;
+    btn.disabled = true;
+    try {
+      await api(`/api/profiles/${escapeAttr(profileId)}/apply-suggestion`, {
+        method: "POST",
+        body: JSON.stringify({ code }),
+      });
+      toast(`${t("applied")}: ${code}`);
+      await loadProfiles();
+      checkFingerprint();
+    } catch (err) {
+      toast(err.message);
+    } finally {
+      btn.disabled = false;
+    }
   });
   $("#themeToggle").addEventListener("click", toggleTheme);
   $("#testProxyBtn").addEventListener("click", testProxy);

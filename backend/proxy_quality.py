@@ -108,3 +108,24 @@ def classify_exit_ip(ip: str, timeout: float = 8.0) -> dict[str, Any]:
         result["quality"] = classify_org(info["org"])
         return result
     return result
+
+
+# Rough country-code -> BCP-47 locale defaults for one-click environment
+# matching (used by routes/proxies.py geo flow and routes/profiles.py
+# timezone suggestion applier).
+COUNTRY_LOCALES = {
+    "US": "en-US", "GB": "en-GB", "CA": "en-CA", "AU": "en-AU", "NZ": "en-NZ",
+    "DE": "de-DE", "AT": "de-AT", "CH": "de-CH", "FR": "fr-FR", "BE": "fr-BE",
+    "ES": "es-ES", "MX": "es-MX", "AR": "es-AR", "IT": "it-IT", "NL": "nl-NL",
+    "PT": "pt-PT", "BR": "pt-BR", "PL": "pl-PL", "CZ": "cs-CZ", "SK": "sk-SK",
+    "HU": "hu-HU", "RO": "ro-RO", "BG": "bg-BG", "GR": "el-GR", "TR": "tr-TR",
+    "RU": "ru-RU", "UA": "ru-UA", "SE": "sv-SE", "NO": "nb-NO", "DK": "da-DK",
+    "FI": "fi-FI", "JP": "ja-JP", "KR": "ko-KR", "CN": "zh-CN", "TW": "zh-TW",
+    "HK": "zh-HK", "SG": "zh-SG", "IN": "en-IN", "ID": "id-ID", "TH": "th-TH",
+    "VN": "vi-VN", "PH": "en-PH", "MY": "ms-MY", "AE": "ar-AE", "SA": "ar-SA",
+    "IL": "he-IL", "ZA": "en-ZA", "IE": "en-IE",
+}
+
+
+def locale_for_country(country_code: str) -> str:
+    return COUNTRY_LOCALES.get(str(country_code or "").upper(), "en-US")
