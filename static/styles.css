@@ -536,6 +536,23 @@ button.tag:hover { color: var(--text); background: var(--border); }
 }
 .profile-row:hover .button.delete-profile,
 .profile-row:focus-within .button.delete-profile { opacity: 0.7; }
+.process-row .button.proxy-delete {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+  opacity: 0;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 4px;
+}
+.process-row:hover .button.proxy-delete { opacity: 0.7; }
+.button.proxy-delete:hover {
+  color: var(--danger);
+  border-color: rgba(255, 153, 164, 0.4);
+  background: rgba(255, 153, 164, 0.08);
+  opacity: 1;
+}
+.tag i, .tag svg { width: 11px; height: 11px; margin-right: 3px; }
 .button.delete-profile:hover,
 .button.delete-profile:focus-visible {
   color: var(--danger);

@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased — proxy pool UI surfaces quality & geo
+
+Feature completion for the D-B6 chain: the backend already classified exit
+IPs and persisted `quality` / `last_geo` per pool item, but the UI never
+showed them.
+
+- Proxy pool rows now render an exit-geo tag (country · timezone, from
+  `last_geo`) and a quality tag (住宅 IP = green, 机房 IP = red, mobile =
+  green) with per-type icons
+- New 「检测质量」 button per proxy → `POST /api/proxies/{id}/quality-check`
+  (test + classify + persist), toast reports the classified quality
+- Proxy delete buttons demoted to the same ghost style as profile rows
+- Verified live with seeded residential/datacenter fixtures, then removed
+
+Tests: 151 passed, 1 skipped.
 ## Unreleased — bug-sweep + incremental security review (post UI redesign)
 
 Third targeted pass: closed the remaining known low-severity items from the

@@ -71,6 +71,12 @@ const i18n = {
     unsaved: "新档案尚未保存",
     choose: "选择一个档案后编辑",
     noProfiles: "暂无档案。点击新建开始。",
+    qualityCheck: "检测质量",
+    qualityCheckDone: "质量检测完成",
+    qualityResidential: "住宅 IP",
+    qualityDatacenter: "机房 IP",
+    qualityMobile: "移动 IP",
+    qualityUnknown: "未知",
     noProcesses: "暂无进程",
     justNow: "刚刚",
     minutesAgo: "分钟前",
@@ -455,6 +461,12 @@ const i18n = {
     unsaved: "Unsaved new profile",
     choose: "Select a profile to edit",
     noProfiles: "No profiles yet. Create one to start.",
+    qualityCheck: "Check quality",
+    qualityCheckDone: "Quality check done",
+    qualityResidential: "Residential IP",
+    qualityDatacenter: "Datacenter IP",
+    qualityMobile: "Mobile IP",
+    qualityUnknown: "Unknown",
     noProcesses: "No processes",
     justNow: "just now",
     minutesAgo: "min ago",
@@ -2557,6 +2569,31 @@ function renderProxyPool() {
           : p.last_ok === false
             ? `<span class="tag failed">${t("proxyFailed")}</span>`
             : `<span class="tag">${t("neverTested")}</span>`;
+      // Exit-IP quality + geo (persisted by quality-check / proxy-geo)
+      const geo = p.last_geo && p.last_geo.ok !== false ? p.last_geo : null;
+      const geoBits = [];
+      if (geo?.country || geo?.country_code) {
+        geoBits.push(`${geo.country || ""}${geo.country_code ? ` (${geo.country_code})` : ""}`.trim());
+      }
+      if (geo?.timezone) geoBits.push(geo.timezone);
+      const geoTag = geoBits.length
+        ? `<span class="tag"><i data-lucide="map-pin"></i>${escapeHtml(geoBits.join(" · "))}</span>`
+        : "";
+      const qualityClass = p.quality === "residential" || p.quality === "mobile"
+        ? "running"
+        : p.quality === "datacenter"
+          ? "failed"
+          : "";
+      const qualityLabel = p.quality === "residential"
+        ? t("qualityResidential")
+        : p.quality === "mobile"
+          ? t("qualityMobile")
+          : p.quality === "datacenter"
+            ? t("qualityDatacenter")
+            : "";
+      const qualityTag = qualityLabel
+        ? `<span class="tag ${qualityClass}"><i data-lucide="shield-half"></i>${qualityLabel}</span>`
+        : "";
       return `
         <article class="process-row" data-proxy-id="${escapeHtml(p.id)}">
           <div class="row-main">
@@ -2565,12 +2602,13 @@ function renderProxyPool() {
               <div class="row-meta">${escapeHtml(p.server || "")}${p.username ? ` · ${escapeHtml(p.username)}` : ""}</div>
             </div>
             <div style="display:flex;gap:6px;align-items:center">
+              <button class="button secondary proxy-quality" data-proxy-id="${escapeHtml(p.id)}" type="button">${t("qualityCheck")}</button>
               <button class="button secondary proxy-test" data-proxy-id="${escapeHtml(p.id)}" type="button">${t("testProxy")}</button>
               <button class="button secondary proxy-assign" data-proxy-id="${escapeHtml(p.id)}" type="button">${t("assignProxy")}</button>
-              <button class="button danger proxy-delete icon-only" data-proxy-id="${escapeHtml(p.id)}" type="button" title="Delete"><i data-lucide="trash-2"></i></button>
+              <button class="button danger proxy-delete icon-only" data-proxy-id="${escapeHtml(p.id)}" type="button" title="${t("delete")}"><i data-lucide="trash-2"></i></button>
             </div>
           </div>
-          <div class="tagline">${testTag}</div>
+          <div class="tagline">${testTag}${geoTag}${qualityTag}</div>
         </article>
       `;
     })
@@ -2582,6 +2620,26 @@ function renderProxyPool() {
       try {
         const result = await api(`/api/proxies/${btn.dataset.proxyId}/test`, { method: "POST", body: "{}" });
         toast(result.ok ? `${t("proxyOk")} ${result.exit_ip || ""}` : `${t("proxyFailed")}: ${result.error || ""}`);
+        await loadProxies();
+      } catch (err) {
+        toast(err.message);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  });
+  $$(".proxy-quality").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      try {
+        const result = await api(`/api/proxies/${btn.dataset.proxyId}/quality-check`, { method: "POST", body: "{}" });
+        if (!result.ok) {
+          toast(`${t("proxyFailed")}: ${result.test?.error || ""}`);
+        } else {
+          const q = result.quality?.quality || "unknown";
+          const label = q === "residential" ? t("qualityResidential") : q === "mobile" ? t("qualityMobile") : q === "datacenter" ? t("qualityDatacenter") : t("qualityUnknown");
+          toast(`${t("qualityCheckDone")}: ${label}${result.quality?.org ? ` · ${result.quality.org}` : ""}`);
+        }
         await loadProxies();
       } catch (err) {
         toast(err.message);
