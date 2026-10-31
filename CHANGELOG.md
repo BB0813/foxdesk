@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — one-click env fix + probe export
+### One-click env fix + probe export
 
 - **timezone_geo_mismatch is now one-click fixable**: the D-B5
   apply-suggestion endpoint gained a `timezone_geo_mismatch` applier that
@@ -16,7 +16,7 @@
 - E2E verified: mismatch flagged high → apply → tz/locale set → risk cleared
 
 Tests: 152 passed, 1 skipped.
-## Unreleased — proxy pool UI surfaces quality & geo
+### Proxy pool quality/geo UI (D-B6 closeout)
 
 Feature completion for the D-B6 chain: the backend already classified exit
 IPs and persisted `quality` / `last_geo` per pool item, but the UI never
@@ -31,7 +31,7 @@ showed them.
 - Verified live with seeded residential/datacenter fixtures, then removed
 
 Tests: 151 passed, 1 skipped.
-## Unreleased — bug-sweep + incremental security review (post UI redesign)
+### Bug sweep + incremental security review (pre-release)
 
 Third targeted pass: closed the remaining known low-severity items from the
 earlier audits plus hardened the newly added endpoints.
@@ -79,7 +79,7 @@ earlier audits plus hardened the newly added endpoints.
   (app.js ref had been stuck at v2, serving stale JS)
 
 Tests: 151 passed, 1 skipped.
-## Unreleased — UI redesign: Fluent 2 / Windows 11 design language
+### UI redesign — Fluent 2 / Windows 11 design language
 
 First redesign attempt (generic glass/gradient) rejected after live review;
 replaced with a disciplined **Fluent 2 / WinUI implementation in CSS** —
@@ -108,7 +108,6 @@ abandoning pywebview; shadcn needs a build chain).
 
 Tests: 148 passed, 1 skipped.
 
-## 1.4.6 — 2026-10-30 — UA refresh to Chrome 157, probe compare, stack follow-up verification
 ## 1.4.6 — 2026-10-30 — UA refresh to Chrome 157, probe compare, stack follow-up verification
 
 ### D-B7 drift alarm + follow-up
@@ -158,7 +157,6 @@ proxy_quality, local_auth). Priority-ordered fixes, all with regression tests:
 
 Tests: 148 passed, 1 skipped.
 
-## 1.4.4 — 2026-09-13 — proxy geo matching, batch env apply, backup v2 (on modular backend)
 ## 1.4.4 — 2026-09-13 — proxy geo matching, batch env apply, backup v2 (on modular backend)
 
 ### Features

@@ -146,7 +146,7 @@ python desktop.py</pre>
       <p>用户数据目录：<code>%APPDATA%\FoxDesk</code>（旧版 <code>CamoufoxManager</code> 会自动迁移）。</p>
 
       <h3>方式二：下载 exe 安装包</h3>
-      <p>从 <a href="https://github.com/BB0813/foxdesk/releases">GitHub Releases</a> 下载版本：当前稳定线 <strong>v1.4.6</strong>（双引擎 + Patchright）。安装或解压后运行 <code>FoxDesk.exe</code>。</p>
+      <p>从 <a href="https://github.com/BB0813/foxdesk/releases">GitHub Releases</a> 下载版本：当前稳定线 <strong>v1.4.7</strong>（双引擎 + Patchright）。安装或解压后运行 <code>FoxDesk.exe</code>。</p>
       <p>无需安装 Python 环境（安装包形态）。</p>
 
       <h3>方式三：Web 调试模式</h3>
@@ -388,8 +388,8 @@ FoxDesk
 
       <h3>CI/CD 自动构建</h3>
       <p>推送 <code>v*</code> tag 自动触发 GitHub Actions：</p>
-      <pre>git tag v1.4.6
-git push origin v1.4.6</pre>
+      <pre>git tag v1.4.7
+git push origin v1.4.7</pre>
       <p>自动构建 Windows exe / 安装包并创建 GitHub Release（含 SHA256SUMS）。</p>
 
       <!-- CONTRIBUTING -->
@@ -405,7 +405,18 @@ git push origin v1.4.6</pre>
       <!-- CHANGELOG -->
       <h2 id="changelog">更新日志</h2>
       <div class="card">
-        <h3>v1.4.6 <span class="badge p0">最新</span></h3>
+        <h3>v1.4.7 <span class="badge p0">最新</span></h3>
+        <p style="color:var(--muted)">2026-10-31</p>
+        <ul>
+          <li>Fluent 2 / Windows 11 界面全面改版（深色默认，NavigationView 侧栏）</li>
+          <li>操作日志时间线：人话动作名 + 分类图标 + 相对时间 + 重复折叠</li>
+          <li>代理池展示出口归属（住宅/机房）+ 一键质量检测</li>
+          <li>时区不一致风险一键修复；探测对比支持导出 JSON</li>
+          <li>批量 bug 修复：进程句柄泄漏、退出清理链、缓存版本等</li>
+        </ul>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <h3>v1.4.6</h3>
         <p style="color:var(--muted)">2026-10-30</p>
         <ul>
           <li>UA 池刷新至 Chrome 157/156（D-B7 漂移告警清零）</li>
