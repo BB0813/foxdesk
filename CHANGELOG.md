@@ -15,7 +15,18 @@
   downloadable file)
 - E2E verified: mismatch flagged high → apply → tz/locale set → risk cleared
 
-Tests: 152 passed, 1 skipped.
+### Security sweep (fourth pass — code added since the third)
+- **classify_exit_ip**: exit-IP string (attacker-controllable via a malicious
+  proxy response) was embedded raw into ipwho.is/ipinfo.io URLs — now
+  validated with `ipaddress.ip_address()`, junk short-circuits to "unknown"
+  with no fetch
+- **geo timezone sanitization**: timezone from the info-service response is
+  validated (`is_valid_timezone`) before persisting to the pool; junk → null
+- **apply-suggestion timezone validation**: the timezone applier rejects
+  invalid persisted timezones (409) instead of writing them to the profile;
+  BatchUpdateRequest now shares the same `is_valid_timezone` helper
+
+Tests: 155 passed, 1 skipped.
 ### Proxy pool quality/geo UI (D-B6 closeout)
 
 Feature completion for the D-B6 chain: the backend already classified exit

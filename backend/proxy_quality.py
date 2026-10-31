@@ -87,8 +87,42 @@ def _from_ipinfo(ip: str, timeout: float) -> dict[str, Any] | None:
     return {"org": org, "source": "ipinfo.io"}
 
 
+def is_valid_timezone(raw: str) -> bool:
+    """True for an IANA timezone name resolvable on this host.
+
+    When the host lacks the tz database (ZoneInfoNotFoundError), fall back to
+    accepting well-formed IANA shapes instead of rejecting everything.
+    """
+    import re
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+    value = str(raw or "").strip()
+    if not value:
+        return False
+    try:
+        ZoneInfo(value)
+        return True
+    except ZoneInfoNotFoundError:
+        return bool(re.fullmatch(r"[A-Za-z_]+/[A-Za-z0-9_+\-]+", value))
+    except Exception:
+        return False
+
+
+def is_valid_ip(raw: str) -> bool:
+    """True only for a literal IPv4/IPv6 address (no URL/path junk)."""
+    import ipaddress
+
+    try:
+        ipaddress.ip_address(str(raw or "").strip())
+        return True
+    except Exception:
+        return False
+
+
 def classify_exit_ip(ip: str, timeout: float = 8.0) -> dict[str, Any]:
     """Classify a proxy exit IP. Returns a quality record (no raises)."""
+    if not is_valid_ip(ip):
+        ip = ""
     result: dict[str, Any] = {
         "ip": ip,
         "quality": "unknown",

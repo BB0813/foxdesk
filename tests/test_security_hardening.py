@@ -356,3 +356,71 @@ def test_timezone_suggestion_end_to_end(monkeypatch):
         finally:
             client.delete(f"/api/profiles/{prof['id']}", headers=h)
             client.delete(f"/api/proxies/{px['id']}", headers=h)
+
+
+def test_classify_exit_ip_rejects_injection(monkeypatch):
+    """A crafted exit_ip must never reach the info-service URLs."""
+    import json
+    from backend import proxy_quality
+
+    calls = []
+    monkeypatch.setattr(
+        proxy_quality, "_fetch_json",
+        lambda url, timeout=8.0: calls.append(url) or {},
+    )
+    rec = proxy_quality.classify_exit_ip("1.2.3.4/../../evil?x=1")
+    assert rec["quality"] == "unknown" and rec["ip"] == ""
+    assert calls == []  # no fetch attempted
+
+    rec2 = proxy_quality.classify_exit_ip("9.9.9.9")
+    # ipwho returns no org for the fake response → falls through to ipinfo
+    assert calls == ["https://ipwho.is/9.9.9.9", "https://ipinfo.io/9.9.9.9/json"]
+
+
+def test_is_valid_timezone_fallbacks():
+    from backend.proxy_quality import is_valid_timezone
+
+    assert is_valid_timezone("Europe/Berlin") is True
+    assert is_valid_timezone("America/New_York") is True
+    assert is_valid_timezone("Not/AZone; rm") is False
+    assert is_valid_timezone("") is False
+    assert is_valid_timezone(None) is False
+
+
+def test_geo_flow_sanitizes_timezone(monkeypatch):
+    """A malicious proxy response with a junk timezone must not persist it."""
+    import json as _json
+    from backend.routes import proxies as pr
+
+    fake = {
+        "success": True,
+        "ip": "9.9.9.9",
+        "country": "Nowhere",
+        "country_code": "NW",
+        "timezone": {"id": "Not/AZone; rm -rf"},
+        "connection": {"org": "Test Org"},
+    }
+    # Drive the JSON-parsing branch by faking the opener (imported inside the
+    # function from urllib.request).
+    import urllib.request as _ur
+
+    class FakeResp:
+        def __read_all(self):
+            return _json.dumps(fake).encode()
+        def read(self):
+            return self._FakeResp__read_all()
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+
+    def fake_open(req, timeout=None):
+        return FakeResp()
+
+    # build_opener is imported inside the function from urllib.request —
+    # patch it at the source module so the local import picks up the fake.
+    monkeypatch.setattr(_ur, "build_opener", lambda *a, **k: type("O", (), {"open": staticmethod(fake_open)})())
+    geo = pr._fetch_geo_via_proxy("http://127.0.0.1:9")
+    assert geo["ok"] is True
+    assert geo["timezone"] is None  # junk dropped
+    assert geo["country_code"] == "NW"

@@ -430,9 +430,17 @@ def _apply_timezone_geo_match(profile: Profile) -> dict[str, Any]:
         )
     from backend.proxy_quality import locale_for_country
 
+    from backend.proxy_quality import is_valid_timezone
+
     updates: dict[str, Any] = {}
     if geo.get("timezone"):
-        updates["timezone"] = str(geo["timezone"])
+        tz = str(geo["timezone"])
+        if not is_valid_timezone(tz):
+            raise HTTPException(
+                status_code=409,
+                detail="recorded exit-geo timezone is invalid — re-run 检测出口归属",
+            )
+        updates["timezone"] = tz
     if geo.get("country_code"):
         updates["locale"] = locale_for_country(geo.get("country_code"))
     if not updates:
@@ -593,19 +601,10 @@ class BatchUpdateRequest(BaseModel):
         raw = value.strip()
         if not raw:
             return ""
-        import re
-        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+        from backend.proxy_quality import is_valid_timezone
 
-        try:
-            ZoneInfo(raw)
-        except ZoneInfoNotFoundError:
-            # tzdata unavailable on this host — accept well-formed IANA
-            # shapes instead of rejecting every timezone (CI runners may
-            # lack the system tz database).
-            if not re.fullmatch(r"[A-Za-z_]+/[A-Za-z0-9_+\-]+", raw):
-                raise ValueError(f"unknown IANA timezone: {raw[:60]}") from None
-        except Exception:
-            raise ValueError(f"unknown IANA timezone: {raw[:60]}") from None
+        if not is_valid_timezone(raw):
+            raise ValueError(f"unknown IANA timezone: {raw[:60]}")
         return raw
 
     @field_validator("locale")

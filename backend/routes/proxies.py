@@ -159,7 +159,7 @@ def _fetch_geo_via_proxy(proxy_url: str, username: str = "", password: str = "",
     from urllib.parse import quote, urlparse
     from urllib.request import ProxyHandler, Request, build_opener
 
-    from backend.proxy_quality import classify_org, locale_for_country
+    from backend.proxy_quality import classify_org, is_valid_timezone, locale_for_country
     from backend.proxy_test import _socks4_connect, _socks5_connect, _tls_wrap
 
     parsed = urlparse(proxy_url)
@@ -210,7 +210,7 @@ def _fetch_geo_via_proxy(proxy_url: str, username: str = "", password: str = "",
             "exit_ip": data.get("ip"),
             "country": data.get("country"),
             "country_code": data.get("country_code"),
-            "timezone": tz_block.get("id"),
+            "timezone": tz_block.get("id") if is_valid_timezone(str(tz_block.get("id") or "")) else None,
             "utc_offset": tz_block.get("utc"),
             "org": org,
             "asn": conn.get("asn"),
