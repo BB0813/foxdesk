@@ -511,6 +511,9 @@ button.tag:hover { color: var(--text); background: var(--border); }
 .profile-row.has-batch .batch-check { flex: 0 0 auto; }
 .batch-check, .session-batch-check { width: auto; min-height: 0; accent-color: var(--primary); cursor: pointer; }
 .row-main { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+/* The title/meta block must shrink — a long mono URL would otherwise push
+   the delete button out past the card border. */
+.row-main > div:first-child { flex: 1 1 auto; min-width: 0; }
 .row-title { font-weight: 400; font-size: var(--body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-meta {
   font-size: var(--caption);

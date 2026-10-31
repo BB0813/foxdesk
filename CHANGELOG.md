@@ -37,6 +37,10 @@ earlier audits plus hardened the newly added endpoints.
   row hover, muted grey, red only on direct hover (was a loud bordered
   button popping in — user-flagged); keyboard focus still reveals it
 
+- Profile-card delete button no longer pushed past the card border by long
+  URLs — title/meta block now shrinks (`min-width: 0`) so the URL ellipsizes;
+  geometry verified in-browser (button right edge 29px inside the card)
+
 Tests: 151 passed, 1 skipped.
 ## Unreleased — UI redesign: Fluent 2 / Windows 11 design language
 
