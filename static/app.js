@@ -72,6 +72,29 @@ const i18n = {
     choose: "选择一个档案后编辑",
     noProfiles: "暂无档案。点击新建开始。",
     noProcesses: "暂无进程",
+    justNow: "刚刚",
+    minutesAgo: "分钟前",
+    hoursAgo: "小时前",
+    actProfileCreate: "新建档案",
+    actProfileUpdate: "修改档案",
+    actProfileDelete: "删除档案",
+    actProfileImport: "导入档案",
+    actBatchUpdate: "批量修改",
+    actBatchStart: "批量启动",
+    actSessionLaunch: "启动会话",
+    actSessionStop: "停止会话",
+    actStopAll: "停止全部会话",
+    actUpdateCheck: "检查更新",
+    actUpdateInstall: "安装更新",
+    actUpdateDownload: "下载更新",
+    actRiskApply: "应用风险建议",
+    actRuntimeCleanup: "清理运行时",
+    actBackupRestore: "恢复备份",
+    actBackupCreate: "创建备份",
+    actProxyCreate: "新建代理",
+    actProxyAssign: "指派代理",
+    actProxyTest: "测试代理",
+    actProxyHealth: "代理巡检",
     emptySessionsHint: "到「配置档案」选择一个档案点启动，运行中的浏览器会显示在这里",
     noProxiesShort: "暂无代理",
     emptyProxiesHint: "在上方填写或批量导入代理，档案可通过 ID 引用",
@@ -433,6 +456,29 @@ const i18n = {
     choose: "Select a profile to edit",
     noProfiles: "No profiles yet. Create one to start.",
     noProcesses: "No processes",
+    justNow: "just now",
+    minutesAgo: "min ago",
+    hoursAgo: "hr ago",
+    actProfileCreate: "Profile created",
+    actProfileUpdate: "Profile updated",
+    actProfileDelete: "Profile deleted",
+    actProfileImport: "Profiles imported",
+    actBatchUpdate: "Batch update",
+    actBatchStart: "Batch launch",
+    actSessionLaunch: "Session launched",
+    actSessionStop: "Session stopped",
+    actStopAll: "All sessions stopped",
+    actUpdateCheck: "Update check",
+    actUpdateInstall: "Update installed",
+    actUpdateDownload: "Update downloading",
+    actRiskApply: "Risk suggestion applied",
+    actRuntimeCleanup: "Runtime cleanup",
+    actBackupRestore: "Backup restored",
+    actBackupCreate: "Backup created",
+    actProxyCreate: "Proxy created",
+    actProxyAssign: "Proxies assigned",
+    actProxyTest: "Proxy tested",
+    actProxyHealth: "Proxy health check",
     emptySessionsHint: "Pick a profile in Profiles and press Launch — running browsers appear here",
     noProxiesShort: "No proxies yet",
     emptyProxiesHint: "Fill the form above or import in bulk; profiles reference them by ID",
@@ -3167,6 +3213,65 @@ async function handleContextAction(action) {
 }
 
 // --- Activity Log ---
+// --- Activity log: timeline with humanized actions, grouped repeats ---
+const ACTIVITY_META = {
+  profile_create: { key: "actProfileCreate", icon: "user-plus", tone: "ok" },
+  profile_update: { key: "actProfileUpdate", icon: "user-pen", tone: "" },
+  profile_delete: { key: "actProfileDelete", icon: "trash-2", tone: "bad" },
+  profile_import: { key: "actProfileImport", icon: "file-up", tone: "" },
+  batch_update: { key: "actBatchUpdate", icon: "layers", tone: "" },
+  batch_start: { key: "actBatchStart", icon: "play", tone: "" },
+  session_launch: { key: "actSessionLaunch", icon: "play", tone: "ok" },
+  sessions_stop_all: { key: "actStopAll", icon: "square", tone: "bad" },
+  session_stop: { key: "actSessionStop", icon: "square", tone: "bad" },
+  update_check: { key: "actUpdateCheck", icon: "refresh-cw", tone: "mute" },
+  update_install: { key: "actUpdateInstall", icon: "download", tone: "ok" },
+  update_download: { key: "actUpdateDownload", icon: "download", tone: "" },
+  risk_suggestion_apply: { key: "actRiskApply", icon: "shield-check", tone: "warn" },
+  runtime_cleanup: { key: "actRuntimeCleanup", icon: "eraser", tone: "" },
+  backup_restore: { key: "actBackupRestore", icon: "archive-restore", tone: "warn" },
+  backup_create: { key: "actBackupCreate", icon: "archive", tone: "ok" },
+  proxy_create: { key: "actProxyCreate", icon: "globe", tone: "" },
+  proxy_assign: { key: "actProxyAssign", icon: "link", tone: "" },
+  proxy_test: { key: "actProxyTest", icon: "activity", tone: "" },
+  proxy_health_check: { key: "actProxyHealth", icon: "heart-pulse", tone: "mute" },
+};
+
+function timeAgoStr(iso) {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return String(iso || "");
+  const mins = Math.floor((Date.now() - then) / 60000);
+  if (mins < 1) return t("justNow");
+  if (mins < 60) return `${mins} ${t("minutesAgo")}`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} ${t("hoursAgo")}`;
+  const d = new Date(then);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getMonth() + 1}-${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function activityChips(detail) {
+  const text = String(detail || "").trim();
+  if (!text) return "";
+  const chips = [];
+  const re = /(\w+)=("[^"]*"|'[^']*'|\[[^\]]*\]|\S+)/g;
+  let matched = false;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    matched = true;
+    let val = m[2].replace(/^['"]|['"]$/g, "");
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}/i.test(val)) val = val.slice(0, 8) + "…";
+    if (val.length > 34) val = val.slice(0, 34) + "…";
+    chips.push(`<span class="act-chip"><b>${escapeHtml(m[1])}</b>${escapeHtml(val)}</span>`);
+  }
+  if (!matched) {
+    let val = text;
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}/i.test(val)) val = val.slice(0, 8) + "…";
+    chips.push(`<span class="act-chip">${escapeHtml(val.length > 40 ? val.slice(0, 40) + "…" : val)}</span>`);
+  }
+  return `<div class="act-chips">${chips.join("")}</div>`;
+}
+
 async function loadActivity() {
   try {
     const entries = await api("/api/activity?limit=50");
@@ -3174,15 +3279,35 @@ async function loadActivity() {
     if (!el) return;
     if (!entries.length) {
       el.innerHTML = `<div class="empty">${t("noActivity")}</div>`;
+      renderIcons();
       return;
     }
-    el.innerHTML = entries.reverse().map((e) =>
-      `<div style="padding:6px 16px;border-top:1px solid var(--border);font-size:12px;display:flex;gap:10px">
-        <span style="color:var(--subtle);white-space:nowrap">${new Date(e.time).toLocaleString()}</span>
-        <span style="font-weight:600;color:var(--primary)">${escapeHtml(e.action)}</span>
-        <span style="color:var(--muted)">${escapeHtml(e.detail)}</span>
-      </div>`
-    ).join("");
+    const items = entries.slice().reverse(); // newest first
+    // Collapse consecutive repeats of the same action (e.g. update_check).
+    const groups = [];
+    for (const e of items) {
+      const last = groups[groups.length - 1];
+      if (last && last.action === e.action && items.indexOf(e) - items.indexOf(last.e) === 1) {
+        last.count += 1;
+        continue;
+      }
+      groups.push({ action: e.action, e, count: 1 });
+    }
+    el.innerHTML = groups.map((g) => {
+      const meta = ACTIVITY_META[g.action] || { key: "", icon: "history", tone: "" };
+      const label = meta.key && i18n[state.lang] && i18n[state.lang][meta.key] !== undefined
+        ? t(meta.key)
+        : escapeHtml(g.action);
+      const count = g.count > 1 ? `<span class="act-count">×${g.count}</span>` : "";
+      return `<div class="act-row tone-${meta.tone || "mute"}">
+        <span class="act-icon"><i data-lucide="${meta.icon}"></i></span>
+        <div class="act-body">
+          <div class="act-head"><span class="act-label">${label}</span>${count}<span class="act-time" title="${escapeHtml(g.e.time)}">${timeAgoStr(g.e.time)}</span></div>
+          ${activityChips(g.e.detail)}
+        </div>
+      </div>`;
+    }).join("");
+    renderIcons();
   } catch (_) {}
 }
 

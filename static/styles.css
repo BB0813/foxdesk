@@ -896,3 +896,79 @@ button.tag:hover { color: var(--text); background: var(--border); }
   .profiles-layout { grid-template-columns: 1fr; }
   .profile-sidebar { position: static; }
 }
+
+/* ═══════════ Activity timeline ═══════════ */
+.activity-list {
+  max-height: 420px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding: 12px 16px 8px 16px;
+}
+.act-row {
+  position: relative;
+  display: flex;
+  gap: 11px;
+  padding: 7px 0 9px 6px;
+}
+/* timeline spine */
+.act-row::before {
+  content: "";
+  position: absolute;
+  left: 19px; top: 42px; bottom: -9px;
+  width: 1px;
+  background: var(--divider);
+}
+.act-row:last-child::before { display: none; }
+.act-icon {
+  flex: 0 0 28px;
+  width: 28px; height: 28px;
+  border-radius: var(--radius-s);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-strong);
+  border: 1px solid var(--divider);
+  color: var(--muted);
+  z-index: 1;
+}
+.act-icon i, .act-icon svg { width: 14px; height: 14px; }
+.act-row.tone-ok .act-icon { color: var(--success); border-color: var(--success); }
+.act-row.tone-bad .act-icon { color: var(--danger); border-color: var(--danger); }
+.act-row.tone-warn .act-icon { color: var(--warning); border-color: var(--warning); }
+.act-row.tone-mute .act-icon { opacity: 0.75; }
+.act-body { flex: 1; min-width: 0; }
+.act-head { display: flex; align-items: baseline; gap: 8px; }
+.act-label { font-weight: 600; font-size: 13px; }
+.act-count {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--primary);
+  background: rgba(76, 194, 255, 0.12);
+  border-radius: 4px;
+  padding: 0 5px;
+}
+[data-theme="light"] .act-count { background: rgba(0, 95, 184, 0.1); }
+.act-time {
+  margin-left: auto;
+  font-size: var(--caption);
+  color: var(--subtle);
+  white-space: nowrap;
+}
+.act-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+.act-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--muted);
+  background: var(--surface-strong);
+  border: 1px solid var(--divider);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.act-chip b { color: var(--subtle); font-weight: 600; }

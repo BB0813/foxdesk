@@ -41,6 +41,12 @@ earlier audits plus hardened the newly added endpoints.
   URLs — title/meta block now shrinks (`min-width: 0`) so the URL ellipsizes;
   geometry verified in-browser (button right edge 29px inside the card)
 
+- Activity log redesigned as a timeline: humanized action labels (20
+  mappings, zh/en), per-type tone icons, relative timestamps, key=value
+  details rendered as chips (UUIDs shortened), consecutive repeats collapsed
+  with a ×N badge, contained scroll area; asset cache versions normalized
+  (app.js ref had been stuck at v2, serving stale JS)
+
 Tests: 151 passed, 1 skipped.
 ## Unreleased — UI redesign: Fluent 2 / Windows 11 design language
 
