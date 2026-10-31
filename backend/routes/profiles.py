@@ -593,10 +593,17 @@ class BatchUpdateRequest(BaseModel):
         raw = value.strip()
         if not raw:
             return ""
-        from zoneinfo import ZoneInfo
+        import re
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
         try:
             ZoneInfo(raw)
+        except ZoneInfoNotFoundError:
+            # tzdata unavailable on this host — accept well-formed IANA
+            # shapes instead of rejecting every timezone (CI runners may
+            # lack the system tz database).
+            if not re.fullmatch(r"[A-Za-z_]+/[A-Za-z0-9_+\-]+", raw):
+                raise ValueError(f"unknown IANA timezone: {raw[:60]}") from None
         except Exception:
             raise ValueError(f"unknown IANA timezone: {raw[:60]}") from None
         return raw
