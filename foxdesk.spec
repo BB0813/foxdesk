@@ -7,6 +7,12 @@ from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_sub
 
 ROOT = Path(SPECPATH)
 
+# Version from VERSION file (used by macOS BUNDLE Info.plist)
+try:
+    APP_VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
+except OSError:
+    APP_VERSION = '0.0.0'
+
 datas = [
     ('static', 'static'),
     ('backend', 'backend'),

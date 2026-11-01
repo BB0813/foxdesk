@@ -250,22 +250,17 @@ jobs:
           retention-days: 30
 
   build-linux:
-    # Build inside ubuntu:20.04 so the bundle links against GLIBC 2.31 —
-    # covers Debian 11+, Ubuntu 20.04+ and most NAS systems. Building on
-    # ubuntu-latest (26.04, GLIBC 2.38+) breaks older NAS/distros.
+    # Build inside Debian 11 bullseye (GLIBC 2.31 floor) — covers Debian 11+,
+    # Ubuntu 20.04+, and most NAS systems. Building on ubuntu-latest
+    # (GLIBC 2.38+) breaks older NAS/distros (user-reported).
     runs-on: ubuntu-latest
     container:
-      image: ubuntu:20.04
+      image: python:3.12-slim-bullseye
       options: --user root
     steps:
-      - name: Install base toolchain
+      - name: Install git (for checkout)
         run: |
-          export DEBIAN_FRONTEND=noninteractive
-          apt-get update
-          apt-get install -y --no-install-recommends             software-properties-common curl ca-certificates git             libwebkit2gtk-4.1-dev gir1.2-gtk-3.0             || apt-get install -y --no-install-recommends             software-properties-common curl ca-certificates git
-          add-apt-repository -y ppa:deadsnakes/ppa
-          apt-get update
-          apt-get install -y --no-install-recommends             python3.12 python3.12-venv python3.12-dev
+          apt-get update && apt-get install -y --no-install-recommends git
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -281,27 +276,24 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python3.12 -m ensurepip --upgrade || true
-          python3.12 -m pip install --upgrade pip
-          python3.12 -m pip install -r requirements.txt -r requirements-dev.txt
-          python3.12 -m pip install pyinstaller
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Tests
         env:
           PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
         run: |
-          python3.12 -m compileall backend desktop.py
-          python3.12 -m pytest tests -q --tb=short
+          python -m compileall backend desktop.py
+          python -m pytest tests -q --tb=short
 
       - name: Build with PyInstaller
-        run: python3.12 -m PyInstaller foxdesk.spec --noconfirm --clean --log-level WARN
+        run: python -m PyInstaller foxdesk.spec --noconfirm --clean --log-level WARN
 
       - name: Smoke test serve mode
         run: |
           dist/FoxDesk/FoxDesk --serve 8798 &
           SERVER_PID=$!
-          sleep 3
-          python3.12 - <<'PY'
+          python - <<'PY'
           import time, urllib.request, urllib.error
           port = 8798
           def req(path, headers=None):
