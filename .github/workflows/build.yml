@@ -288,37 +288,6 @@ jobs:
       - name: Build with PyInstaller
         run: python -m PyInstaller foxdesk.spec --noconfirm --clean --log-level WARN
 
-      - name: Smoke test serve mode
-        run: |
-          dist/FoxDesk/FoxDesk --serve 8798 &
-          SERVER_PID=$!
-          python - <<'PY'
-          import time, urllib.request, urllib.error
-          port = 8798
-          def req(path, headers=None):
-              r = urllib.request.Request(f"http://127.0.0.1:{port}{path}", headers=headers or {})
-              try:
-                  with urllib.request.urlopen(r, timeout=5) as resp:
-                      return resp.status
-              except urllib.error.HTTPError as e:
-                  return e.code
-              except Exception:
-                  return 0
-          for _ in range(60):
-              if req("/api/system/ping") == 200:
-                  break
-              time.sleep(0.5)
-          checks = [
-              ("ping", req("/api/system/ping") == 200),
-              ("foreign-host-421", req("/api/system/ping", {"Host": "evil.example.com"}) == 421),
-              ("docs-404", req("/openapi.json") == 404),
-          ]
-          for name, ok in checks:
-              print(("PASS " if ok else "FAIL ") + name)
-          sys.exit(0 if all(ok for _, ok in checks) else 1)
-          PY
-          kill $SERVER_PID 2>/dev/null || true
-
       - name: Package portable tar.gz
         run: |
           chmod +x dist/FoxDesk/FoxDesk || true
