@@ -187,9 +187,48 @@ python desktop.py</pre>
       <p>或双击 <code>Start-FoxDesk.bat</code>（旧名 <code>Start-CamoufoxManager.bat</code> 仍可用）</p>
       <p>用户数据目录：<code>%APPDATA%\FoxDesk</code>（旧版 <code>CamoufoxManager</code> 会自动迁移）。</p>
 
-      <h3>方式二：下载 exe 安装包</h3>
-      <p>从 <a href="https://github.com/BB0813/foxdesk/releases">GitHub Releases</a> 下载版本：当前稳定线 <strong>v1.6.0</strong>（双引擎 + Patchright）。安装或解压后运行 <code>FoxDesk.exe</code>。</p>
-      <p>无需安装 Python 环境（安装包形态）。</p>
+      <h3>方式二：下载安装包</h3>
+      <p>从 <a href="https://github.com/BB0813/foxdesk/releases">GitHub Releases</a> 下载当前稳定线 <strong>v1.6.0</strong>（双引擎 + Patchright）。无需安装 Python 环境（打包形态）。</p>
+
+      <div class="card">
+        <h3 style="margin-top:0">🪟 Windows</h3>
+        <p><strong>安装版</strong>：<code>FoxDesk-1.6.0-Setup.exe</code> — 双击安装到 <code>%LOCALAPPDATA%\Programs\FoxDesk</code>，开始菜单/桌面快捷方式启动。应用内「一键更新」可用（SHA256 校验）。</p>
+        <p><strong>便携版</strong>：解压 <code>FoxDesk-windows-x64-1.6.0.zip</code> 到任意目录，双击 <code>FoxDesk.exe</code>。数据目录在 <code>%APPDATA%\FoxDesk</code>，与安装版互通。</p>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0">🐧 Linux（实验性）</h3>
+        <p><strong>下载</strong>：<code>FoxDesk-linux-x64-1.6.0.tar.gz</code></p>
+        <pre>tar -xzf FoxDesk-linux-x64-1.6.0.tar.gz
+cd FoxDesk
+chmod +x FoxDesk
+./FoxDesk                 # 图形界面（需要 WebKit/GTK 运行库）
+./FoxDesk --serve 8765    # 无图形环境：本地 API 服务
+# 浏览器打开 http://127.0.0.1:8765</pre>
+        <p><strong>GUI 运行库</strong>（Debian/Ubuntu）：</p>
+        <pre>sudo apt install libwebkit2gtk-4.1-0 gir1.2-gtk-3.0 libayatana-appindicator3-1</pre>
+        <p><strong>数据目录</strong>：<code>~/.config/FoxDesk</code>（Camoufox 浏览器文件、代理池、备份都在这里）。</p>
+        <p><strong>注意事项</strong>：应用内「一键更新」目前仅 Windows 支持，Linux/macOS 请手动下载新版本覆盖；托盘图标需要系统装有 AppIndicator 扩展；隧道插件（xray 桥接）同样可用，Linux 版 xray 内核会在质量检测时自动下载对应架构。</p>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0">🍎 macOS（实验性，未签名）</h3>
+        <p><strong>下载</strong>：<code>FoxDesk-macos-1.6.0.zip</code>（Intel；Apple Silicon 需 Rosetta 2）</p>
+        <pre>unzip FoxDesk-macos-1.6.0.zip
+# 解压出 FoxDesk/FoxDesk.app
+xattr -cr FoxDesk/FoxDesk.app    # 清除隔离标记（未签名应用必需）
+open FoxDesk/FoxDesk.app         # 或拖入「应用程序」后启动</pre>
+        <p><strong>首次打开被 Gatekeeper 拦截</strong>是正常现象（应用未做 Apple 公证），三种处理任选：</p>
+        <ul>
+          <li>右键 <code>FoxDesk.app</code> → 打开（仅第一次需要确认）</li>
+          <li>终端执行 <code>xattr -cr FoxDesk/FoxDesk.app</code></li>
+          <li>系统设置 → 隐私与安全性 → 「仍要打开」</li>
+        </ul>
+        <p><strong>无 quarantine 安装</strong>（推荐开发者）：</p>
+        <pre>brew tap BB0813/foxdesk
+brew install --cask foxdesk</pre>
+        <p><strong>数据目录</strong>：<code>~/Library/Application Support/FoxDesk</code>。xray 隧道插件会自动下载 macOS 版内核。</p>
+      </div>
 
       <h3>方式三：Web 调试模式</h3>
       <pre>python -m uvicorn backend.app:app --host 127.0.0.1 --port 8765 --reload
@@ -203,6 +242,17 @@ python desktop.py</pre>
         <p><strong>3. Test</strong> — 运行自检（可选，可能耗时较长）</p>
       </div>
       <p>Chromium（可选）：系统页可查看 Playwright / Patchright / 本机 Chrome 状态；推荐 <code>chromium_backend=auto</code>。模板「AI 工作档案」面向自有账号正常使用 ChatGPT/Claude/Gemini，<strong>不保证</strong>注册/订阅通过。</p>
+
+      <h3>平台常见问题</h3>
+      <table>
+        <tr><th>问题</th><th>平台</th><th>解决</th></tr>
+        <tr><td>应用内一键更新不可用</td><td>Linux / macOS</td><td>手动下载新版本覆盖（数据目录不受影响）</td></tr>
+        <tr><td>托盘图标不显示</td><td>Linux</td><td>安装 AppIndicator：<code>sudo apt install gir1.2-ayatanaappindicator3-1</code></td></tr>
+        <tr><td>GUI 无法启动（WebKit 报错）</td><td>Linux</td><td><code>sudo apt install libwebkit2gtk-4.1-0</code>；或改用 <code>--serve</code> 模式</td></tr>
+        <tr><td>「已损坏，无法打开」</td><td>macOS</td><td><code>xattr -cr FoxDesk.app</code>（未签名应用的正常拦截）</td></tr>
+        <tr><td>vless 桥接提示缺内核</td><td>全部</td><td>插件页点「下载内核」，或在设置中配置 xray_path</td></tr>
+        <tr><td>代理口令安全性</td><td>Windows</td><td>DPAPI 加密存储（绑定当前用户）；Linux/macOS 为本地混淆（同机其他用户理论可读，注意权限）</td></tr>
+      </table>
 
       <!-- QUICKSTART -->
       <h2 id="quickstart">快速上手</h2>
