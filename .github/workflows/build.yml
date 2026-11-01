@@ -250,14 +250,28 @@ jobs:
           retention-days: 30
 
   build-linux:
+    # Build inside ubuntu:20.04 so the bundle links against GLIBC 2.31 —
+    # covers Debian 11+, Ubuntu 20.04+ and most NAS systems. Building on
+    # ubuntu-latest (26.04, GLIBC 2.38+) breaks older NAS/distros.
     runs-on: ubuntu-latest
+    container:
+      image: ubuntu:20.04
+      options: --user root
     steps:
+      - name: Install base toolchain
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y --no-install-recommends             software-properties-common curl ca-certificates git             libwebkit2gtk-4.1-dev gir1.2-gtk-3.0             || apt-get install -y --no-install-recommends             software-properties-common curl ca-certificates git
+          add-apt-repository -y ppa:deadsnakes/ppa
+          apt-get update
+          apt-get install -y --no-install-recommends             python3.12 python3.12-venv python3.12-dev
+
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Resolve version
         id: meta
-        shell: bash
         run: |
           tagRef="${{ github.ref_name }}"
           fileVersion="$(tr -d '[:space:]' < VERSION)"
@@ -265,39 +279,31 @@ jobs:
           [ "$version" = "$tagRef" ] && version="$fileVersion"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install system deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev gir1.2-gtk-3.0
-
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt -r requirements-dev.txt
+          python3.12 -m ensurepip --upgrade || true
+          python3.12 -m pip install --upgrade pip
+          python3.12 -m pip install -r requirements.txt -r requirements-dev.txt
+          python3.12 -m pip install pyinstaller
 
       - name: Tests
         env:
           PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
         run: |
-          python -m compileall backend desktop.py
-          python -m pytest tests -q --tb=short
+          python3.12 -m compileall backend desktop.py
+          python3.12 -m pytest tests -q --tb=short
 
       - name: Build with PyInstaller
-        run: python -m PyInstaller foxdesk.spec --noconfirm --clean --log-level WARN
+        run: python3.12 -m PyInstaller foxdesk.spec --noconfirm --clean --log-level WARN
 
       - name: Smoke test serve mode
         run: |
-          python - <<'PY'
-          import os, sys, time, urllib.request, urllib.error
+          dist/FoxDesk/FoxDesk --serve 8798 &
+          SERVER_PID=$!
+          sleep 3
+          python3.12 - <<'PY'
+          import time, urllib.request, urllib.error
           port = 8798
-          import uvicorn
-          server = uvicorn.Server(uvicorn.Config("backend.app:app", host="127.0.0.1", port=port, log_level="error"))
-          import threading
-          threading.Thread(target=server.run, daemon=True).start()
           def req(path, headers=None):
               r = urllib.request.Request(f"http://127.0.0.1:{port}{path}", headers=headers or {})
               try:
@@ -320,6 +326,7 @@ jobs:
               print(("PASS " if ok else "FAIL ") + name)
           sys.exit(0 if all(ok for _, ok in checks) else 1)
           PY
+          kill $SERVER_PID 2>/dev/null || true
 
       - name: Package portable tar.gz
         run: |
