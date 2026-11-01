@@ -27,20 +27,26 @@ USE_MIRROR=0
 VERSION=""
 
 gh_api() {
-    # GitHub API（自动跟随重定向；带超时）
-    curl -fsSL --connect-timeout 10 --max-time 30 \
+    # GitHub API（直连 → ghproxy 镜像自动回退）
+    curl -fsSL --connect-timeout 8 --max-time 30 \
         -H "Accept: application/vnd.github+json" \
-        "https://api.github.com/repos/${GITHUB_REPO}$1" 2>/dev/null
+        "https://api.github.com/repos/${GITHUB_REPO}$1" 2>/dev/null && return 0
+    curl -fsSL --connect-timeout 8 --max-time 30 \
+        "https://mirror.ghproxy.com/https://api.github.com/repos/${GITHUB_REPO}$1" 2>/dev/null
 }
 
 dl() {
-    # dl <url> <output>：直连优先，失败自动切 ghproxy 镜像
+    # dl <url> <output>：直连优先，失败/超时自动切 ghproxy/ghfast 镜像
     local url="$1" out="$2"
-    if [ "$USE_MIRROR" -eq 1 ] && curl -fsSL --connect-timeout 10 --max-time 600 -o "$out" \
-        "https://mirror.ghproxy.com/${url}" 2>/dev/null; then
-        return 0
-    fi
-    curl -fsSL --connect-timeout 10 --max-time 600 -o "$out" "$url"
+    local prefixes=("https://mirror.ghproxy.com/" "https://ghfast.top/" "")
+    [ "$USE_MIRROR" -eq 1 ] && prefixes=("https://mirror.ghproxy.com/" "https://ghfast.top/")
+    for prefix in "${prefixes[@]}"; do
+        if curl -fsSL --connect-timeout 8 --max-time 600 -o "$out" "${prefix}${url}" 2>/dev/null; then
+            [ -n "$prefix" ] && msg "通过镜像下载成功: ${prefix}"
+            return 0
+        fi
+    done
+    return 1
 }
 
 msg() { printf '\n\033[1;36m[FoxDesk]\033[0m %s\n' "$*"; }

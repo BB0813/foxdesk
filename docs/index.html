@@ -199,8 +199,8 @@ python desktop.py</pre>
       <div class="card">
         <h3 style="margin-top:0">🐧 Linux（实验性）</h3>
         <p><strong>一键安装</strong>（推荐）：</p>
-        <pre>curl -fsSL https://raw.githubusercontent.com/BB0813/foxdesk/main/tools/install-linux.sh | sudo bash</pre>
-        <p>国内网络加镜像：<code>... | sudo bash -s -- --mirror</code>。脚本自动完成：下载最新版 → SHA256 校验 → 解压到 /opt/FoxDesk → 创建 <code>foxdesk</code> 命令和桌面快捷方式 → 检查运行库。</p>
+        <pre>curl -fsSL https://bb0813.github.io/foxdesk/tools/install-linux.sh | sudo bash</pre>
+        <p>脚本自动完成：下载最新版（直连失败自动切 ghproxy/ghfast 镜像）→ SHA256 校验 → 解压到 /opt/FoxDesk → 创建 <code>foxdesk</code> 命令和桌面快捷方式 → 检查运行库。</p>
         <p><strong>手动安装</strong>：</p>
         <pre>wget https://github.com/BB0813/foxdesk/releases/download/v1.6.0/FoxDesk-linux-x64-1.6.0.tar.gz
 tar -xzf FoxDesk-linux-x64-1.6.0.tar.gz
