@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased — proxy workflow completion (batch quality + assign-and-match)
+
+The proxy quality/geo chain is now a complete workflow: import → 检测全部质量
+→ 分配并匹配.
+
+- **批量质量检测**: header button runs quality-check for every pool proxy
+  sequentially with live progress in the status line, then toasts the
+  residential/datacenter tally
+- **分配并匹配** per-proxy button: assigns the proxy to the selected
+  profiles, then applies the timezone_geo_mismatch suggestion to each —
+  timezone/locale auto-align with the exit geo in one action; per-profile
+  failures (no geo record) counted separately
+- Verified end-to-end: seed proxy with geo + mismatched profile → assign →
+  apply → timezone/locale set, risk cleared; quality-check degrades
+  gracefully against unreachable proxies
+
+Tests: 155 passed, 1 skipped.
 ### One-click env fix + probe export
 
 - **timezone_geo_mismatch is now one-click fixable**: the D-B5

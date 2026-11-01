@@ -74,6 +74,13 @@ const i18n = {
     applyFix: "一键修复",
     applied: "已应用",
     probeExport: "导出对比 JSON",
+    batchQualityBtn: "检测全部质量",
+    qualityBatchDone: "批量质量检测完成",
+    qualityChecking: "质量检测中",
+    assignMatch: "分配并匹配",
+    assignMatchDone: "已分配并匹配环境",
+    assignMatchNoGeo: "无归属记录",
+    assignMatchHint: "分配给所选档案并按出口归属自动配平时区/语言",
     qualityCheck: "检测质量",
     qualityCheckDone: "质量检测完成",
     qualityResidential: "住宅 IP",
@@ -467,6 +474,13 @@ const i18n = {
     applyFix: "Auto-fix",
     applied: "Applied",
     probeExport: "Export JSON",
+    batchQualityBtn: "Check all quality",
+    qualityBatchDone: "Batch quality check done",
+    qualityChecking: "Quality checking",
+    assignMatch: "Assign + match",
+    assignMatchDone: "Assigned and environment matched",
+    assignMatchNoGeo: "no geo record",
+    assignMatchHint: "Assign to selected profiles and auto-align timezone/locale with exit geo",
     qualityCheck: "Check quality",
     qualityCheckDone: "Quality check done",
     qualityResidential: "Residential IP",
@@ -1802,6 +1816,43 @@ async function loadProxyHealthStatus() {
   }
 }
 
+// Batch quality-check: run test+classification for every pool proxy.
+async function batchQualityCheck() {
+  const items = state.proxies || [];
+  if (!items.length) {
+    toast(t("noProxiesShort"));
+    return;
+  }
+  const btn = $("#batchQualityBtn");
+  const hint = $("#proxyHealthHint");
+  btn.disabled = true;
+  let done = 0;
+  let residential = 0;
+  let datacenter = 0;
+  try {
+    for (const item of items) {
+      done += 1;
+      if (hint) hint.textContent = `${t("qualityChecking")}: ${done}/${items.length} · ${item.name || item.server || ""}`;
+      try {
+        const result = await api(`/api/proxies/${escapeAttr(item.id)}/quality-check`, {
+          method: "POST",
+          body: "{}",
+        });
+        if (result.ok) {
+          if (result.quality?.quality === "residential" || result.quality?.quality === "mobile") residential += 1;
+          else if (result.quality?.quality === "datacenter") datacenter += 1;
+        }
+      } catch (_) {}
+    }
+    const label = (q) => (q === "residential" || q === "mobile" ? t("qualityResidential") : q === "datacenter" ? t("qualityDatacenter") : t("qualityUnknown"));
+    toast(`${t("qualityBatchDone")}: ${items.length} · ${label("residential")} ${residential} · ${label("datacenter")} ${datacenter}`);
+  } finally {
+    btn.disabled = false;
+    if (hint) hint.textContent = "";
+  }
+  await loadProxies();
+}
+
 async function runProxyHealthNow() {
   toast(t("proxyHealthRunning"));
   const result = await api("/api/proxies/health-check", { method: "POST", body: "{}" });
@@ -2614,6 +2665,7 @@ function renderProxyPool() {
               <button class="button secondary proxy-quality" data-proxy-id="${escapeHtml(p.id)}" type="button">${t("qualityCheck")}</button>
               <button class="button secondary proxy-test" data-proxy-id="${escapeHtml(p.id)}" type="button">${t("testProxy")}</button>
               <button class="button secondary proxy-assign" data-proxy-id="${escapeHtml(p.id)}" type="button">${t("assignProxy")}</button>
+              <button class="button secondary proxy-assign-match" data-proxy-id="${escapeHtml(p.id)}" type="button" title="${t("assignMatchHint")}">${t("assignMatch")}</button>
               <button class="button danger proxy-delete icon-only" data-proxy-id="${escapeHtml(p.id)}" type="button" title="${t("delete")}"><i data-lucide="trash-2"></i></button>
             </div>
           </div>
@@ -3689,6 +3741,7 @@ function bindEvents() {
   $("#restoreBackupBtn")?.addEventListener("click", () => restoreBackup().catch((e) => toast(e.message)));
   $("#refreshBackupsBtn")?.addEventListener("click", () => loadBackups().catch((e) => toast(e.message)));
   $("#proxyHealthNowBtn")?.addEventListener("click", () => runProxyHealthNow().catch((e) => toast(e.message)));
+  $("#batchQualityBtn")?.addEventListener("click", () => batchQualityCheck().catch((e) => toast(e.message)));
   $("#githubTokenInput")?.addEventListener("input", (e) => {
     e.target.dataset.dirty = "1";
   });
