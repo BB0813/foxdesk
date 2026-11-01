@@ -91,7 +91,7 @@ def migrate_legacy_data() -> None:
                 pass
 
 
-APP_VERSION = "1.4.9"
+APP_VERSION = "1.5.0"
 GITHUB_REPO = "BB0813/foxdesk"
 
 if getattr(sys, "frozen", False):

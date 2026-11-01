@@ -10,6 +10,7 @@ ROOT = Path(SPECPATH)
 datas = [
     ('static', 'static'),
     ('backend', 'backend'),
+    ('plugins', 'plugins'),
 ]
 binaries = []
 hiddenimports = [
