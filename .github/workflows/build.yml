@@ -393,11 +393,26 @@ jobs:
           sys.exit(0 if all(ok for _, ok in checks) else 1)
           PY
 
-      - name: Package portable zip
+      - name: Package macOS app bundle
         run: |
-          chmod +x dist/FoxDesk/FoxDesk || true
-          zip -qry "FoxDesk-macos-${{ steps.meta.outputs.version }}.zip" dist/FoxDesk
-          shasum -a 256 "FoxDesk-macos-${{ steps.meta.outputs.version }}.zip" > SHA256SUMS-macos
+          set -e
+          # PyInstaller 6 onedir+windowed on macOS produces dist/FoxDesk/FoxDesk.app
+          APP="dist/FoxDesk/FoxDesk.app"
+          if [ -d "$APP" ]; then
+            # Ad-hoc re-sign the whole bundle (deep) so arm64 execs run at all
+            codesign --force --deep --sign - "$APP" || true
+            mkdir -p stage
+            cp -R "$APP" stage/
+            zip -qry "FoxDesk-macos-${{ steps.meta.outputs.version }}.zip" stage/FoxDesk.app
+            shasum -a 256 "FoxDesk-macos-${{ steps.meta.outputs.version }}.zip" > SHA256SUMS-macos
+            echo "packaged .app bundle"
+          else
+            # Fallback: portable folder zip (Intel macs / older layout)
+            chmod +x dist/FoxDesk/FoxDesk || true
+            zip -qry "FoxDesk-macos-${{ steps.meta.outputs.version }}.zip" dist/FoxDesk
+            shasum -a 256 "FoxDesk-macos-${{ steps.meta.outputs.version }}.zip" > SHA256SUMS-macos
+            echo "packaged portable folder (no .app bundle found)"
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

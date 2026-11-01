@@ -33,6 +33,12 @@
 | Linux x64 | ✅ 实验性（便携 tar.gz；GUI 需 WebKit/GTK 运行库） | `FoxDesk-linux-x64.tar.gz` |
 | macOS x64 | ✅ 实验性（便携 zip，未签名） | `FoxDesk-macos.zip` |
 
+**macOS Gatekeeper 说明**（下载 zip 后首次打开被拦时）：
+1. 最简：右键 FoxDesk.app → 打开（仅第一次需要）
+2. 命令行：`xattr -cr /path/to/FoxDesk.app`
+3. 免绕过：`brew tap BB0813/foxdesk && brew install --cask foxdesk`（模板见 `tools/homebrew/`，发版后更新 version/sha256）
+4. 完全免签：需要 Apple Developer Program（$99/年）做 Developer ID 签名 + 公证——已预留 CI 流程文档（`docs/research/macos-signing.md`）
+
 Linux 运行 GUI 需要 `libwebkit2gtk-4.1` 与 GTK3（`sudo apt install libwebkit2gtk-4.1-dev gir1.2-gtk-3.0`）；无 GUI 环境可用 `./FoxDesk --serve <port>` + 浏览器访问。macOS 构建未做代码签名，首次打开需右键 → 打开。
 
 ## 快速开始
