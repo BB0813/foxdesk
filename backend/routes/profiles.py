@@ -498,6 +498,19 @@ def fingerprint_check(profile_id: str) -> dict[str, Any]:
     check_url = "https://browserleaks.com/javascript"
     has_proxy = bool((profile.proxy and profile.proxy.server) or profile.proxy_id)
     engine = normalize_engine_name(getattr(profile, "engine", None))
+
+    # Probe user_data_dir with retry for transient SMB disconnections
+    udd_warning = None
+    if profile.user_data_dir:
+        udd = Path(profile.user_data_dir).expanduser()
+        try:
+            from backend.profile_logic import _retry_path_op
+
+            _retry_path_op(lambda: udd.mkdir(parents=True, exist_ok=True))
+        except OSError as exc:
+            from backend.profile_logic import _humanize_network_error
+
+            udd_warning = _humanize_network_error(exc)
     checks = {
         "mode": profile.mode,
         "engine": engine,
@@ -577,6 +590,7 @@ def fingerprint_check(profile_id: str) -> dict[str, Any]:
         "issues": issues,
         "environment_risks": risks,
         "score": max(0, min(100, score)),
+        "udd_warning": udd_warning,
         "check_url": check_url,
         "note": (
             "Static consistency only — not a payment / AI signup-pass guarantee. "

@@ -3639,6 +3639,7 @@ async function checkFingerprint() {
         <span style="font-size:12px;color:var(--muted)">${issues.length === 0 ? "✓ " + t("allChecksPassed") : `${issues.length} ${t("issues")}`}</span>
         <a href="${safeUrl(result.check_url)}" target="_blank" rel="noopener noreferrer" style="margin-left:auto;font-size:12px">${t("openInBrowser")} →</a>
       </div>
+      ${result.udd_warning ? `<div class="session-error" style="margin:0 0 8px">${escapeHtml(result.udd_warning)}</div>` : ""}
       <p style="margin:0 0 8px;font-size:12px;color:var(--muted)">${escapeHtml(result.note || t("envRiskNote"))}</p>
       ${issues.length ? `<ul class="fp-issues">${issues.map((i) => `<li>${escapeHtml(i)}</li>`).join("")}</ul>` : ""}
       ${riskList}

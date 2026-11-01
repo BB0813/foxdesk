@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased — network path resilience (NAS/SMB disconnection)
+
+User-reported: FoxDesk running from a network mapped drive with
+user_data_dir on a NAS UNC path — SMB disconnections crash fingerprint
+checks and session launches with cryptic WinError 53.
+
+- **Retry helper** `_retry_path_op()`: filesystem ops on network paths
+  retry up to 2 times with 1.5s delay on transient SMB errors (WinError
+  53/64/121/1231)
+- **Humanized network errors**: `_humanize_network_error()` replaces
+  cryptic WinError codes with actionable Chinese messages
+- **Soft risk entry**: `network_user_data_dir` (medium) flags UNC-path
+  user_data_dir in environment_risks
+- **Fingerprint check** returns `udd_warning` when user_data_dir is
+  unreachable; UI renders it as a visible error banner
+
+Tests: 160 passed, 1 skipped.
+
+
 ## Unreleased — macOS tray crash fix
 
 Mac user crash log (.ips) analyzed: pystray's NSStatusItem setup ran on a

@@ -22,6 +22,37 @@ from backend.engine_tools import (
 _rr_proxy_index = 0
 _rr_proxy_lock = threading.Lock()
 
+_NETWORK_ERRNO = {53, 64, 121, 1231}  # WinError: bad net path, unreachable, timeout
+
+
+def _is_network_path(path: Path) -> bool:
+    """True for UNC (\\\\server\\share) paths that go over SMB."""
+    return str(path).startswith("\\\\")
+
+
+def _retry_path_op(fn, *, retries: int = 2, delay: float = 1.5):
+    """Retry a filesystem op that may fail on transient SMB disconnections."""
+    import time as _time
+
+    last_exc = None
+    for attempt in range(retries + 1):
+        try:
+            return fn()
+        except OSError as exc:
+            if getattr(exc, "errno", None) not in _NETWORK_ERRNO and getattr(exc, "winerror", None) not in _NETWORK_ERRNO:
+                raise
+            last_exc = exc
+            if attempt < retries:
+                _time.sleep(delay)
+    return last_exc  # caller handles the final failure
+
+
+def _humanize_network_error(exc: OSError) -> str:
+    return (
+        f"网络路径不可达（{exc}）。请检查 NAS/SMB 连接是否正常，"
+        f"或在档案设置中将 user_data_dir 改为本地路径。"
+    )
+
 
 def resolve_user_data_dir(raw: str) -> Path:
     """Resolve relative profile dirs under APPDATA profiles root."""
@@ -345,6 +376,14 @@ def environment_risks_for_profile(profile: Profile) -> list[dict[str, str]]:
                 "high",
                 "Proxy is set but geoip is off — timezone/locale may not match the exit IP (common hard-fail for checkout).",
             )
+    # Network-path user_data_dir: SMB disconnections break sessions
+    udd = getattr(profile, "user_data_dir", "") or ""
+    if udd.startswith("\\\\"):
+        add(
+            "network_user_data_dir",
+            "medium",
+            "user_data_dir 在网络盘（UNC 路径）上——NAS/SMB 断连时档案无法启动或保存，建议移到本地磁盘。",
+        )
     if has_proxy and not (profile.timezone or "").strip():
         add(
             "proxy_without_timezone",
