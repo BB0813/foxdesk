@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.6.0 — 2026-11-01 — multi-platform (linux/macos)
+
+### Multi-platform (developer-requested)
+- **Linux x64** and **macOS x64** CI builds now ship with every release:
+  portable tar.gz / zip built on native runners, tests + serve-mode security
+  smoke (loopback ping, rebinding guard, docs-off) executed on each platform
+- Code portability fixes: token file chmod 0600 on POSIX; FoxDesk data-dir
+  candidates for XDG/Library paths (chromium browser cache + xray lookup);
+  dotnet staging guarded win32-only; requirements platform markers
+  (pythonnet/pywin32 win-only — mac/linux use Cocoa/GTK pywebview backends)
+- xray-bridge plugin: platform asset mapping (win/linux/mac, x64/arm64) so
+  core auto-download works on every platform
+- Release page now lists Windows + Linux + macOS artifacts; README gains a
+  platform support table (Linux GUI needs libwebkit2gtk/GTK3; macOS unsigned)
+
 ## 1.5.1 — 2026-11-01 — plugins panel
 
 - New 插件 page in the sidebar: plugin cards (name/version/description/

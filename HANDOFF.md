@@ -31,7 +31,7 @@ python -m uvicorn backend.app:app --host 127.0.0.1 --port 8765 --reload
 
 ## 当前版本
 
-见 `VERSION`（发布线：`1.5.1`+）。
+见 `VERSION`（发布线：`1.6.0`+）。
 
 ## 关键本地能力
 
@@ -68,7 +68,7 @@ CI（tag `v*`）会 compileall、pytest、打包、发 Release。
 ## 发布
 
 ```bash
-git tag v1.5.1
+git tag v1.6.0
 git push origin main
-git push origin v1.5.1
+git push origin v1.6.0
 ```
