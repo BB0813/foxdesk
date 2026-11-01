@@ -381,8 +381,8 @@ def environment_risks_for_profile(profile: Profile) -> list[dict[str, str]]:
     if udd.startswith("\\\\"):
         add(
             "network_user_data_dir",
-            "medium",
-            "user_data_dir 在网络盘（UNC 路径）上——NAS/SMB 断连时档案无法启动或保存，建议移到本地磁盘。",
+            "high",
+            "user_data_dir 在网络盘（UNC 路径）上——NAS/SMB 断连时档案无法启动或保存，且浏览器 profile 的小文件 I/O 在网络盘上极慢。强烈建议改为本地路径。",
         )
     if has_proxy and not (profile.timezone or "").strip():
         add(

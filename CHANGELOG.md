@@ -12,6 +12,14 @@ The fingerprint check result was a wall of unstyled text. Rewritten:
 - **udd_warning**: network-path errors rendered as visible error banners
 - CSS: `.fp-result`, `.fp-risk-item`, `.fp-checks-grid`, `.fp-section-title`
 
+### Fingerprint check UI polish + user_data_dir local migration
+- fp-checks-grid: proper 4-column table with borders and zebra rows
+  (was: broken auto-fill grid with misaligned dt/dd pairs)
+- User profiles with UNC-path user_data_dir migrated to local
+  %APPDATA%/FoxDesk/profiles/ — browser profile small-file I/O on SMB is
+  extremely slow and causes transient WinError 53 crashes
+- network_user_data_dir risk upgraded medium → high
+
 Tests: 160 passed, 1 skipped.
 
 

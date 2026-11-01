@@ -1080,21 +1080,33 @@ button.tag:hover { color: var(--text); background: var(--border); }
 
 .fp-checks-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 5px 12px;
+  grid-template-columns: 130px 1fr 130px 1fr;
+  gap: 0;
   margin: 10px 0 0;
   font-size: 12.5px;
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-s);
+  overflow: hidden;
 }
 .fp-checks-grid dt {
   color: var(--subtle);
   font-weight: 580;
-  padding: 3px 0;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--divider);
+  background: var(--surface-strong);
 }
 .fp-checks-grid dd {
   margin: 0;
-  padding: 3px 0;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--divider);
   color: var(--text);
   overflow-wrap: anywhere;
+}
+.fp-checks-grid dt:nth-of-type(2n+1), .fp-checks-grid dd:nth-of-type(2n+1) {
+  border-right: 1px solid var(--divider);
+}
+.fp-checks-grid dt:nth-last-of-type(-n+2), .fp-checks-grid dd:nth-last-of-type(-n+2) {
+  border-bottom: none;
 }
 .fp-section-title {
   font-size: 12px;
