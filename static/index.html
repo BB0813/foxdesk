@@ -33,6 +33,10 @@
           <i data-lucide="settings-2"></i>
           <span data-i18n="tabSystem">系统</span>
         </button>
+        <button type="button" data-page="plugins">
+          <i data-lucide="puzzle"></i>
+          <span data-i18n="tabPlugins">插件</span>
+        </button>
       </nav>
       <div class="side-foot">
         <span class="status-pill" id="installStatus">Checking</span>
@@ -785,6 +789,21 @@
               </div>
             </div>
             <div id="activityList" class="activity-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ Tab: Plugins ═══ -->
+      <div class="tab-page" data-page="plugins">
+        <div class="plugins-layout">
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h2 data-i18n="pluginsTitle">插件</h2>
+                <p data-i18n="pluginsDesc">扩展 FoxDesk 的能力：隧道协议桥接等</p>
+              </div>
+            </div>
+            <div class="plugin-list" id="pluginList"></div>
           </div>
         </div>
       </div>

@@ -997,3 +997,17 @@ button.tag:hover { color: var(--text); background: var(--border); }
   white-space: nowrap;
 }
 .act-chip b { color: var(--subtle); font-weight: 600; }
+
+/* Plugins page */
+.plugins-layout { display: flex; flex-direction: column; }
+.plugin-list { display: flex; flex-direction: column; padding: 6px 0; }
+.plugin-row {
+  display: flex;
+  margin: 4px 10px;
+  padding: 12px;
+  border: 1px solid var(--divider);
+  border-radius: var(--radius);
+  background: var(--layer-alt);
+  transition: border-color var(--tr);
+}
+.plugin-row:hover { border-color: var(--border-strong); }

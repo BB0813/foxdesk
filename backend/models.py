@@ -207,6 +207,7 @@ class SettingsUpdateRequest(BaseModel):
     proxy_auto_check: bool | None = None
     proxy_check_interval_sec: int | None = None
     proxy_assign_mode: str | None = None
+    xray_path: str | None = None
 
 
 class UpdateCheckRequest(BaseModel):

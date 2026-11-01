@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — plugins panel
+
+- New 插件 page in the sidebar: plugin cards (name/version/description/
+  protocols), core state (ready/binary path/running bridges), and a
+  一键下载内核 button for plugins that support it
+- Xray Bridge card gains an xray path input + 保存路径 (persists via
+  /api/settings, whitelisted in SettingsUpdateRequest + settings_store)
+- i18n complete (zh/en); 160 tests pass
 ## 1.5.0 — 2026-11-01 — plugin system + tunnel nodes + subscriptions
 
 Minor bump: new extensibility architecture.

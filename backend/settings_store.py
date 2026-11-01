@@ -140,6 +140,8 @@ class SettingsStore:
             data["proxy_auto_check"] = bool(patch["proxy_auto_check"])
         if "proxy_check_interval_sec" in patch and patch["proxy_check_interval_sec"] is not None:
             data["proxy_check_interval_sec"] = max(30, min(3600, int(patch["proxy_check_interval_sec"])))
+        if "xray_path" in patch and patch["xray_path"] is not None:
+            data["xray_path"] = str(patch["xray_path"]).strip()
         if "proxy_assign_mode" in patch and patch["proxy_assign_mode"] is not None:
             mode = str(patch["proxy_assign_mode"]).strip().lower()
             if mode not in {"sticky", "round_robin", "random_healthy"}:

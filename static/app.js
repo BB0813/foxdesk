@@ -77,6 +77,17 @@ const i18n = {
     subscriptionImport: "订阅导入（vless/订阅链接）",
     subscriptionImportBtn: "导入订阅",
     subscriptionDone: "订阅导入完成",
+    tabPlugins: "插件",
+    pluginsTitle: "插件",
+    pluginsDesc: "扩展 FoxDesk 的能力：隧道协议桥接等",
+    pluginsEmpty: "暂无插件",
+    pluginCoreReady: "内核就绪",
+    pluginCoreMissing: "内核未下载",
+    pluginDownloadCore: "下载内核",
+    pluginCoreDownloaded: "内核下载完成",
+    pluginNoBridges: "无运行中的桥接",
+    xrayPathLabel: "xray 内核路径（留空自动检测）",
+    xrayPathSave: "保存路径",
     bridgeStart: "启动桥接",
     bridgeStop: "停止桥接",
     bridgeRunning: "桥接运行中",
@@ -486,6 +497,17 @@ const i18n = {
     subscriptionImport: "Subscription (vless / share links)",
     subscriptionImportBtn: "Import",
     subscriptionDone: "Subscription imported",
+    tabPlugins: "Plugins",
+    pluginsTitle: "Plugins",
+    pluginsDesc: "Extend FoxDesk: tunnel protocol bridges and more",
+    pluginsEmpty: "No plugins installed",
+    pluginCoreReady: "core ready",
+    pluginCoreMissing: "core not downloaded",
+    pluginDownloadCore: "Download core",
+    pluginCoreDownloaded: "Core downloaded",
+    pluginNoBridges: "no running bridges",
+    xrayPathLabel: "xray core path (empty = auto-detect)",
+    xrayPathSave: "Save path",
     bridgeStart: "Start bridge",
     bridgeStop: "Stop bridge",
     bridgeRunning: "Bridge running",
@@ -823,6 +845,7 @@ const state = {
   theme: localStorage.getItem("cm-theme") || "dark",
   selectedSessions: new Set(),
   probeReports: [],
+  plugins: [],
   profiles: [],
   selectedId: null,
   system: null,
@@ -3708,6 +3731,100 @@ function renderIcons() {
   });
 }
 
+// --- Plugins page ---
+async function loadPlugins() {
+  const el = $("#pluginList");
+  if (!el) return;
+  try {
+    state.plugins = await api("/api/plugins");
+    renderPlugins();
+  } catch (err) {
+    el.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
+  }
+}
+
+function renderPlugins() {
+  const el = $("#pluginList");
+  if (!el) return;
+  if (!state.plugins.length) {
+    el.innerHTML = `<div class="empty"><strong>${t("pluginsEmpty")}</strong></div>`;
+    return;
+  }
+  el.innerHTML = state.plugins
+    .map((p) => {
+      const core = p.state?.core || {};
+      const bridges = p.state?.bridges || [];
+      const coreLine = core.ready
+        ? `<span class="tag running"><i data-lucide="check"></i>${t("pluginCoreReady")}</span>
+           <span class="act-chip" title="${escapeAttr(core.binary || "")}">${escapeHtml(core.binary || "")}</span>`
+        : `<span class="tag failed"><i data-lucide="alert-triangle"></i>${t("pluginCoreMissing")}</span>`;
+      const bridgeList = bridges.length
+        ? bridges.map((b) => `<span class="tag running"><i data-lucide="radio"></i>SOCKS :${escapeHtml(String(b.port))}</span>`).join("")
+        : `<span class="tag">${t("pluginNoBridges")}</span>`;
+      const canDownload = typeof p.state?.core?.ready === "boolean" && !core.ready;
+      return `
+        <article class="plugin-row" data-plugin-id="${escapeAttr(p.id)}">
+          <div class="row-main">
+            <div style="min-width:0">
+              <div class="row-title">${escapeHtml(p.name)} <span class="act-chip">v${escapeHtml(p.version)}</span></div>
+              <div class="row-meta">${escapeHtml(p.description || "")}</div>
+              <div class="tagline" style="padding:6px 0 0">
+                ${(p.protocols || []).map((pr) => `<span class="tag p0">${escapeHtml(pr.toUpperCase())}</span>`).join("")}
+                ${coreLine}
+              </div>
+              <div class="tagline" style="padding:6px 0 0">${bridgeList}</div>
+            </div>
+            <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
+              ${canDownload ? `<button class="button primary plugin-download-core" data-plugin-id="${escapeAttr(p.id)}" type="button"><i data-lucide="download"></i>${t("pluginDownloadCore")}</button>` : ""}
+            </div>
+            ${p.id === "xray-bridge" ? `
+            <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
+              <label style="flex:1;min-width:240px;margin:0">
+                <span data-i18n="xrayPathLabel">${t("xrayPathLabel")}</span>
+                <input id="xrayPathInput" value="${escapeAttr(core.binary || "")}" placeholder="xray.exe" style="font-family:var(--mono);font-size:12px" />
+              </label>
+              <button class="button secondary" id="xrayPathSaveBtn" type="button">${t("xrayPathSave")}</button>
+            </div>` : ""}
+          </div>
+        </article>`;
+    })
+    .join("");
+  renderIcons();
+  $("#xrayPathSaveBtn")?.addEventListener("click", saveXrayPath);
+  $$(".plugin-download-core").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      try {
+        const result = await api(`/api/plugins/${escapeAttr(btn.dataset.pluginId)}/core`, {
+          method: "POST",
+          body: JSON.stringify({ action: "download" }),
+        });
+        toast(result.ok ? `${t("pluginCoreDownloaded")}` : `${t("proxyFailed")}: ${result.error || ""}`);
+        await loadPlugins();
+      } catch (err) {
+        toast(err.message);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  });
+}
+
+async function saveXrayPath() {
+  const value = $("#xrayPathInput")?.value?.trim() ?? null;
+  if (value === null) return;
+  try {
+    await api("/api/settings", {
+      method: "PUT",
+      body: JSON.stringify({ xray_path: value }),
+    });
+    toast(t("profileSaved"));
+    await loadPlugins();
+  } catch (err) {
+    toast(err.message);
+  }
+}
+
 function switchPage(page) {
   state.activePage = page;
   $$(".tab-nav button").forEach((b) => b.classList.remove("active"));
@@ -3718,6 +3835,7 @@ function switchPage(page) {
   if (target) target.classList.add("active");
   if (page === "sessions") loadSessions();
   if (page === "proxies") loadProxies();
+  if (page === "plugins") loadPlugins();
   if (page === "system") {
     loadSystem();
     loadTasks();
@@ -3813,6 +3931,7 @@ function bindEvents() {
   $("#refreshBackupsBtn")?.addEventListener("click", () => loadBackups().catch((e) => toast(e.message)));
   $("#proxyHealthNowBtn")?.addEventListener("click", () => runProxyHealthNow().catch((e) => toast(e.message)));
   $("#batchQualityBtn")?.addEventListener("click", () => batchQualityCheck().catch((e) => toast(e.message)));
+  $("#xrayPathSaveBtn")?.addEventListener("click", saveXrayPath);
   $("#githubTokenInput")?.addEventListener("input", (e) => {
     e.target.dataset.dirty = "1";
   });
