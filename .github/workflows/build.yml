@@ -282,6 +282,9 @@ jobs:
           python -m compileall backend desktop.py
           python -m pytest tests -q --tb=short
 
+      - name: Install binutils
+        run: apt-get update && apt-get install -y --no-install-recommends binutils
+
       - name: Build with PyInstaller
         run: python -m PyInstaller foxdesk.spec --noconfirm --clean --log-level WARN
 
