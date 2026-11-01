@@ -157,6 +157,10 @@ def _test_proxy_connection(proxy_url: str, username: str = "", password: str = "
 
 
 def test_proxy_item_for_health(item: dict[str, Any]) -> dict[str, Any]:
+    # Tunnel nodes are verified via their bridge (quality-check), not by
+    # dialing the vless:// share URL directly — skip them in health sweeps.
+    if item.get("kind") == "tunnel":
+        return {"ok": True, "skipped": True, "reason": "tunnel node — use quality-check via bridge"}
     return _test_proxy_connection(
         item.get("server") or "",
         item.get("username") or "",

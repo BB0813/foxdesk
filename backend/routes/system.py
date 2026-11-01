@@ -588,3 +588,33 @@ def channel_fetch(channel_id: str, request: TaskRequest | None = None) -> dict[s
         "ok": result.get("status") != "failed",
         "setup": result,
     }
+
+
+# --- Plugins ---
+@router.get("/api/plugins")
+def list_plugins() -> list[dict[str, Any]]:
+    from backend.wiring import plugin_manager
+
+    return plugin_manager.list_plugins()
+
+
+class PluginCoreRequest(BaseModel):
+    action: str = "download"
+
+
+@router.post("/api/plugins/{plugin_id}/core")
+def plugin_core_action(plugin_id: str, request: PluginCoreRequest) -> dict[str, Any]:
+    """Plugin-specific core management (download/verify tunnel kernel)."""
+    from backend.wiring import plugin_manager
+
+    plugin = plugin_manager.plugins.get(plugin_id)
+    if plugin is None:
+        raise HTTPException(status_code=404, detail="plugin not found")
+    if not hasattr(plugin.instance, "download_core"):
+        raise HTTPException(status_code=409, detail="plugin does not support core management")
+    try:
+        result = plugin.instance.download_core()
+    except Exception as exc:
+        result = {"ok": False, "error": str(exc)}
+    activity.log("plugin_core", f"{plugin_id} ok={result.get('ok')}")
+    return result

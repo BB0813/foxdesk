@@ -1,0 +1,10 @@
+{
+  "id": "xray-bridge",
+  "name": "Xray Bridge",
+  "version": "1.1.0",
+  "entry": "plugin.py:XrayBridgePlugin",
+  "protocols": [
+    "vless"
+  ],
+  "description": "Bridges vless:// tunnel nodes to a local SOCKS5 listener via xray-core (auto-downloads the core on first use, SHA256 verified)."
+}

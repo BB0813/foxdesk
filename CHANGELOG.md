@@ -1,5 +1,44 @@
 # Changelog
 
+## 1.5.0 — 2026-11-01 — plugin system + tunnel nodes + subscriptions
+
+Minor bump: new extensibility architecture.
+
+### Plugin system
+- Lightweight manager: built-in plugins ship in `<app>/plugins/`, user
+  plugins in `%APPDATA%/FoxDesk/plugins/`; manifests declare id/version/
+  entry/protocols; user dir overrides same-id built-ins
+- Extension point: tunnel protocol handlers (`ensure_bridge` / `stop_bridge`
+  / `status` / `shutdown`); `spawn_and_wait_port` shared helper
+- `/api/plugins` list + `/api/plugins/{id}/core` (kernel download/verify)
+
+### Xray Bridge plugin (first plugin — moved out of the core)
+- vless:// share-link parser (reality / tls / ws / grpc) — moved from the
+  core with tests
+- Bridge lifecycle per node: generated xray config (local SOCKS inbound +
+  vless outbound), port-wait, tracked per node id
+- **Core auto-download**: official Xray-core release with SHA2-256 digest
+  verification (.dgst parsed), extracted to the plugin bin dir; manual
+  xray_path setting still takes precedence
+- Pool integration: import_lines accepts vless:// lines; profile launch and
+  test/quality-check bridge automatically; `/api/proxies/{id}/bridge`
+  start/stop; graceful "core missing" error
+- Honest limits: no tunnel effectiveness claims; binary provided/verified
+  via the official release only
+
+### Subscriptions
+- `POST /api/proxies/import-subscription`: https-only with per-hop SSRF
+  guard (public-address resolution), 2 MB cap, base64-wrapped lists
+  decoded; imports vless:// lines into the pool
+- UI: subscription URL input + 导入订阅 on the proxies page
+
+### Fixes
+- Health sweep skips tunnel nodes (direct vless dialing is meaningless —
+  verification goes through the bridge)
+- Activity log timeline, profile-card width and ghost delete polish carried
+  from the UI redesign
+
+Tests: 160 passed, 1 skipped.
 ## 1.4.9 — 2026-11-01 — tunnel nodes: vless:// import + xray bridge
 
 New feature modeled on proxy gateways like Resin: vless share links are

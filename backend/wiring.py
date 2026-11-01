@@ -24,8 +24,8 @@ from backend.core import (
 from backend.engine_tools import camoufox_command, import_available
 from backend.proxy_test import test_proxy_item_for_health
 from backend.proxy_health import ProxyHealthScheduler
+from backend.plugin_system import PluginManager
 from backend.setup_manager import SetupManager
-from backend.tunnel import TunnelBridgeManager
 from backend.update_manager import UpdateManager
 
 
@@ -70,8 +70,6 @@ def _xray_path_provider() -> str:
         return ""
 
 
-bridge_manager = TunnelBridgeManager(DATA_DIR / "tunnels")
-bridge_manager.xray_path_provider = _xray_path_provider  # type: ignore[attr-defined]
 
 
 setup_manager = SetupManager(
@@ -84,3 +82,14 @@ setup_manager = SetupManager(
     channel_prefix=_channel_prefix,
     marker_path=DATA_DIR / "setup.completed",
 )
+
+
+def _plugin_setting(key: str, default: Any = None) -> Any:
+    try:
+        return settings_store.get().get(key, default)
+    except Exception:
+        return default
+
+
+plugin_manager = PluginManager(DATA_DIR, ROOT / "plugins", _plugin_setting)
+plugin_manager.scan_and_load()

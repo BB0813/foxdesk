@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>FoxDesk</title>
     <link rel="icon" type="image/png" href="/assets/logo.png" />
-    <link rel="stylesheet" href="/assets/styles.css?v=11" />
+    <link rel="stylesheet" href="/assets/styles.css?v=13" />
   </head>
   <body>
     <!-- ═══ Sidebar ═══ -->
@@ -368,7 +368,7 @@
                   <div class="span-2" style="margin-top:8px;padding-top:12px;border-top:1px solid var(--border)">
                     <label style="margin-bottom:8px">
                       <span style="font-size:12px;font-weight:600;color:var(--muted)" data-i18n="bulkProxyImport">批量导入代理（每行一个）</span>
-                      <textarea id="bulkProxyInput" rows="4" placeholder="socks5://user:pass@1.2.3.4:1080&#10;http://5.6.7.8:8080&#10;..." style="margin-top:6px;font-family:var(--mono);font-size:12px"></textarea>
+                      <textarea id="bulkProxyInput" rows="4" placeholder="socks5://user:pass@1.2.3.4:1080&#10;http://5.6.7.8:8080&#10;vless://uuid@host:port?...#名称" style="margin-top:6px;font-family:var(--mono);font-size:12px"></textarea>
                     </label>
                     <div style="display:flex;gap:8px;margin-top:6px">
                       <button class="button secondary" id="bulkProxyBtn" type="button" style="min-height:30px;font-size:12px">
@@ -601,6 +601,16 @@
               <label>
                 <span data-i18n="proxyPassword">代理密码</span>
                 <input id="proxyPassInput" type="password" autocomplete="off" />
+              </label>
+              <label class="span-2">
+                <span data-i18n="subscriptionImport">订阅导入（vless/订阅链接）</span>
+                <div style="display:flex;gap:8px">
+                  <input id="subscriptionUrlInput" placeholder="https://example.com/sub" style="flex:1" />
+                  <button class="button secondary" id="subscriptionImportBtn" type="button" style="white-space:nowrap">
+                    <i data-lucide="rss"></i>
+                    <span data-i18n="subscriptionImportBtn">导入订阅</span>
+                  </button>
+                </div>
               </label>
               <label class="span-2">
                 <span data-i18n="bulkProxyImport">批量导入代理（每行一个）</span>

@@ -13,6 +13,8 @@ from backend.models import (
     ProxyTestRequest,
 )
 from pydantic import BaseModel
+import urllib.request
+
 from backend.proxy_test import _test_proxy_connection
 from backend.wiring import proxy_health
 
@@ -21,12 +23,14 @@ router = APIRouter()
 
 @router.get("/api/proxies")
 def list_proxies() -> list[dict[str, Any]]:
-    from backend.wiring import bridge_manager
+    from backend.wiring import plugin_manager
 
     items = []
     for item in proxy_pool.all():
         if item.get("kind") == "tunnel":
-            status = bridge_manager.status(item.get("id") or "")
+            node = item.get("tunnel") or {}
+            handler = plugin_manager.get_tunnel_handler(node.get("protocol") or "")
+            status = handler.status(item.get("id") or "") if handler else None
             item = dict(item)
             item["bridge_port"] = status["port"] if status else None
             item["bridge_running"] = bool(status and status["running"])
@@ -75,9 +79,13 @@ def import_proxy_pool(request: ProxyPoolImportRequest) -> dict[str, Any]:
 def _resolve_test_target(item: dict[str, Any]) -> tuple[str, str, str]:
     """Return (server, username, password) for a pool item, bridging tunnels."""
     if item.get("kind") == "tunnel" and item.get("tunnel"):
-        from backend.wiring import bridge_manager
+        from backend.wiring import plugin_manager
 
-        port = bridge_manager.start(item.get("id") or "", item["tunnel"])
+        node = item["tunnel"]
+        handler = plugin_manager.get_tunnel_handler(node.get("protocol") or "")
+        if handler is None:
+            raise RuntimeError(f"no plugin for tunnel protocol: {node.get('protocol')}")
+        port = handler.ensure_bridge(item.get("id") or "", node)
         return f"socks5://127.0.0.1:{port}", "", ""
     return item.get("server") or "", item.get("username") or "", item.get("password") or ""
 
@@ -138,15 +146,17 @@ def proxy_bridge(proxy_id: str, request: BridgeRequest) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="proxy not found") from None
     if item.get("kind") != "tunnel" or not item.get("tunnel"):
         raise HTTPException(status_code=409, detail="not a tunnel node")
-    from backend.wiring import bridge_manager
+    from backend.wiring import plugin_manager
 
+    node = item["tunnel"]
+    handler = plugin_manager.get_tunnel_handler(node.get("protocol") or "")
+    if handler is None:
+        raise HTTPException(status_code=409, detail=f"no plugin for protocol: {node.get('protocol')}")
     if (request.action or "start").strip().lower() == "stop":
-        bridge_manager.stop(proxy_id)
+        handler.stop_bridge(proxy_id)
         return {"ok": True, "running": False}
     try:
-        from backend.wiring import _xray_path_provider
-
-        port = bridge_manager.start(proxy_id, item["tunnel"], _xray_path_provider())
+        port = handler.ensure_bridge(proxy_id, node)
         return {"ok": True, "running": True, "port": port}
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
@@ -311,3 +321,81 @@ def proxies_health_check_now() -> dict[str, Any]:
 @router.get("/api/proxies/health-status")
 def proxies_health_status() -> dict[str, Any]:
     return {"ok": True, **proxy_health.status()}
+
+
+class SubscriptionRequest(BaseModel):
+    url: str
+
+
+def _validate_public_https(url: str) -> str:
+    """SSRF guard: https only, and every resolved address must be public."""
+    import ipaddress
+    import socket
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise HTTPException(status_code=400, detail="subscription URL must be https://")
+    try:
+        infos = socket.getaddrinfo(parsed.hostname, parsed.port or 443)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"cannot resolve host: {exc}") from None
+    for info in infos:
+        addr = info[4][0]
+        ip = ipaddress.ip_address(addr)
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+            raise HTTPException(status_code=400, detail="subscription host resolves to a non-public address")
+    return url
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+@router.post("/api/proxies/import-subscription")
+def import_subscription(request: SubscriptionRequest) -> dict[str, Any]:
+    """Fetch a remote subscription (vless:// lines, base64-wrapped, or plain)
+    and import the nodes. Every redirect hop is revalidated; cap 2 MB."""
+    import urllib.error
+    import urllib.request
+
+    url = (request.url or "").strip()
+    _validate_public_https(url)
+    opener = urllib.request.build_opener(_NoRedirect)
+    text = ""
+    current = url
+    for _hop in range(4):
+        req = urllib.request.Request(current, headers={"User-Agent": "FoxDesk/subscription"})
+        try:
+            with opener.open(req, timeout=20) as resp:
+                raw = resp.read(2 * 1024 * 1024 + 1)
+        except urllib.error.HTTPError as exc:
+            if exc.code in (301, 302, 303, 307, 308) and exc.headers.get("Location"):
+                from urllib.parse import urljoin
+
+                current = urljoin(current, exc.headers["Location"])
+                _validate_public_https(current)
+                continue
+            raise HTTPException(status_code=400, detail=f"subscription fetch failed: {exc}") from None
+        if len(raw) > 2 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="subscription too large (>2 MB)")
+        text = raw.decode("utf-8", errors="replace")
+        break
+    if not text.strip():
+        raise HTTPException(status_code=400, detail="empty subscription")
+    stripped = "".join(text.split())
+    if not stripped.lower().startswith(("vless://", "vmess://", "trojan://", "ss://", "http")):
+        try:
+            import base64
+
+            pad = "=" * (-len(stripped) % 4)
+            decoded = base64.b64decode(stripped + pad, validate=False).decode("utf-8", errors="replace")
+            if "://" in decoded:
+                text = decoded
+        except Exception:
+            pass
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    imported = proxy_pool.import_lines(lines)
+    activity.log("subscription_import", f"count={len(imported)}")
+    return {"ok": True, "fetched_lines": len(lines), "imported": len(imported), "proxies": imported}

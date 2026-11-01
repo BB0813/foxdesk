@@ -74,6 +74,9 @@ const i18n = {
     applyFix: "一键修复",
     applied: "已应用",
     probeExport: "导出对比 JSON",
+    subscriptionImport: "订阅导入（vless/订阅链接）",
+    subscriptionImportBtn: "导入订阅",
+    subscriptionDone: "订阅导入完成",
     bridgeStart: "启动桥接",
     bridgeStop: "停止桥接",
     bridgeRunning: "桥接运行中",
@@ -480,6 +483,9 @@ const i18n = {
     applied: "Applied",
     probeExport: "Export JSON",
     batchQualityBtn: "Check all quality",
+    subscriptionImport: "Subscription (vless / share links)",
+    subscriptionImportBtn: "Import",
+    subscriptionDone: "Subscription imported",
     bridgeStart: "Start bridge",
     bridgeStop: "Stop bridge",
     bridgeRunning: "Bridge running",
@@ -487,6 +493,7 @@ const i18n = {
     bridgeStopped: "not bridged",
     batchQualityBtn: "Check all quality",
     qualityChecking: "Quality checking",
+    qualityBatchDone: "Batch quality check done",
     assignMatch: "Assign + match",
     assignMatchDone: "Assigned and environment matched",
     assignMatchNoGeo: "no geo record",
@@ -2733,6 +2740,25 @@ function renderProxyPool() {
         btn.disabled = false;
       }
     });
+  });
+  $("#subscriptionImportBtn")?.addEventListener("click", async () => {
+    const url = $("#subscriptionUrlInput")?.value?.trim() || "";
+    if (!url) return toast(t("mirrorUrlRequired"));
+    const btn = $("#subscriptionImportBtn");
+    btn.disabled = true;
+    try {
+      const result = await api("/api/proxies/import-subscription", {
+        method: "POST",
+        body: JSON.stringify({ url }),
+      });
+      toast(`${t("subscriptionDone")}: ${result.imported}/${result.fetched_lines}`);
+      $("#subscriptionUrlInput").value = "";
+      await loadProxies();
+    } catch (err) {
+      toast(err.message);
+    } finally {
+      btn.disabled = false;
+    }
   });
   $$(".proxy-quality").forEach((btn) => {
     btn.addEventListener("click", async () => {

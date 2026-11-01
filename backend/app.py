@@ -159,11 +159,11 @@ app.add_middleware(LocalApiTokenMiddleware)
 def _shutdown_cleanup() -> None:
     """Stop every worker/browser on server shutdown so nothing is orphaned."""
     from backend.local_auth import _remove_token_file
-    from backend.tunnel_bridge import stop_all_bridges
+    from backend.wiring import plugin_manager
 
     _remove_token_file()
     try:
-        stop_all_bridges()
+        plugin_manager.shutdown_all()
     except Exception:
         pass
     try:
