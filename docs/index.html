@@ -23,6 +23,20 @@
       border-right: 1px solid var(--border); background: var(--surface);
       backdrop-filter: blur(16px); overflow-y: auto;
     }
+    /* Mobile top bar (hidden on desktop) */
+    .mobile-bar {
+      display: none; position: sticky; top: 0; z-index: 50;
+      align-items: center; justify-content: space-between;
+      padding: 10px 16px; border-bottom: 1px solid var(--border);
+      background: rgba(10,14,23,0.92); backdrop-filter: blur(12px);
+    }
+    .mobile-bar .brand { display: flex; align-items: center; gap: 8px; margin: 0; }
+    .mobile-bar .brand img { width: 26px; height: 26px; border-radius: 6px; }
+    .mobile-bar .brand span { font-weight: 700; font-size: 15px; }
+    .hamburger {
+      background: none; border: 1px solid var(--border); border-radius: 8px;
+      color: var(--ink); padding: 6px 10px; font-size: 16px; cursor: pointer; line-height: 1;
+    }
     .sidebar .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 28px; }
     .sidebar .brand img { width: 32px; height: 32px; border-radius: 8px; }
     .sidebar .brand span { font-weight: 700; font-size: 17px; }
@@ -85,15 +99,43 @@
     }
 
     @media (max-width: 800px) {
-      .layout { grid-template-columns: 1fr; }
-      .sidebar { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--border); }
-      .main { padding: 24px 20px; }
+      .layout { grid-template-columns: 1fr; display: block; }
+      .mobile-bar { display: flex; }
+      .sidebar {
+        position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--border);
+        padding: 12px 16px; display: none;
+      }
+      .sidebar.open { display: block; }
+      .sidebar .brand { display: none; }
+      .sidebar nav { flex-direction: column; gap: 2px; }
+      .main { padding: 24px 16px; }
+      .hero { text-align: left; padding: 32px 0 20px; }
+      .hero h1 { font-size: 30px; }
+      .hero p { font-size: 15px; }
+      .hero .badges { flex-wrap: wrap; justify-content: flex-start; }
+      h1 { font-size: 26px; }
+      h2 { font-size: 19px; }
+      table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      pre { font-size: 12px; padding: 12px; }
+      .card { padding: 14px 16px; }
+    }
+    @media (max-width: 460px) {
+      .hero h1 { font-size: 24px; }
+      .main { padding: 18px 12px; }
+      .card { padding: 12px 14px; }
     }
   </style>
 </head>
 <body>
+  <div class="mobile-bar">
+    <div class="brand">
+      <img src="https://raw.githubusercontent.com/user-attachments/assets/logo.png" alt="FoxDesk" onerror="this.style.display='none'">
+      <span>FoxDesk</span>
+    </div>
+    <button class="hamburger" id="navToggle" aria-label="菜单" aria-expanded="false">☰</button>
+  </div>
   <div class="layout">
-    <aside class="sidebar">
+    <aside class="sidebar" id="docNav">
       <div class="brand">
         <img src="https://raw.githubusercontent.com/user-attachments/assets/logo.png" alt="FoxDesk" onerror="this.style.display='none'">
         <span>FoxDesk</span>
@@ -542,8 +584,23 @@ git push origin v1.6.0</pre>
       a.addEventListener('click', e => {
         document.querySelectorAll('.sidebar nav a').forEach(l => l.classList.remove('active'));
         a.classList.add('active');
+        // close mobile menu after navigation
+        const nav = document.getElementById('docNav');
+        if (nav) nav.classList.remove('open');
+        const tgl = document.getElementById('navToggle');
+        if (tgl) tgl.setAttribute('aria-expanded', 'false');
       });
     });
+    // mobile hamburger
+    const navToggle = document.getElementById('navToggle');
+    const docNav = document.getElementById('docNav');
+    if (navToggle && docNav) {
+      navToggle.addEventListener('click', () => {
+        const open = docNav.classList.toggle('open');
+        navToggle.setAttribute('aria-expanded', String(open));
+        navToggle.textContent = open ? '✕' : '☰';
+      });
+    }
     // Intersection observer for active state
     const sections = document.querySelectorAll('[id]');
     const navLinks = document.querySelectorAll('.sidebar nav a[href^="#"]');

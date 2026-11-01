@@ -2,6 +2,11 @@
 
 ## 1.6.0 — 2026-11-01 — multi-platform (linux/macos)
 
+### Docs mobile adaptation
+- Docs page gains a mobile top bar (brand + hamburger) with a collapsible
+  nav; content reflows at 800px/460px breakpoints; hero/type scale shrinks;
+  tables scroll horizontally on narrow screens
+
 ### Multi-platform (developer-requested)
 - **Linux x64** and **macOS x64** CI builds now ship with every release:
   portable tar.gz / zip built on native runners, tests + serve-mode security
