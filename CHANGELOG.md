@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased — macOS tray crash fix
+
+Mac user crash log (.ips) analyzed: pystray's NSStatusItem setup ran on a
+daemon thread, violating the AppKit main-thread assertion
+(EXC_BREAKPOINT in assertBarrierOnQueue). On macOS the tray now uses
+pystray's documented `run_detached()` mode — the icon hooks into the shared
+main runloop that webview's Cocoa backend drives. Windows/Linux unchanged.
+
+Also: macOS builds now emit a proper FoxDesk.app BUNDLE with
+CFBundleShortVersionString (crash reports previously showed an empty
+version string).
+
+
 ## 1.6.0 — 2026-11-01 — multi-platform (linux/macos)
 
 ### Docs mobile adaptation
