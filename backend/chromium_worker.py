@@ -680,10 +680,17 @@ def run_browser(profile: dict[str, Any], profile_path: Path) -> int:
     browsers_dir = os.environ.get("FOXDESK_BROWSERS_PATH") or os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
     if not browsers_dir:
         # Common FoxDesk data layout when launched from manager.
+        candidates = []
         appdata = os.environ.get("APPDATA") or ""
-        candidate = Path(appdata) / "FoxDesk" / "browsers" if appdata else None
-        if candidate and candidate.exists():
-            os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(candidate)
+        if appdata:
+            candidates.append(Path(appdata) / "FoxDesk" / "browsers")
+        home = os.path.expanduser("~")
+        candidates.append(Path(home) / ".local" / "share" / "FoxDesk" / "browsers")
+        candidates.append(Path.home() / "Library" / "Application Support" / "FoxDesk" / "browsers")
+        for candidate in candidates:
+            if candidate.exists():
+                os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(candidate)
+                break
 
     try:
         sync_playwright, backend_name = resolve_sync_playwright(profile)

@@ -12,6 +12,10 @@ pywebview>=5.1
 pyinstaller>=6.0
 pystray>=0.19
 Pillow>=10.0
+# .NET bridge for the WebView2 shell — Windows only (macOS/Linux use
+# Cocoa/GTK backends that pywebview brings in itself)
+pythonnet>=3.0; sys_platform == "win32"
+pywin32>=306; sys_platform == "win32"
 # Phase A/C Chromium stack (optional at runtime; install browsers separately)
 playwright>=1.49
 # Phase C patched automation backend (preferred when present)

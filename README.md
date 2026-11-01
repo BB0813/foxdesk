@@ -25,6 +25,16 @@
 - **本机 API 令牌** — UI 注入 `X-FoxDesk-Token`
 - **首次引导 / 托盘 / 双语 / 安装包**
 
+## 平台支持
+
+| 平台 | 状态 | 安装方式 |
+|---|---|---|
+| Windows x64 | ✅ 完整（Setup / 便携 / 自动更新） | `FoxDesk-x.y.z-Setup.exe` |
+| Linux x64 | ✅ 实验性（便携 tar.gz；GUI 需 WebKit/GTK 运行库） | `FoxDesk-linux-x64.tar.gz` |
+| macOS x64 | ✅ 实验性（便携 zip，未签名） | `FoxDesk-macos.zip` |
+
+Linux 运行 GUI 需要 `libwebkit2gtk-4.1` 与 GTK3（`sudo apt install libwebkit2gtk-4.1-dev gir1.2-gtk-3.0`）；无 GUI 环境可用 `./FoxDesk --serve <port>` + 浏览器访问。macOS 构建未做代码签名，首次打开需右键 → 打开。
+
 ## 快速开始
 
 ```bash

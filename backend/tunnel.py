@@ -152,13 +152,15 @@ def find_xray_binary(configured: str = "") -> str | None:
     found = shutil.which("xray") or shutil.which("xray.exe")
     if found:
         return found
-    home = os.environ.get("APPDATA") or ""
-    for candidate in (
-        Path(home) / "FoxDesk" / "bin" / "xray.exe",
-        Path(home) / "FoxDesk" / "bin" / "xray",
-    ):
-        if candidate.is_file():
-            return str(candidate)
+    for home in (os.environ.get("APPDATA") or "", os.environ.get("XDG_DATA_HOME") or "", os.path.expanduser("~/.local/share")):
+        if not home:
+            continue
+        for candidate in (
+            Path(home) / "FoxDesk" / "bin" / "xray.exe",
+            Path(home) / "FoxDesk" / "bin" / "xray",
+        ):
+            if candidate.is_file():
+                return str(candidate)
     return None
 
 

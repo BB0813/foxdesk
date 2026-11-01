@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import atexit
+import os
 import secrets
 import tempfile
 from pathlib import Path
@@ -28,6 +29,8 @@ def _write_token_file() -> None:
     try:
         _TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
         _TOKEN_FILE.write_text(API_TOKEN, encoding="utf-8")
+        if os.name != "nt":
+            os.chmod(_TOKEN_FILE, 0o600)  # token is secret; restrict on POSIX
     except Exception:
         pass
 

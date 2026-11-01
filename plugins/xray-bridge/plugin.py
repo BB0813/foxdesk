@@ -8,6 +8,7 @@ SHA256 digest before extracting xray.exe.
 from __future__ import annotations
 
 import hashlib
+import sys
 import json
 import re
 import shutil
@@ -17,7 +18,24 @@ from typing import Any
 from urllib.request import Request, urlopen
 
 XRAY_REPO = "https://api.github.com/repos/XTLS/Xray-core/releases/latest"
-XRAY_ASSET = "Xray-windows-64.zip"
+
+# Platform -> asset name in the Xray-core release
+XRAY_ASSETS = {
+    ("win32", "amd64"): "Xray-windows-64.zip",
+    ("linux", "x86_64"): "Xray-linux-64.zip",
+    ("linux", "aarch64"): "Xray-linux-arm64-v8a.zip",
+    ("darwin", "x86_64"): "Xray-macos-64.zip",
+    ("darwin", "arm64"): "Xray-macos-arm64-v8a.zip",
+}
+
+
+def _platform_asset() -> str:
+    import platform
+
+    key = (sys.platform, platform.machine().lower())
+    if sys.platform == "win32":
+        key = ("win32", "amd64")
+    return XRAY_ASSETS.get(key, "Xray-windows-64.zip")
 
 
 class XrayBridgePlugin:
@@ -34,7 +52,10 @@ class XrayBridgePlugin:
 
     @property
     def xray_exe(self) -> Path:
-        return self.bin_dir / "xray.exe"
+        import sys as _sys
+
+        name = "xray.exe" if _sys.platform == "win32" else "xray"
+        return self.bin_dir / name
 
     def _resolve_binary(self) -> str:
         configured = str(self.ctx.get_setting("xray_path", "") or "").strip()
@@ -77,16 +98,17 @@ class XrayBridgePlugin:
         with urlopen(req, timeout=30) as resp:
             release = json.loads(resp.read().decode("utf-8"))
         assets = {a.get("name"): a for a in release.get("assets") or []}
-        zip_asset = assets.get(XRAY_ASSET)
-        dgst_asset = assets.get(XRAY_ASSET + ".dgst")
+        asset_name = _platform_asset()
+        zip_asset = assets.get(asset_name)
+        dgst_asset = assets.get(asset_name + ".dgst")
         if not zip_asset or not dgst_asset:
-            return {"ok": False, "error": f"release assets not found ({XRAY_ASSET})"}
+            return {"ok": False, "error": f"release assets not found ({asset_name} for this platform)"}
         url = zip_asset.get("browser_download_url") or ""
         dgst_url = dgst_asset.get("browser_download_url") or ""
         if not url.startswith("https://github.com/"):
             return {"ok": False, "error": "unexpected download host"}
         self.ctx.log("downloading xray core...")
-        zip_path = self.bin_dir / XRAY_ASSET
+        zip_path = self.bin_dir / asset_name
         with urlopen(Request(url, headers={"User-Agent": "FoxDesk/xray-bridge"}), timeout=timeout) as resp, open(zip_path, "wb") as fh:
             while True:
                 chunk = resp.read(1024 * 256)
@@ -107,16 +129,23 @@ class XrayBridgePlugin:
         if not expected or actual != expected:
             zip_path.unlink(missing_ok=True)
             return {"ok": False, "error": f"SHA256 mismatch (expected {expected}, got {actual})"}
+        import sys as _sys
+
+        exe_name = "xray.exe" if _sys.platform == "win32" else "xray"
+        target = self.bin_dir / exe_name
         with zipfile.ZipFile(zip_path) as zf:
             for name in zf.namelist():
-                if name.lower() == "xray.exe":
-                    target = self.xray_exe
+                if name.split("/")[-1].lower() == exe_name:
                     target.write_bytes(zf.read(name))
                     break
+        if _sys.platform != "win32":
+            import os as _os
+
+            target.chmod(0o755)
         zip_path.unlink(missing_ok=True)
-        ok = self.xray_exe.is_file()
+        ok = target.is_file()
         self.ctx.log(f"xray core {'installed' if ok else 'extraction failed'}")
-        return {"ok": ok, "binary": str(self.xray_exe) if ok else None}
+        return {"ok": ok, "binary": str(target) if ok else None}
 
     # ---- tunnel handler protocol (core extension point) ----
     def ensure_bridge(self, node_id: str, node: dict[str, Any]) -> int:

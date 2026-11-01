@@ -249,8 +249,184 @@ jobs:
             dist/FoxDesk/
           retention-days: 30
 
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve version
+        shell: bash
+        run: |
+          tagRef="${{ github.ref_name }}"
+          fileVersion="$(tr -d '[:space:]' < VERSION)"
+          version="${tagRef#v}"
+          [ "$version" = "$tagRef" ] && version="$fileVersion"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Sync version into project files
+        shell: bash
+        run: |
+          version="${{ steps.meta.outputs.version || steps.resolvever.outputs.version }}"
+          echo "sync $version"
+          python - <<'PY'
+          import re, pathlib
+          v = "__VERSION__"
+          for f in ("desktop.py", "backend/core.py"):
+              p = pathlib.Path(f)
+              s = p.read_text(encoding="utf-8")
+              s = re.sub(r'APP_VERSION = "[^"]+"', f'APP_VERSION = "{v}"', s)
+              p.write_text(s, encoding="utf-8")
+          pathlib.Path("VERSION").write_text(v, encoding="utf-8")
+          PY
+        env:
+          __VERSION__: placeholder
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev gir1.2-gtk-3.0
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Tests
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: |
+          python -m compileall backend desktop.py
+          python -m pytest tests -q --tb=short
+
+      - name: Build with PyInstaller
+        run: python -m PyInstaller foxdesk.spec --noconfirm --clean --log-level WARN
+
+      - name: Smoke test serve mode
+        run: |
+          python - <<'PY'
+          import os, sys, time, urllib.request, urllib.error
+          port = 8798
+          import uvicorn
+          server = uvicorn.Server(uvicorn.Config("backend.app:app", host="127.0.0.1", port=port, log_level="error"))
+          import threading
+          threading.Thread(target=server.run, daemon=True).start()
+          def req(path, headers=None):
+              r = urllib.request.Request(f"http://127.0.0.1:{port}{path}", headers=headers or {})
+              try:
+                  with urllib.request.urlopen(r, timeout=5) as resp:
+                      return resp.status
+              except urllib.error.HTTPError as e:
+                  return e.code
+              except Exception:
+                  return 0
+          for _ in range(60):
+              if req("/api/system/ping") == 200:
+                  break
+              time.sleep(0.5)
+          checks = [
+              ("ping", req("/api/system/ping") == 200),
+              ("foreign-host-421", req("/api/system/ping", {"Host": "evil.example.com"}) == 421),
+              ("docs-404", req("/openapi.json") == 404),
+          ]
+          for name, ok in checks:
+              print(("PASS " if ok else "FAIL ") + name)
+          sys.exit(0 if all(ok for _, ok in checks) else 1)
+          PY
+
+      - name: Package portable tar.gz
+        run: |
+          chmod +x dist/FoxDesk/FoxDesk || true
+          tar -czf "FoxDesk-linux-x64.tar.gz" -C dist FoxDesk
+          sha256sum "FoxDesk-linux-x64.tar.gz" > SHA256SUMS-linux
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FoxDesk-Linux
+          path: |
+            FoxDesk-linux-x64-*.tar.gz
+            SHA256SUMS-linux
+          retention-days: 30
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Tests
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: |
+          python -m compileall backend desktop.py
+          python -m pytest tests -q --tb=short
+
+      - name: Build with PyInstaller
+        run: python -m PyInstaller foxdesk.spec --noconfirm --clean --log-level WARN
+
+      - name: Smoke test serve mode
+        run: |
+          python - <<'PY'
+          import os, sys, time, urllib.request, urllib.error
+          port = 8798
+          import uvicorn
+          server = uvicorn.Server(uvicorn.Config("backend.app:app", host="127.0.0.1", port=port, log_level="error"))
+          import threading
+          threading.Thread(target=server.run, daemon=True).start()
+          def req(path, headers=None):
+              r = urllib.request.Request(f"http://127.0.0.1:{port}{path}", headers=headers or {})
+              try:
+                  with urllib.request.urlopen(r, timeout=5) as resp:
+                      return resp.status
+              except urllib.error.HTTPError as e:
+                  return e.code
+              except Exception:
+                  return 0
+          for _ in range(60):
+              if req("/api/system/ping") == 200:
+                  break
+              time.sleep(0.5)
+          checks = [
+              ("ping", req("/api/system/ping") == 200),
+              ("foreign-host-421", req("/api/system/ping", {"Host": "evil.example.com"}) == 421),
+              ("docs-404", req("/openapi.json") == 404),
+          ]
+          for name, ok in checks:
+              print(("PASS " if ok else "FAIL ") + name)
+          sys.exit(0 if all(ok for _, ok in checks) else 1)
+          PY
+
+      - name: Package portable zip
+        run: |
+          chmod +x dist/FoxDesk/FoxDesk || true
+          zip -qry "FoxDesk-macos.zip" dist/FoxDesk
+          shasum -a 256 "FoxDesk-macos.zip" > SHA256SUMS-macos
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FoxDesk-MacOS
+          path: |
+            FoxDesk-macos-*.zip
+            SHA256SUMS-macos
+          retention-days: 30
+
   release:
-    needs: build-windows
+    needs: [build-windows, build-linux, build-macos]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     steps:
@@ -266,6 +442,18 @@ jobs:
           name: FoxDesk-Portable
           path: portable/
 
+      - name: Download linux build
+        uses: actions/download-artifact@v4
+        with:
+          name: FoxDesk-Linux
+          path: linux/
+
+      - name: Download macos build
+        uses: actions/download-artifact@v4
+        with:
+          name: FoxDesk-MacOS
+          path: macos/
+
       - name: Prepare release assets
         shell: bash
         run: |
@@ -279,6 +467,11 @@ jobs:
             zip -r "../release/FoxDesk-windows-x64-${{ needs.build-windows.outputs.version }}.zip" .
             cd ..
           fi
+          # Multi-platform portables (built on their native runners)
+          cp linux/FoxDesk-linux-x64-*.tar.gz release/ || true
+          cp linux/SHA256SUMS-linux release/ || true
+          cp macos/FoxDesk-macos-*.zip release/ || true
+          cp macos/SHA256SUMS-macos release/ || true
           # Publish checksums for in-app update verification
           cd release
           sha256sum * > SHA256SUMS
@@ -301,9 +494,10 @@ jobs:
             Local dual-engine fingerprint browser manager for Windows (Camoufox + Chromium).
 
             ### Downloads
-            - **Installer**: `FoxDesk-*-Setup.exe` (default install: `%LOCALAPPDATA%\Programs\FoxDesk`)
-            - **Portable**: `FoxDesk-windows-x64-*.zip`
-            - **Checksums**: `SHA256SUMS` (one-click update verifies this)
+            - **Windows**: `FoxDesk-*-Setup.exe` (installer) or `FoxDesk-windows-x64-*.zip` (portable)
+            - **Linux (experimental)**: `FoxDesk-linux-x64-*.tar.gz` — needs libwebkit2gtk-4.1/GTK3 for the GUI; `--serve <port>` + browser works headless
+            - **macOS (experimental, unsigned)**: `FoxDesk-macos-*.zip` — right-click → Open on first launch
+            - **Checksums**: `SHA256SUMS*` (one-click update verifies the Windows installer)
 
             ### Dual engine (Chromium)
             - Optional Chromium engine with `chromium_backend` = `auto` | `playwright` | `patchright` (auto prefers Patchright).

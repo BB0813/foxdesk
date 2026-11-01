@@ -383,7 +383,10 @@ def _prepare_frozen_dotnet() -> None:
     2. pywebview loads WebView2 interop assemblies by absolute path from
        ``webview/lib`` — reroute ``interop_dll_path`` to a staged copy.
     Best-effort: on failure the WebView→system-browser fallback still applies.
+    Windows-only: macOS/Linux use Cocoa/GTK backends without pythonnet.
     """
+    if sys.platform != "win32":
+        return
     try:
         import pythonnet
 
