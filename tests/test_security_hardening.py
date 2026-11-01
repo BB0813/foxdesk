@@ -295,13 +295,15 @@ def test_job_handle_released_on_stop(tmp_path):
     from backend import process_utils
     from backend.core import registry
 
-    proc = sys.platform == "win32" and __import__("subprocess").Popen(
+    if sys.platform != "win32":
+        pytest.skip("windows only")
+    import subprocess
+
+    proc = subprocess.Popen(
         [sys.executable, "-c", "import time; time.sleep(60)"],
-        stdout=__import__("subprocess").DEVNULL,
+        stdout=subprocess.DEVNULL,
         creationflags=process_utils.CREATE_NO_WINDOW,
     )
-    if proc is None:
-        pytest.skip("windows only")
     try:
         item = registry.add(
             type("FakeItem", (), {})  # placeholder never used

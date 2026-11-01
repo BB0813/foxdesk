@@ -49,8 +49,19 @@ def safe_restore_target(arcname: str) -> Path | None:
         return DATA_DIR / name
     if name.startswith("profiles/"):
         rel = name[len("profiles/") :]
-        rel_path = PureWindowsPath(rel) if os.name == "nt" else PurePosixPath(rel)
-        if not rel or rel_path.drive or rel_path.root or ".." in rel_path.parts:
+        # Archives are cross-platform: a Windows-authored entry can carry
+        # drive/root segments that escape on ANY host — always check both.
+        rel_path = PureWindowsPath(rel)
+        posix_path = PurePosixPath(rel)
+        if (
+            not rel
+            or rel_path.drive
+            or rel_path.root
+            or posix_path.drive
+            or posix_path.root
+            or ".." in rel_path.parts
+            or ".." in posix_path.parts
+        ):
             return None
         target = (PROFILES_DIR / rel).resolve()
         try:
