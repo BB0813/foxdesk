@@ -1043,7 +1043,14 @@ button.tag:hover { color: var(--text); background: var(--border); }
 }
 .fp-score-label { font-size: 11px; color: var(--subtle); }
 .fp-note { font-size: 12px; color: var(--subtle); margin: 6px 0 0; }
-.fp-result-log { margin: 0; max-height: 320px; }
+.fp-result-log {
+  margin: 0;
+  max-height: 320px;
+  /* .log 的 break-all 会把英文单词拦腰切断（Ch romium）——正文消息只在
+     单词本身放不下时才折行，长 URL 照样收敛 */
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
 .fp-result-log .button {
   min-height: 20px;
   padding: 0 8px;
