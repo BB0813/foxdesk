@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased — fingerprint check UI redesign
+
+The fingerprint check result was a wall of unstyled text. Rewritten:
+
+- **Score bar**: gradient fill bar + large color-coded number
+- **Risk items**: severity-coded cards (high=red / medium=yellow / low=blue)
+  with left accent bars, level badges, and 一键修复 buttons for actionable
+  codes (chromium_bundled_build, timezone_geo_mismatch)
+- **Checks grid**: clean dl-grid with consistent alignment
+- **udd_warning**: network-path errors rendered as visible error banners
+- CSS: `.fp-result`, `.fp-risk-item`, `.fp-checks-grid`, `.fp-section-title`
+
+Tests: 160 passed, 1 skipped.
+
+
 ## Unreleased — network path resilience (NAS/SMB disconnection)
 
 User-reported: FoxDesk running from a network mapped drive with

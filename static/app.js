@@ -3617,45 +3617,42 @@ async function checkFingerprint() {
     const issues = result.issues || [];
     const risks = (result.environment_risks || []).filter((r) => r.level !== "info");
     const APPLICABLE = ["chromium_bundled_build", "timezone_geo_mismatch"];
-    const riskList = risks.length
-      ? `<div style="margin:8px 0 4px;font-size:12px;font-weight:650">${t("envRisks")}</div>
-         <ul class="fp-issues">${risks
-           .map(
-             (r) => {
-               const fixable = APPLICABLE.includes(r.code)
-                 ? ` <button class="button secondary apply-suggestion" data-code="${escapeAttr(r.code)}" data-profile-id="${escapeAttr(state.selectedId)}" type="button" style="min-height:24px;padding:2px 10px;font-size:11px;margin-left:6px">${t("applyFix")}</button>`
-                 : "";
-               return `<li><strong style="text-transform:uppercase;font-size:10px;opacity:.8">${escapeHtml(r.level)}</strong> ${escapeHtml(r.message || "")}${fixable}</li>`;
-             },
-           )
-           .join("")}</ul>`
-      : "";
+    const riskItems = risks.map((r) => {
+      const sev = r.level === "high" ? "high" : r.level === "medium" ? "medium" : r.level === "low" ? "low" : "info";
+      const isFixable = APPLICABLE.includes(r.code);
+      const fixBtn = isFixable
+        ? `<span class="fp-risk-actions"><button class="button secondary apply-suggestion" data-code="${escapeAttr(r.code)}" data-profile-id="${escapeAttr(state.selectedId)}" type="button" style="min-height:22px;padding:1px 8px;font-size:11px">${t("applyFix")}</button></span>`
+        : "";
+      return `<li class="fp-risk-item sev-${sev}"><span class="fp-risk-level">${escapeHtml(r.level)}</span><span class="fp-risk-msg">${escapeHtml(r.message || "")}</span>${fixBtn}</li>`;
+    }).join("");
+    const checksHtml = [
+      ["Proxy", escapeHtml(String(result.checks.proxy || "—"))],
+      ["geoip", result.checks.geoip ? "on" : "off"],
+      [t("navigatorPlatform"), escapeHtml(result.checks.platform)],
+      [t("navigatorVendor"), escapeHtml(result.checks.vendor)],
+      [`${t("screenWidth")}×${t("screenHeight")}`, escapeHtml(result.checks.screen)],
+      ["WebGL", escapeHtml(result.checks.webgl)],
+      ["Canvas", result.checks.canvas_noise ? `${t("canvasNoise")} ✓` : "—"],
+      ["Audio", result.checks.audio_noise ? `${t("audioNoise")} ✓` : "—"],
+      ["WebRTC", `${escapeHtml(String(result.checks.webrtc_mode || ""))}${result.checks.block_webrtc ? " · block" : ""}`],
+      [t("timezone"), escapeHtml(result.checks.timezone)],
+      [t("locale"), escapeHtml(result.checks.locale)],
+    ].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
     el.innerHTML = `
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
-        <div class="fp-score">
+      <div class="fp-result">
+        <div class="fp-result-header">
           <div class="fp-score-bar"><div class="fp-score-fill" style="width:${escapeHtml(result.score)}%;background:${scoreColor}"></div></div>
-          <span style="color:${scoreColor}">${escapeHtml(result.score)}/100</span>
+          <span class="fp-score-num" style="color:${scoreColor}">${escapeHtml(result.score)}</span>
+          <span class="fp-score-label">/100 · ${issues.length === 0 ? "✓ " + t("allChecksPassed") : `${issues.length} ${t("issues")}`}</span>
+          <a href="${safeUrl(result.check_url)}" target="_blank" rel="noopener noreferrer" style="margin-left:auto;font-size:12px">${t("openInBrowser")} →</a>
         </div>
-        <span style="font-size:12px;color:var(--muted)">${issues.length === 0 ? "✓ " + t("allChecksPassed") : `${issues.length} ${t("issues")}`}</span>
-        <a href="${safeUrl(result.check_url)}" target="_blank" rel="noopener noreferrer" style="margin-left:auto;font-size:12px">${t("openInBrowser")} →</a>
-      </div>
-      ${result.udd_warning ? `<div class="session-error" style="margin:0 0 8px">${escapeHtml(result.udd_warning)}</div>` : ""}
-      <p style="margin:0 0 8px;font-size:12px;color:var(--muted)">${escapeHtml(result.note || t("envRiskNote"))}</p>
-      ${issues.length ? `<ul class="fp-issues">${issues.map((i) => `<li>${escapeHtml(i)}</li>`).join("")}</ul>` : ""}
-      ${riskList}
-      <dl class="fp-checks-grid">
-        <dt>Proxy</dt><dd>${escapeHtml(String(result.checks.proxy || "—"))}</dd>
-        <dt>geoip</dt><dd>${result.checks.geoip ? "on" : "off"}</dd>
-        <dt>${t("navigatorPlatform")}</dt><dd>${escapeHtml(result.checks.platform)}</dd>
-        <dt>${t("navigatorVendor")}</dt><dd>${escapeHtml(result.checks.vendor)}</dd>
-        <dt>${t("screenWidth")}×${t("screenHeight")}</dt><dd>${escapeHtml(result.checks.screen)}</dd>
-        <dt>WebGL</dt><dd>${escapeHtml(result.checks.webgl)}</dd>
-        <dt>Canvas</dt><dd>${result.checks.canvas_noise ? t("canvasNoise") + " ✓" : "—"}</dd>
-        <dt>Audio</dt><dd>${result.checks.audio_noise ? t("audioNoise") + " ✓" : "—"}</dd>
-        <dt>WebRTC</dt><dd>${escapeHtml(String(result.checks.webrtc_mode || ""))}${result.checks.block_webrtc ? " · block" : ""}</dd>
-        <dt>${t("timezone")}</dt><dd>${escapeHtml(result.checks.timezone)}</dd>
-        <dt>${t("locale")}</dt><dd>${escapeHtml(result.checks.locale)}</dd>
-      </dl>`;
+        ${result.udd_warning ? `<div class="session-error" style="margin:0 0 8px">${escapeHtml(result.udd_warning)}</div>` : ""}
+        <p class="fp-note">${escapeHtml(result.note || t("envRiskNote"))}</p>
+        ${issues.length ? `<div class="fp-section-title">${t("issues")}</div><ul class="fp-risk-list">${issues.map((i) => `<li class="fp-risk-item sev-medium"><span class="fp-risk-msg">${escapeHtml(i)}</span></li>`).join("")}</ul>` : ""}
+        ${risks.length ? `<div class="fp-section-title">${t("envRisks")}</div><ul class="fp-risk-list">${riskItems}</ul>` : ""}
+        <div class="fp-section-title">${t("tabFingerprint")}</div>
+        <dl class="fp-checks-grid">${checksHtml}</dl>
+      </div>`;
   } catch (err) {
     el.innerHTML = `<span style="color:var(--danger);font-size:13px">${escapeHtml(err.message)}</span>`;
   }
