@@ -123,6 +123,13 @@ def build_kwargs(profile: dict[str, Any]) -> dict[str, Any]:
         user_data_dir = profile.get("user_data_dir")
         if user_data_dir:
             kwargs["user_data_dir"] = str(Path(user_data_dir).expanduser())
+        # Playwright's default viewport (1280x720) makes the Firefox driver
+        # send Browser.setDefaultViewport with an isMobile field that
+        # Camoufox v135+'s Juggler scheme does not know and rejects, killing
+        # every launch ("Found property <root>.viewport.isMobile").
+        # Camoufox sizes the window from its own fingerprint, so skip the
+        # Playwright viewport entirely (no_viewport is context-only).
+        kwargs["no_viewport"] = True
 
     if profile.get("humanize"):
         kwargs["humanize"] = True
@@ -566,10 +573,15 @@ def run_browser(profile: dict[str, Any], profile_path: Path) -> int:
 
     try:
         with Camoufox(**kwargs) as browser_or_context:
-            if hasattr(browser_or_context, "new_page"):
-                page = browser_or_context.new_page()
-                apply_imported_cookies(browser_or_context, profile)
-                _page_holder["context"] = browser_or_context
+            if hasattr(browser_or_context, "new_context"):
+                # Plain Browser (non-persistent): Browser.new_page() would
+                # create an implicit default context whose setDefaultViewport
+                # call trips the same Juggler scheme error — use an explicit
+                # context so no_viewport can be applied.
+                context = browser_or_context.new_context(no_viewport=True)
+                page = context.new_page()
+                apply_imported_cookies(context, profile)
+                _page_holder["context"] = context
             else:
                 page = browser_or_context.new_page()
                 apply_imported_cookies(page, profile)
@@ -639,6 +651,9 @@ def run_server(profile: dict[str, Any], profile_path: Path) -> int:
     kwargs = safe_launch_kwargs(profile)
     kwargs.pop("persistent_context", None)
     kwargs.pop("user_data_dir", None)
+    # no_viewport is a context option; launch_server uses BrowserType.launch()
+    # which rejects it. Clients decide their own context viewport.
+    kwargs.pop("no_viewport", None)
     emit("launching", mode="server")
 
     endpoint_holder: dict[str, str | None] = {"ws": None}

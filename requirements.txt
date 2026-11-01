@@ -17,7 +17,12 @@ Pillow>=10.0
 pythonnet>=3.0; sys_platform == "win32"
 pywin32>=306; sys_platform == "win32"
 # Phase A/C Chromium stack (optional at runtime; install browsers separately)
-playwright>=1.49
+# Playwright's Firefox driver sends Browser.setDefaultViewport with an
+# isMobile field that Camoufox v135+'s Juggler scheme rejects, killing every
+# launch (fixed in our worker via no_viewport=True, so any version works in
+# principle). Pinned to the combination verified live with camoufox 0.4.11.
+# Chromium uses patchright below (independent package, unaffected by this pin).
+playwright>=1.61,<1.62
 # Phase C patched automation backend (preferred when present)
 patchright>=1.49
 # Backup format v2 (AES-256-GCM); v1 fallback if absent
