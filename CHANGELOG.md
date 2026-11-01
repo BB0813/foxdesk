@@ -26,6 +26,16 @@
   invalid persisted timezones (409) instead of writing them to the profile;
   BatchUpdateRequest now shares the same `is_valid_timezone` helper
 
+### Dependency audit (pip-audit)
+- Full-environment scan: 7 packages with advisories; triaged by **shipped
+  surface** — `urllib3` 2.7.0 (requests chain, ships in the bundle) had
+  known CVEs → upgraded to 2.8.0 and pinned `urllib3>=2.8` in requirements
+  so CI builds always get the patched line; `tornado`/`werkzeug` hits come
+  from host-only tools (mitmproxy/flask, not in requirements) — they only
+  appeared in a stale local dist, which a fresh CI build never includes;
+  `virtualenv`/`transformers`/`sanic`/`aeon` are host/dev leftovers
+- requirements.txt re-audited clean after the pin
+
 Tests: 155 passed, 1 skipped.
 ### Proxy pool quality/geo UI (D-B6 closeout)
 
