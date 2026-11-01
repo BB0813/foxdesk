@@ -764,12 +764,8 @@ button.tag:hover { color: var(--text); background: var(--border); }
   flex-wrap: wrap;
 }
 
-/* fingerprint check result */
-.fp-score { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
-.fp-score-bar { flex: 1; height: 6px; border-radius: 3px; background: var(--surface-input); overflow: hidden; }
-.fp-score-fill { height: 100%; border-radius: 3px; background: var(--primary); transition: width 300ms ease; }
-.fp-checks-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 6px; margin: 10px 0; font-size: var(--caption); }
-.fp-issues { color: var(--warning); font-size: var(--caption); }
+/* fingerprint check result — styled in the Fingerprint result section */
+
 
 /* ═══════════ Empty states ═══════════ */
 .empty {
@@ -1012,7 +1008,8 @@ button.tag:hover { color: var(--text); background: var(--border); }
 }
 .plugin-row:hover { border-color: var(--border-strong); }
 
-/* Fingerprint check result — flat, flows inside the panel */
+/* Fingerprint check result — log-style mono block (same treatment as
+   session logs): plain pre-wrapped text can never overflow the panel. */
 .fp-result {
   margin-top: 6px;
   padding-top: 12px;
@@ -1020,12 +1017,14 @@ button.tag:hover { color: var(--text); background: var(--border); }
 }
 .fp-result-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   margin-bottom: 8px;
 }
 .fp-score-bar {
   flex: 1;
+  min-width: 60px;
   height: 4px;
   border-radius: 2px;
   background: var(--surface-input);
@@ -1043,51 +1042,18 @@ button.tag:hover { color: var(--text); background: var(--border); }
   text-align: right;
 }
 .fp-score-label { font-size: 11px; color: var(--subtle); }
-.fp-note { font-size: 12px; color: var(--subtle); margin: 4px 0 6px; }
-.fp-section-title { font-size: 11px; font-weight: 600; color: var(--subtle); margin: 14px 0 4px; }
+.fp-note { font-size: 12px; color: var(--subtle); margin: 6px 0 0; }
+.fp-result-log { margin: 0; max-height: 320px; }
+.fp-result-log .button {
+  min-height: 20px;
+  padding: 0 8px;
+  font-size: 11px;
+  font-family: var(--mono);
+  vertical-align: 1px;
+}
+.fp-log-title { color: var(--subtle); font-weight: 700; }
+.fp-lvl-high { color: var(--danger); font-weight: 700; }
+.fp-lvl-medium { color: var(--warning); font-weight: 700; }
+.fp-lvl-low { color: var(--primary); font-weight: 700; }
+.fp-lvl-info { color: var(--subtle); }
 
-.fp-risk-list { display: flex; flex-direction: column; gap: 3px; margin: 4px 0 10px; list-style: none; padding: 0; }
-.fp-risk-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 4px 0;
-  font-size: 12.5px;
-  line-height: 1.5;
-}
-.fp-risk-item .fp-risk-level {
-  flex: 0 0 auto;
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  margin-top: 2px;
-  min-width: 46px;
-}
-.fp-risk-item.sev-high .fp-risk-level { color: var(--danger); }
-.fp-risk-item.sev-medium .fp-risk-level { color: var(--warning); }
-.fp-risk-item.sev-low .fp-risk-level { color: var(--primary); }
-.fp-risk-item.sev-info .fp-risk-level { color: var(--subtle); }
-.fp-risk-msg { flex: 1; min-width: 0; color: var(--muted); }
-.fp-risk-actions { margin-left: auto; flex-shrink: 0; }
-
-.fp-checks-grid {
-  display: grid;
-  grid-template-columns: 120px 1fr 120px 1fr;
-  gap: 0 16px;
-  margin: 8px 0 0;
-  font-size: 12.5px;
-}
-.fp-checks-grid dt {
-  color: var(--subtle);
-  font-weight: 500;
-  padding: 3px 0;
-}
-.fp-checks-grid dd {
-  margin: 0;
-  padding: 3px 0;
-  color: var(--text);
-  overflow-wrap: anywhere;
-}
-
-}

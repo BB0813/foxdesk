@@ -3606,6 +3606,15 @@ function renderProfileTable(profiles) {
 }
 
 // --- Fingerprint Check ---
+// Pad a label to a fixed visual width so mono key columns stay aligned with
+// mixed-language labels (CJK/fullwidth chars occupy 2 terminal columns).
+function padVis(s, w) {
+  s = String(s);
+  let vis = 0;
+  for (const ch of s) vis += ch.codePointAt(0) > 0x2e7f ? 2 : 1;
+  return vis >= w ? s : s + " ".repeat(w - vis);
+}
+
 async function checkFingerprint() {
   if (!state.selectedId) return;
   const el = $("#fpCheckResult");
@@ -3617,15 +3626,28 @@ async function checkFingerprint() {
     const issues = result.issues || [];
     const risks = (result.environment_risks || []).filter((r) => r.level !== "info");
     const APPLICABLE = ["chromium_bundled_build", "timezone_geo_mismatch"];
-    const riskItems = risks.map((r) => {
-      const sev = r.level === "high" ? "high" : r.level === "medium" ? "medium" : r.level === "low" ? "low" : "info";
-      const isFixable = APPLICABLE.includes(r.code);
-      const fixBtn = isFixable
-        ? `<span class="fp-risk-actions"><button class="button secondary apply-suggestion" data-code="${escapeAttr(r.code)}" data-profile-id="${escapeAttr(state.selectedId)}" type="button" style="min-height:22px;padding:1px 8px;font-size:11px">${t("applyFix")}</button></span>`
-        : "";
-      return `<li class="fp-risk-item sev-${sev}"><span class="fp-risk-level">${escapeHtml(r.level)}</span><span class="fp-risk-msg">${escapeHtml(r.message || "")}</span>${fixBtn}</li>`;
-    }).join("");
-    const checksHtml = [
+    const KEY_W = 14;
+    // Rendered as a log-style mono block (same treatment as session logs):
+    // plain pre-wrapped text can never exceed the panel width.
+    const lines = [];
+    if (issues.length) {
+      lines.push(`<span class="fp-log-title">── ${escapeHtml(t("issues"))}</span>`);
+      issues.forEach((i) => lines.push(`<span class="fp-lvl-medium">•</span> ${escapeHtml(i)}`));
+      lines.push("");
+    }
+    if (risks.length) {
+      lines.push(`<span class="fp-log-title">── ${escapeHtml(t("envRisks"))}</span>`);
+      risks.forEach((r) => {
+        const sev = r.level === "high" ? "high" : r.level === "medium" ? "medium" : r.level === "low" ? "low" : "info";
+        const fixBtn = APPLICABLE.includes(r.code)
+          ? `  <button class="button secondary apply-suggestion" data-code="${escapeAttr(r.code)}" data-profile-id="${escapeAttr(state.selectedId)}" type="button">${escapeHtml(t("applyFix"))}</button>`
+          : "";
+        lines.push(`<span class="fp-lvl-${sev}">${escapeHtml(padVis(String(r.level).toUpperCase(), 8))}</span>${escapeHtml(r.message || "")}${fixBtn}`);
+      });
+      lines.push("");
+    }
+    lines.push(`<span class="fp-log-title">── ${escapeHtml(t("tabFingerprint"))}</span>`);
+    [
       ["Proxy", escapeHtml(String(result.checks.proxy || "—"))],
       ["geoip", result.checks.geoip ? "on" : "off"],
       [t("navigatorPlatform"), escapeHtml(result.checks.platform)],
@@ -3637,7 +3659,7 @@ async function checkFingerprint() {
       ["WebRTC", `${escapeHtml(String(result.checks.webrtc_mode || ""))}${result.checks.block_webrtc ? " · block" : ""}`],
       [t("timezone"), escapeHtml(result.checks.timezone)],
       [t("locale"), escapeHtml(result.checks.locale)],
-    ].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
+    ].forEach(([k, v]) => lines.push(`${escapeHtml(padVis(k, KEY_W))}${v}`));
     el.innerHTML = `
       <div class="fp-result">
         <div class="fp-result-header">
@@ -3647,11 +3669,8 @@ async function checkFingerprint() {
           <a href="${safeUrl(result.check_url)}" target="_blank" rel="noopener noreferrer" style="margin-left:auto;font-size:12px">${t("openInBrowser")} →</a>
         </div>
         ${result.udd_warning ? `<div class="session-error" style="margin:0 0 8px">${escapeHtml(result.udd_warning)}</div>` : ""}
+        <pre class="log fp-result-log">${lines.join("\n")}</pre>
         <p class="fp-note">${escapeHtml(result.note || t("envRiskNote"))}</p>
-        ${issues.length ? `<div class="fp-section-title">${t("issues")}</div><ul class="fp-risk-list">${issues.map((i) => `<li class="fp-risk-item sev-medium"><span class="fp-risk-msg">${escapeHtml(i)}</span></li>`).join("")}</ul>` : ""}
-        ${risks.length ? `<div class="fp-section-title">${t("envRisks")}</div><ul class="fp-risk-list">${riskItems}</ul>` : ""}
-        <div class="fp-section-title">${t("tabFingerprint")}</div>
-        <dl class="fp-checks-grid">${checksHtml}</dl>
       </div>`;
   } catch (err) {
     el.innerHTML = `<span style="color:var(--danger);font-size:13px">${escapeHtml(err.message)}</span>`;
