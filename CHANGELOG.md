@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — plugins panel
+## 1.5.1 — 2026-11-01 — plugins panel
 
 - New 插件 page in the sidebar: plugin cards (name/version/description/
   protocols), core state (ready/binary path/running bridges), and a
