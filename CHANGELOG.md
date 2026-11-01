@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — proxy workflow completion (batch quality + assign-and-match)
+## 1.4.8 — 2026-11-01 — proxy workflow completion (batch quality + assign-and-match)
 
 The proxy quality/geo chain is now a complete workflow: import → 检测全部质量
 → 分配并匹配.
