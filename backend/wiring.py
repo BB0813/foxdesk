@@ -25,6 +25,7 @@ from backend.engine_tools import camoufox_command, import_available
 from backend.proxy_test import test_proxy_item_for_health
 from backend.proxy_health import ProxyHealthScheduler
 from backend.setup_manager import SetupManager
+from backend.tunnel import TunnelBridgeManager
 from backend.update_manager import UpdateManager
 
 
@@ -60,6 +61,18 @@ proxy_health = ProxyHealthScheduler(
 )
 # Started on app startup (not import) so tests / tooling importing backend.app
 # never fire real proxy probes. Registered in backend/app.py.
+
+def _xray_path_provider() -> str:
+    """Resolve the xray-core binary path from settings (empty = auto-detect)."""
+    try:
+        return str(settings_store.get().get("xray_path") or "")
+    except Exception:
+        return ""
+
+
+bridge_manager = TunnelBridgeManager(DATA_DIR / "tunnels")
+bridge_manager.xray_path_provider = _xray_path_provider  # type: ignore[attr-defined]
+
 
 setup_manager = SetupManager(
     is_frozen=bool(getattr(sys, "frozen", False)),

@@ -12,6 +12,7 @@ from backend.models import (
     ProxyPoolIn,
     ProxyTestRequest,
 )
+from pydantic import BaseModel
 from backend.proxy_test import _test_proxy_connection
 from backend.wiring import proxy_health
 
@@ -20,7 +21,17 @@ router = APIRouter()
 
 @router.get("/api/proxies")
 def list_proxies() -> list[dict[str, Any]]:
-    return proxy_pool.all()
+    from backend.wiring import bridge_manager
+
+    items = []
+    for item in proxy_pool.all():
+        if item.get("kind") == "tunnel":
+            status = bridge_manager.status(item.get("id") or "")
+            item = dict(item)
+            item["bridge_port"] = status["port"] if status else None
+            item["bridge_running"] = bool(status and status["running"])
+        items.append(item)
+    return items
 
 
 @router.post("/api/proxies")
@@ -61,12 +72,23 @@ def import_proxy_pool(request: ProxyPoolImportRequest) -> dict[str, Any]:
 
 
 @router.post("/api/proxies/{proxy_id}/test")
+def _resolve_test_target(item: dict[str, Any]) -> tuple[str, str, str]:
+    """Return (server, username, password) for a pool item, bridging tunnels."""
+    if item.get("kind") == "tunnel" and item.get("tunnel"):
+        from backend.wiring import bridge_manager
+
+        port = bridge_manager.start(item.get("id") or "", item["tunnel"])
+        return f"socks5://127.0.0.1:{port}", "", ""
+    return item.get("server") or "", item.get("username") or "", item.get("password") or ""
+
+
 def test_proxy_pool_item(proxy_id: str) -> dict[str, Any]:
     try:
         item = proxy_pool.get(proxy_id)
     except KeyError:
         raise HTTPException(status_code=404, detail="proxy not found") from None
-    result = _test_proxy_connection(item.get("server") or "", item.get("username") or "", item.get("password") or "")
+    server, user, pwd = _resolve_test_target(item)
+    result = _test_proxy_connection(server, user, pwd)
     try:
         proxy_pool.mark_test_result(proxy_id, result)
     except KeyError:
@@ -84,7 +106,8 @@ def quality_check_proxy(proxy_id: str) -> dict[str, Any]:
         item = proxy_pool.get(proxy_id)
     except KeyError:
         raise HTTPException(status_code=404, detail="proxy not found") from None
-    result = _test_proxy_connection(item.get("server") or "", item.get("username") or "", item.get("password") or "")
+    server, user, pwd = _resolve_test_target(item)
+    result = _test_proxy_connection(server, user, pwd)
     try:
         proxy_pool.mark_test_result(proxy_id, result)
     except KeyError:
@@ -100,6 +123,33 @@ def quality_check_proxy(proxy_id: str) -> dict[str, Any]:
         f"{proxy_id} quality={quality.get('quality')} org={quality.get('org')[:60]}",
     )
     return {"ok": bool(result.get("ok")), "test": result, "quality": quality}
+
+
+class BridgeRequest(BaseModel):
+    action: str = "start"
+
+
+@router.post("/api/proxies/{proxy_id}/bridge")
+def proxy_bridge(proxy_id: str, request: BridgeRequest) -> dict[str, Any]:
+    """Start/stop the local tunnel bridge for a tunnel-kind pool item."""
+    try:
+        item = proxy_pool.get(proxy_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="proxy not found") from None
+    if item.get("kind") != "tunnel" or not item.get("tunnel"):
+        raise HTTPException(status_code=409, detail="not a tunnel node")
+    from backend.wiring import bridge_manager
+
+    if (request.action or "start").strip().lower() == "stop":
+        bridge_manager.stop(proxy_id)
+        return {"ok": True, "running": False}
+    try:
+        from backend.wiring import _xray_path_provider
+
+        port = bridge_manager.start(proxy_id, item["tunnel"], _xray_path_provider())
+        return {"ok": True, "running": True, "port": port}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
 
 
 @router.post("/api/proxies/assign")

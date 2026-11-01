@@ -210,6 +210,34 @@ class ProxyPoolStore:
         imported: list[dict[str, Any]] = []
         items = [] if replace else self._read()
         for line in lines:
+            if line.strip().lower().startswith("vless://"):
+                from backend.tunnel import TunnelParseError, parse_vless_uri
+
+                try:
+                    node = parse_vless_uri(line)
+                except TunnelParseError:
+                    continue
+                item = {
+                    "id": str(uuid.uuid4()),
+                    "kind": "tunnel",
+                    "name": node.get("name") or f"{node.get('address')}:{node.get('port')}",
+                    "server": f"vless://{node.get('address')}:{node.get('port')}",
+                    "tunnel": node,
+                    "username": "",
+                    "password": "",
+                    "tags": ["vless"],
+                    "notes": "",
+                    "last_ok": None,
+                    "last_latency_ms": None,
+                    "last_exit_ip": None,
+                    "last_error": None,
+                    "last_checked_at": None,
+                    "created_at": now_iso(),
+                    "updated_at": now_iso(),
+                }
+                items.append(item)
+                imported.append(item)
+                continue
             parsed = parse_proxy_line(line)
             if not parsed.get("server"):
                 continue

@@ -159,8 +159,13 @@ app.add_middleware(LocalApiTokenMiddleware)
 def _shutdown_cleanup() -> None:
     """Stop every worker/browser on server shutdown so nothing is orphaned."""
     from backend.local_auth import _remove_token_file
+    from backend.tunnel_bridge import stop_all_bridges
 
     _remove_token_file()
+    try:
+        stop_all_bridges()
+    except Exception:
+        pass
     try:
         with registry.lock:
             item_ids = list(registry.items.keys())

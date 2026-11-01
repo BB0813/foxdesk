@@ -409,7 +409,15 @@ label > span {
 .segmented button.active { background: var(--surface-strong); color: var(--text); }
 
 /* ═══════════ Tags / pills ═══════════ */
-.tagline { display: flex; flex-wrap: wrap; gap: 5px; padding: 0; flex: 1 1 100%; }
+.tagline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0;
+  flex: 1 1 100%;
+  min-width: 0;
+}
+.tagline .tag { font-size: 10.5px; padding: 1.5px 7px; }
 .tag {
   display: inline-flex;
   align-items: center;
@@ -491,8 +499,8 @@ button.tag:hover { color: var(--text); background: var(--border); }
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  margin: 2px 8px;
-  padding: 9px 10px;
+  margin: 2px 6px;
+  padding: 10px 11px;
   border-radius: var(--radius-s);
   cursor: pointer;
   transition: background var(--tr);

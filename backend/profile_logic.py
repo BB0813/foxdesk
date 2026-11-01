@@ -550,6 +550,24 @@ def apply_proxy_pool_to_profile(profile: Profile) -> Profile:
     if not item:
         # sticky with no proxy_id: keep manual proxy on profile
         return profile
+    # Tunnel nodes (vless etc.) are bridged to a local SOCKS5 listener by the
+    # xray-core bridge manager; the profile then points at that endpoint.
+    if item.get("kind") == "tunnel" and item.get("tunnel"):
+        from backend.tunnel_bridge import get_bridge_manager
+
+        node = item["tunnel"]
+        try:
+            port = get_bridge_manager().ensure_running(item.get("id") or "", node)
+        except Exception as exc:
+            raise RuntimeError(f"tunnel bridge failed for {item.get('name')}: {exc}") from exc
+        data = profile.model_dump()
+        data["proxy"] = {
+            "server": f"socks5://127.0.0.1:{port}",
+            "username": "",
+            "password": "",
+        }
+        data["proxy_id"] = item.get("id") or data.get("proxy_id") or ""
+        return Profile(**data)
     data = profile.model_dump()
     data["proxy"] = {
         "server": item.get("server") or "",

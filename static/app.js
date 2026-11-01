@@ -74,6 +74,11 @@ const i18n = {
     applyFix: "一键修复",
     applied: "已应用",
     probeExport: "导出对比 JSON",
+    bridgeStart: "启动桥接",
+    bridgeStop: "停止桥接",
+    bridgeRunning: "桥接运行中",
+    bridgeStoppedMsg: "桥接已停止",
+    bridgeStopped: "未桥接",
     batchQualityBtn: "检测全部质量",
     qualityBatchDone: "批量质量检测完成",
     qualityChecking: "质量检测中",
@@ -475,7 +480,12 @@ const i18n = {
     applied: "Applied",
     probeExport: "Export JSON",
     batchQualityBtn: "Check all quality",
-    qualityBatchDone: "Batch quality check done",
+    bridgeStart: "Start bridge",
+    bridgeStop: "Stop bridge",
+    bridgeRunning: "Bridge running",
+    bridgeStoppedMsg: "Bridge stopped",
+    bridgeStopped: "not bridged",
+    batchQualityBtn: "Check all quality",
     qualityChecking: "Quality checking",
     assignMatch: "Assign + match",
     assignMatchDone: "Assigned and environment matched",
@@ -2623,6 +2633,18 @@ function renderProxyPool() {
   }
   list.innerHTML = state.proxies
     .map((p) => {
+      const isTunnel = p.kind === "tunnel";
+      const bridgeStatus = isTunnel && p.bridge_port
+        ? `<span class="tag running"><i data-lucide="radio"></i>SOCKS :${escapeHtml(String(p.bridge_port))}</span>`
+        : isTunnel
+          ? `<span class="tag"><i data-lucide="unlink"></i>${t("bridgeStopped")}</span>`
+          : "";
+      const typeTag = isTunnel
+        ? `<span class="tag p0">VLESS</span>`
+        : "";
+      const bridgeBtn = isTunnel
+        ? `<button class="button secondary proxy-bridge" data-proxy-id="${escapeHtml(p.id)}" data-action="${p.bridge_running ? "stop" : "start"}" type="button">${p.bridge_running ? t("bridgeStop") : t("bridgeStart")}</button>`
+        : "";
       const testTag =
         p.last_ok === true
           ? `<span class="tag running">${t("proxyOk")}${p.last_exit_ip ? ` · ${escapeHtml(p.last_exit_ip)}` : ""}</span>`
@@ -2662,6 +2684,7 @@ function renderProxyPool() {
               <div class="row-meta">${escapeHtml(p.server || "")}${p.username ? ` · ${escapeHtml(p.username)}` : ""}</div>
             </div>
             <div style="display:flex;gap:6px;align-items:center">
+              ${bridgeBtn}
               <button class="button secondary proxy-quality" data-proxy-id="${escapeHtml(p.id)}" type="button">${t("qualityCheck")}</button>
               <button class="button secondary proxy-test" data-proxy-id="${escapeHtml(p.id)}" type="button">${t("testProxy")}</button>
               <button class="button secondary proxy-assign" data-proxy-id="${escapeHtml(p.id)}" type="button">${t("assignProxy")}</button>
@@ -2669,7 +2692,7 @@ function renderProxyPool() {
               <button class="button danger proxy-delete icon-only" data-proxy-id="${escapeHtml(p.id)}" type="button" title="${t("delete")}"><i data-lucide="trash-2"></i></button>
             </div>
           </div>
-          <div class="tagline">${testTag}${geoTag}${qualityTag}</div>
+          <div class="tagline">${typeTag}${testTag}${geoTag}${qualityTag}${bridgeStatus}</div>
         </article>
       `;
     })
@@ -2681,6 +2704,28 @@ function renderProxyPool() {
       try {
         const result = await api(`/api/proxies/${btn.dataset.proxyId}/test`, { method: "POST", body: "{}" });
         toast(result.ok ? `${t("proxyOk")} ${result.exit_ip || ""}` : `${t("proxyFailed")}: ${result.error || ""}`);
+        await loadProxies();
+      } catch (err) {
+        toast(err.message);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  });
+  $$(".proxy-bridge").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      try {
+        const action = btn.dataset.action === "stop" ? "stop" : "start";
+        const result = await api(`/api/proxies/${escapeAttr(btn.dataset.proxyId)}/bridge`, {
+          method: "POST",
+          body: JSON.stringify({ action }),
+        });
+        if (result.ok) {
+          toast(result.running ? `${t("bridgeRunning")}: SOCKS :${result.port}` : t("bridgeStoppedMsg"));
+        } else {
+          toast(`${t("proxyFailed")}: ${result.error || ""}`);
+        }
         await loadProxies();
       } catch (err) {
         toast(err.message);

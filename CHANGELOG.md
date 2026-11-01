@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.4.9 — 2026-11-01 — tunnel nodes: vless:// import + xray bridge
+
+New feature modeled on proxy gateways like Resin: vless share links are
+imported as tunnel nodes and bridged to a local SOCKS5 listener through a
+user-provided xray-core binary.
+
+- **vless:// parser** (uuid/address/port/security tls|reality|none/sni/fp/
+  pbk/sid/flow/network ws|tcp|grpc/ws host+path/name) with tests against
+  real-world reality + ws links
+- **TunnelBridgeManager**: per-node xray process, generated config
+  (SOCKS inbound on 127.0.0.1:<free-port> + vless outbound with tls/
+  reality/ws stream settings), port-wait, per-pid lifecycle, stop-all on
+  shutdown; xray path from settings or auto-detect (PATH / %APPDATA%/FoxDesk/bin)
+- **Pool integration**: import_lines accepts vless:// lines (stored as
+  kind=tunnel items with tags=["vless"]); profile launch resolves tunnel
+  nodes through the bridge automatically; test/quality-check endpoints
+  bridge first; bridge start/stop endpoint (`/api/proxies/{id}/bridge`)
+  with graceful "xray core not found" error
+- **UI**: rows show VLESS type tag + bridge status (未桥接 / SOCKS :port)
+  and 启动/停止桥接 controls; profile-card layout fills the sidebar width
+  (user-reported left-leaning fixed)
+- Honest limits: no bridge effectiveness claims; nodes require a working
+  xray binary the user provides
+
+Tests: 160 passed, 1 skipped.
 ## 1.4.8 — 2026-11-01 — proxy workflow completion (batch quality + assign-and-match)
 
 The proxy quality/geo chain is now a complete workflow: import → 检测全部质量

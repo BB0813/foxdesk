@@ -424,3 +424,113 @@ def test_geo_flow_sanitizes_timezone(monkeypatch):
     assert geo["ok"] is True
     assert geo["timezone"] is None  # junk dropped
     assert geo["country_code"] == "NW"
+
+
+class TestVlessParser:
+    def test_reality_node(self):
+        from backend.tunnel import parse_vless_uri
+
+        node = parse_vless_uri(
+            "vless://2f1ae887-6370-432b-bd6d-9869f90b49ed@154.36.179.91:8443?encryption=none"
+            "&flow=xtls-rprx-vision&security=reality&sni=www.microsoft.com&fp=chrome"
+            "&pbk=slRNlqJNWkGZ79OYoSaZQFdHdYCQI-4OTK06f0XoqB0&sid=408748524f340843"
+            "&type=tcp&headerType=none#japan-reality"
+        )
+        assert node["uuid"] == "2f1ae887-6370-432b-bd6d-9869f90b49ed"
+        assert node["address"] == "154.36.179.91" and node["port"] == 8443
+        assert node["security"] == "reality" and node["public_key"].startswith("slRNlq")
+        assert node["flow"] == "xtls-rprx-vision" and node["name"] == "japan-reality"
+
+    def test_ws_tls_node(self):
+        from backend.tunnel import parse_vless_uri, build_xray_config
+
+        node = parse_vless_uri(
+            "vless://51a0af77-a60c-4d9b-81a4-f50e1b38d90b@stormsnowtunnel.pages.dev:443"
+            "?encryption=none&security=tls&sni=stormsnowtunnel.pages.dev&fp=chrome"
+            "&type=ws&host=stormsnowtunnel.pages.dev&path=%2F#edgetunnel"
+        )
+        cfg = build_xray_config(node, 18999)
+        stream = cfg["outbounds"][0]["streamSettings"]
+        assert stream["network"] == "ws" and stream["security"] == "tls"
+        assert stream["wsSettings"]["path"] == "/"
+        assert stream["tlsSettings"]["serverName"] == "stormsnowtunnel.pages.dev"
+        assert cfg["inbounds"][0]["port"] == 18999
+        assert cfg["inbounds"][0]["listen"] == "127.0.0.1"
+
+    def test_junk_rejected(self):
+        import pytest
+
+        from backend.tunnel import TunnelParseError, parse_vless_uri
+
+        with pytest.raises(TunnelParseError):
+            parse_vless_uri("http://example.com")
+        with pytest.raises(TunnelParseError):
+            parse_vless_uri("vless://nohost")
+
+
+def test_pool_import_vless(tmp_path, monkeypatch):
+    from backend.proxy_pool import ProxyPoolStore
+
+    store = ProxyPoolStore(tmp_path / "proxies.json")
+    items = store.import_lines([
+        "vless://51a0af77-a60c-4d9b-81a4-f50e1b38d90b@stormsnowtunnel.pages.dev:443?security=tls&type=ws&host=h&sni=h#edgetunnel",
+        "http://1.2.3.4:8080",
+    ])
+    assert len(items) == 2
+    tunnel = next(i for i in items if i.get("kind") == "tunnel")
+    assert tunnel["tunnel"]["address"] == "stormsnowtunnel.pages.dev"
+    assert tunnel["tags"] == ["vless"]
+    plain = next(i for i in items if i.get("kind") is None)
+    assert plain["server"].startswith("http://1.2.3.4")
+
+
+def test_bridge_lifecycle_with_fake_xray(tmp_path):
+    """Bridge spawns the configured binary, opens a SOCKS port, stop() cleans up.
+
+    The 'xray' is a stub python script (wrapped in a .bat) that listens on the
+    port from the generated config — enough to verify config plumbing and
+    lifecycle without a real core.
+    """
+    import os
+    import sys
+    import time
+    from backend.tunnel import TunnelBridgeManager, parse_vless_uri
+
+    stub_py = tmp_path / "stub.py"
+    stub_py.write_text(
+        "import json, socket, sys\n"
+        "cfg = json.load(open(sys.argv[sys.argv.index('-c') + 1]))\n"
+        "port = cfg['inbounds'][0]['port']\n"
+        "s = socket.socket()\n"
+        "s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)\n"
+        "s.bind(('127.0.0.1', port))\n"
+        "s.listen(5)\n"
+        "while True:\n"
+        "    s.accept()\n",
+        encoding="utf-8",
+    )
+    if os.name == "nt":
+        stub = tmp_path / "xray.bat"
+        stub.write_text(f'@echo off\r\n"{sys.executable}" "{stub_py}" %*\r\n', encoding="utf-8")
+    else:
+        stub = tmp_path / "xray"
+        stub.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{stub_py}" "$@"\n', encoding="utf-8")
+        stub.chmod(0o755)
+
+    node = parse_vless_uri(
+        "vless://51a0af77-a60c-4d9b-81a4-f50e1b38d90b@stormsnowtunnel.pages.dev:443?security=tls&type=ws#stub"
+    )
+    mgr = TunnelBridgeManager(tmp_path / "tunnels")
+    port = mgr.start("node-1", node, str(stub))
+    try:
+        # A raw TCP connect proves the listener is live (the stub accepts but
+        # speaks no HTTP — that's all the lifecycle test needs).
+        import socket
+
+        with socket.create_connection(("127.0.0.1", port), timeout=3):
+            pass
+        assert mgr.status("node-1")["running"] is True
+    finally:
+        mgr.stop("node-1")
+    time.sleep(0.3)
+    assert mgr.status("node-1") is None

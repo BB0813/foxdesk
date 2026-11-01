@@ -60,6 +60,7 @@ class SettingsStore:
         mirror = (data.get("update_mirror") or "ghproxy").strip().lower()
         if mirror not in {"official", "ghproxy"}:
             mirror = "ghproxy"
+        xray_path = str(data.get("xray_path") or "").strip()
         assign = (data.get("proxy_assign_mode") or "sticky").strip().lower()
         if assign not in {"sticky", "round_robin", "random_healthy"}:
             assign = "sticky"
@@ -93,6 +94,7 @@ class SettingsStore:
             "proxy_auto_check": bool(data.get("proxy_auto_check", True)),
             "proxy_check_interval_sec": interval,
             "proxy_assign_mode": assign,
+            "xray_path": xray_path,
         }
 
     def get_github_token(self) -> str:
