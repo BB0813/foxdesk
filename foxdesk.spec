@@ -3,6 +3,8 @@
 
 from pathlib import Path
 
+import sys as _sys
+
 from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules
 
 ROOT = Path(SPECPATH)
@@ -130,9 +132,7 @@ for pkg in (
     'playwright',
     'patchright',
     'certifi',
-    # WebView2 / WinForms backend needs full pythonnet runtime DLLs.
-    'pythonnet',
-    'clr_loader',
+    *(['pythonnet', 'clr_loader'] if _sys.platform == 'win32' else []),
 ):
     try:
         pkg_datas, pkg_binaries, pkg_hidden = collect_all(pkg)
@@ -155,20 +155,20 @@ for pkg in (
     'apify_fingerprint_datapoints',
     'playwright',
     'patchright',
-    'pythonnet',
-    'clr_loader',
+    *(['pythonnet', 'clr_loader'] if _sys.platform == 'win32' else []),
 ):
     try:
         hiddenimports += collect_submodules(pkg)
     except Exception:
         pass
 
-hiddenimports += [
-    'clr',
-    'clr_loader',
-    'pythonnet',
-    'webview.platforms.winforms',
-]
+if _sys.platform == 'win32':
+    hiddenimports += [
+        'clr',
+        'clr_loader',
+        'pythonnet',
+        'webview.platforms.winforms',
+    ]
 
 # de-dup while preserving order
 _seen = set()
@@ -257,7 +257,6 @@ coll = COLLECT(
 # macOS: wrap the onedir build into a proper .app bundle (windowed builds
 # produce one automatically in PyInstaller 6; BUNDLE gives it a name,
 # identifier and Info.plist so the crash reports carry the version).
-import sys as _sys
 
 if _sys.platform == 'darwin':
     app = BUNDLE(
