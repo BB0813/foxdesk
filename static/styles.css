@@ -86,7 +86,12 @@ body {
     linear-gradient(180deg, rgba(255, 255, 255, 0.015), rgba(0, 0, 0, 0.06)),
     var(--bg);
   display: flex;
-  min-height: 100vh;
+  /* App shell: the body is exactly the viewport and never scrolls.
+     height:100% here made the document unscrollable — content below the
+     fold was painted but unreachable (empty nav rail, dead page bottom).
+     The workspace column scrolls instead. */
+  height: 100vh;
+  overflow: hidden;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -236,6 +241,11 @@ code { font-family: var(--mono); font-size: 0.92em; }
 .workspace {
   flex: 1;
   min-width: 0;
+  height: 100%;
+  /* The one scroll container: everything below the nav rail scrolls here,
+     so the rail stays pinned and no content is ever unreachable. */
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 20px 24px 40px;
 }
 .tab-page { display: none; }
