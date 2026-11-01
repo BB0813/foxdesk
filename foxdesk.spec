@@ -248,3 +248,23 @@ coll = COLLECT(
     name='FoxDesk',
 )
 
+# macOS: wrap the onedir build into a proper .app bundle (windowed builds
+# produce one automatically in PyInstaller 6; BUNDLE gives it a name,
+# identifier and Info.plist so the crash reports carry the version).
+import sys as _sys
+
+if _sys.platform == 'darwin':
+    app = BUNDLE(
+        coll,
+        name='FoxDesk.app',
+        icon=None,
+        bundle_identifier='com.foxdesk.app',
+        info_plist={
+            'CFBundleName': 'FoxDesk',
+            'CFBundleDisplayName': 'FoxDesk',
+            'CFBundleShortVersionString': APP_VERSION,
+            'CFBundleVersion': APP_VERSION,
+            'NSHighResolutionCapable': True,
+        },
+    )
+

@@ -345,7 +345,17 @@ def start_tray(port: int, window=None) -> None:
         except Exception:
             pass
 
-    threading.Thread(target=run_icon, daemon=True).start()
+    if sys.platform == "darwin":
+        # macOS AppKit forbids NSStatusItem setup off the main thread
+        # (EXC_BREAKPOINT in assertBarrierOnQueue). run_detached hooks the
+        # icon into the shared main runloop that webview's Cocoa backend
+        # drives — the documented pystray pattern for macOS.
+        try:
+            _tray_icon.run_detached()
+        except Exception:
+            threading.Thread(target=run_icon, daemon=True).start()
+    else:
+        threading.Thread(target=run_icon, daemon=True).start()
 
 
 def _staged_dir(name: str) -> Path | None:
