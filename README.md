@@ -1,8 +1,10 @@
 # FoxDesk
 
-本地 Camoufox 指纹浏览器管理器 — 免费、开源、隐私优先。
+本地双引擎指纹浏览器管理器 — 免费、开源、隐私优先。
 
-**当前版本：`1.6.0`（Stable）**
+**当前版本：`1.6.1`（Stable）**
+
+**语言 / Language：** 中文 | [English](README.en.md)
 
 <p align="center">
   <img src="static/logo.png" width="120" alt="FoxDesk Logo">

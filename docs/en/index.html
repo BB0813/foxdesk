@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FoxDesk - Documentation</title>
+  <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/user-attachments/assets/logo.png">
+  <style>
+    :root {
+      --bg: #0a0e17; --surface: rgba(255,255,255,0.04); --surface-hover: rgba(255,255,255,0.07);
+      --border: rgba(255,255,255,0.06); --ink: #e2e8f0; --muted: #94a3b8; --primary: #06b6d4;
+      --primary-glow: rgba(6,182,212,0.25); --danger: #ef4444; --success: #22c55e;
+      --radius: 12px; --font: 'Segoe UI', system-ui, sans-serif; --mono: 'Cascadia Code', Consolas, monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 15px; line-height: 1.7; }
+    a { color: var(--primary); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .layout { display: grid; grid-template-columns: 260px 1fr; min-height: 100vh; }
+    .sidebar {
+      position: sticky; top: 0; height: 100vh; padding: 24px 20px;
+      border-right: 1px solid var(--border); background: var(--surface);
+      backdrop-filter: blur(16px); overflow-y: auto;
+    }
+    .mobile-bar {
+      display: none; position: sticky; top: 0; z-index: 50;
+      align-items: center; justify-content: space-between;
+      padding: 10px 16px; border-bottom: 1px solid var(--border);
+      background: rgba(10,14,23,0.92); backdrop-filter: blur(12px);
+    }
+    .mobile-bar .brand { display: flex; align-items: center; gap: 8px; margin: 0; }
+    .mobile-bar .brand img { width: 26px; height: 26px; border-radius: 6px; }
+    .mobile-bar .brand span { font-weight: 700; font-size: 15px; }
+    .hamburger {
+      background: none; border: 1px solid var(--border); border-radius: 8px;
+      color: var(--ink); padding: 6px 10px; font-size: 16px; cursor: pointer; line-height: 1;
+    }
+    .sidebar .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 28px; }
+    .sidebar .brand img { width: 32px; height: 32px; border-radius: 8px; }
+    .sidebar .brand span { font-weight: 700; font-size: 17px; }
+    .sidebar nav { display: flex; flex-direction: column; gap: 2px; }
+    .sidebar nav a {
+      padding: 8px 12px; border-radius: 8px; color: var(--muted); font-size: 14px; font-weight: 500;
+      transition: all 150ms;
+    }
+    .sidebar nav a:hover { background: var(--surface-hover); color: var(--ink); text-decoration: none; }
+    .sidebar nav a.active { background: var(--primary-glow); color: var(--primary); }
+    .sidebar nav .section-label {
+      font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase;
+      letter-spacing: 0.8px; padding: 16px 12px 6px; margin-top: 8px;
+    }
+
+    .main { padding: 40px 56px; max-width: 860px; }
+    h1 { font-size: 32px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 8px; }
+    h2 { font-size: 22px; font-weight: 700; margin: 36px 0 12px; letter-spacing: -0.3px; }
+    h3 { font-size: 17px; font-weight: 600; margin: 24px 0 8px; }
+    p { margin: 8px 0; color: var(--muted); }
+    p strong { color: var(--ink); }
+
+    .subtitle { color: var(--muted); font-size: 16px; margin-bottom: 32px; }
+
+    .card {
+      border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface);
+      padding: 20px 24px; margin: 16px 0;
+    }
+
+    pre {
+      background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 8px;
+      padding: 16px; overflow-x: auto; font-family: var(--mono); font-size: 13px;
+      line-height: 1.6; color: #a5f3fc; margin: 12px 0;
+    }
+
+    code { font-family: var(--mono); font-size: 13px; background: rgba(6,182,212,0.1); padding: 2px 6px; border-radius: 4px; color: var(--primary); }
+
+    table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+    th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+    td code { font-size: 12px; }
+
+    .badge {
+      display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+    }
+    .badge.p0 { background: rgba(239,68,68,0.15); color: var(--danger); }
+    .badge.p1 { background: rgba(245,158,11,0.15); color: #f59e0b; }
+    .badge.p2 { background: rgba(6,182,212,0.15); color: var(--primary); }
+
+    ul { margin: 8px 0; padding-left: 20px; color: var(--muted); }
+    li { margin: 4px 0; }
+
+    .hero { text-align: center; padding: 80px 0 40px; }
+    .hero h1 { font-size: 48px; margin-bottom: 12px; }
+    .hero p { font-size: 18px; }
+    .hero .badges { display: flex; gap: 10px; justify-content: center; margin-top: 20px; }
+    .hero .badges span {
+      padding: 6px 14px; border-radius: 999px; border: 1px solid var(--border);
+      font-size: 13px; color: var(--muted);
+    }
+
+    @media (max-width: 800px) {
+      .layout { grid-template-columns: 1fr; display: block; }
+      .mobile-bar { display: flex; }
+      .sidebar {
+        position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--border);
+        padding: 12px 16px; display: none;
+      }
+      .sidebar.open { display: block; }
+      .sidebar .brand { display: none; }
+      .sidebar nav { flex-direction: column; gap: 2px; }
+      .main { padding: 24px 16px; }
+      .hero { text-align: left; padding: 32px 0 20px; }
+      .hero h1 { font-size: 30px; }
+      .hero p { font-size: 15px; }
+      .hero .badges { flex-wrap: wrap; justify-content: flex-start; }
+      h1 { font-size: 26px; }
+      h2 { font-size: 19px; }
+      table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      pre { font-size: 12px; padding: 12px; }
+      .card { padding: 14px 16px; }
+    }
+    @media (max-width: 460px) {
+      .hero h1 { font-size: 24px; }
+      .main { padding: 18px 12px; }
+      .card { padding: 12px 14px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="mobile-bar">
+    <div class="brand">
+      <img src="https://raw.githubusercontent.com/user-attachments/assets/logo.png" alt="FoxDesk" onerror="this.style.display='none'">
+      <span>FoxDesk</span>
+    </div>
+    <button class="hamburger" id="navToggle" aria-label="Menu" aria-expanded="false">☰</button>
+  </div>
+  <div class="layout">
+    <aside class="sidebar" id="docNav">
+      <div class="brand">
+        <img src="https://raw.githubusercontent.com/user-attachments/assets/logo.png" alt="FoxDesk" onerror="this.style.display='none'">
+        <span>FoxDesk Docs</span>
+      </div>
+      <nav>
+        <a href="#install" class="active">Installation</a>
+        <a href="#quickstart">Quick start</a>
+        <a href="#concepts">Core concepts</a>
+        <a href="#config">Configuration reference</a>
+        <a href="#locale">Locale &amp; UI language</a>
+        <a href="#faq">FAQ / Troubleshooting</a>
+        <a href="#security">Security</a>
+        <a href="#changelog">Changelog</a>
+        <div class="section-label">Links</div>
+        <a href="https://github.com/BB0813/foxdesk/releases">Releases</a>
+        <a href="../index.html">中文文档</a>
+        <a href="https://github.com/BB0813/foxdesk">GitHub</a>
+      </nav>
+    </aside>
+    <main class="main">
+      <section class="hero" id="top">
+        <h1>FoxDesk</h1>
+        <p>Local dual-engine fingerprint browser manager — free, open source, privacy-first.</p>
+        <div class="badges">
+          <span>Camoufox (Firefox)</span>
+          <span>Chromium / Patchright</span>
+          <span>Windows · Linux · macOS</span>
+        </div>
+      </section>
+
+      <h2 id="install">Installation</h2>
+      <div class="card">
+        <table>
+          <tr><th>Platform</th><th>Status</th><th>Distribution</th></tr>
+          <tr><td>Windows x64</td><td>✅ Full (Setup / portable / auto-update)</td><td><code>FoxDesk-x.y.z-Setup.exe</code></td></tr>
+          <tr><td>Linux x64</td><td>✅ Experimental (portable tar.gz)</td><td><code>FoxDesk-linux-x64.tar.gz</code></td></tr>
+          <tr><td>macOS x64</td><td>✅ Experimental (portable zip, unsigned)</td><td><code>FoxDesk-macos.zip</code></td></tr>
+        </table>
+        <p>Download the latest build from <a href="https://github.com/BB0813/foxdesk/releases">GitHub Releases</a>.</p>
+      </div>
+
+      <div class="card">
+        <h3>Linux one-line installer</h3>
+        <pre>curl -fsSL https://raw.githubusercontent.com/BB0813/foxdesk/main/tools/install-linux.sh | sudo bash</pre>
+        <p>Options: <code>--version X.Y.Z</code>, <code>--dir &lt;path&gt;</code>, <code>--mirror</code>, <code>--no-desktop</code>, <code>--uninstall</code>.
+        GUI needs <code>libwebkit2gtk-4.1</code> and GTK3; headless machines can run <code>./FoxDesk --serve 8765</code>.</p>
+      </div>
+
+      <div class="card">
+        <h3>macOS Gatekeeper</h3>
+        <p>The build is unsigned. If the first launch is blocked: right-click <code>FoxDesk.app</code> → Open, or run
+        <code>xattr -cr /path/to/FoxDesk.app</code>. A Homebrew cask template lives in <code>tools/homebrew/</code>.</p>
+      </div>
+
+      <h2 id="quickstart">Quick start</h2>
+      <div class="card">
+        <h3>From source</h3>
+        <pre>git clone https://github.com/BB0813/foxdesk.git
+cd foxdesk
+python -m pip install -r requirements.txt
+python desktop.py</pre>
+        <p>Camoufox browser files: use <strong>System → Camoufox → Install / Fetch</strong> in the app.
+        Optional Chromium engine: <code>patchright install chromium</code> (preferred) or <code>playwright install chromium</code>.</p>
+        <p>Then: create a profile (or pick a template) → set startup URL and proxy → <strong>Launch</strong>.
+        Sessions appear under <strong>Sessions</strong> with logs, live navigation, fingerprint probe and screenshots.</p>
+      </div>
+
+      <h2 id="concepts">Core concepts</h2>
+      <div class="card">
+        <table>
+          <tr><th>Concept</th><th>Meaning</th></tr>
+          <tr><td><strong>Profile</strong></td><td>One browser identity: engine, startup URL, proxy, fingerprint parameters, storage dir.</td></tr>
+          <tr><td><strong>Engine</strong></td><td><code>camoufox</code> (Firefox-based) or <code>chromium</code> (Playwright/Patchright), chosen per profile.</td></tr>
+          <tr><td><strong>Fingerprint</strong></td><td>Observable environment parameters (UA, platform, screen, WebGL, timezone, locale, WebRTC…). FoxDesk edits and scores static consistency — not an anti-detect guarantee.</td></tr>
+          <tr><td><strong>Proxy</strong></td><td>Per-profile proxy or a proxy-pool entry; passwords sealed locally (DPAPI on Windows).</td></tr>
+          <tr><td><strong>Session</strong></td><td>A running browser process with logs, navigation, probe, screenshot and <code>evaluate</code> over a local channel.</td></tr>
+          <tr><td><strong>Templates</strong></td><td>Preset bundles for common scenarios (clean / e-commerce / automation / social / research / mobile).</td></tr>
+        </table>
+      </div>
+
+      <h2 id="config">Configuration reference</h2>
+      <div class="card">
+        <h3>General</h3>
+        <table>
+          <tr><th>Field</th><th>Values</th><th>Meaning</th></tr>
+          <tr><td><code>name</code></td><td>text</td><td>Display name; default data dir name</td></tr>
+          <tr><td><code>startup_url</code></td><td>URL</td><td>Page opened at session start</td></tr>
+          <tr><td><code>mode</code></td><td><code>browser</code> / <code>server</code></td><td>Interactive browser vs automation server (ws endpoint)</td></tr>
+          <tr><td><code>engine</code></td><td><code>camoufox</code> / <code>chromium</code></td><td>Browser engine for this profile</td></tr>
+          <tr><td><code>chromium_backend</code></td><td><code>auto</code> / <code>playwright</code> / <code>patchright</code></td><td>Chromium automation backend (<code>auto</code> prefers Patchright)</td></tr>
+          <tr><td><code>os</code></td><td><code>auto</code> / <code>windows</code> / <code>macos</code> / <code>linux</code></td><td>Target OS the fingerprint should resemble</td></tr>
+          <tr><td><code>headless</code></td><td>bool</td><td>Run without a visible window</td></tr>
+          <tr><td><code>persistent_context</code></td><td>bool</td><td>Reuse the profile data dir (cookies/storage persist)</td></tr>
+          <tr><td><code>user_data_dir</code></td><td>path</td><td>Storage directory (local disk recommended)</td></tr>
+          <tr><td><code>humanize</code> / <code>geoip</code></td><td>bool</td><td>Human-like cursor; geo hints from proxy exit IP (Camoufox)</td></tr>
+        </table>
+        <h3>Fingerprint environment</h3>
+        <table>
+          <tr><th>Field</th><th>Meaning</th></tr>
+          <tr><td><code>user_agent</code>, <code>navigator_platform</code>, <code>navigator_vendor</code></td><td>Navigator identity overrides</td></tr>
+          <tr><td><code>screen_width</code>, <code>screen_height</code>, <code>screen_color_depth</code>, <code>device_pixel_ratio</code></td><td>Screen geometry</td></tr>
+          <tr><td><code>hardware_concurrency</code>, <code>device_memory</code>, <code>max_touch_points</code></td><td>Hardware exposure</td></tr>
+          <tr><td><code>canvas_noise</code>, <code>audio_noise</code></td><td>Readback noise</td></tr>
+          <tr><td><code>webgl_vendor</code>, <code>webgl_renderer</code></td><td>WebGL strings</td></tr>
+          <tr><td><code>fonts</code>, <code>font_pack</code></td><td>Font surface</td></tr>
+          <tr><td><code>webrtc_mode</code></td><td><code>default</code> / <code>disable</code> / <code>public_only</code> / <code>force_proxy</code></td></tr>
+          <tr><td><code>media_devices</code></td><td><code>default</code> / <code>random</code> / <code>empty</code></td></tr>
+          <tr><td><code>ua_ch_platform</code>, <code>ua_ch_mobile</code></td><td>User-Agent Client Hints (Chromium)</td></tr>
+        </table>
+        <h3>Proxy &amp; advanced</h3>
+        <table>
+          <tr><th>Field</th><th>Meaning</th></tr>
+          <tr><td><code>proxy.server</code> / <code>proxy.username</code> / <code>proxy.password</code></td><td>Inline proxy endpoint and credentials (sealed at rest)</td></tr>
+          <tr><td><code>proxy_id</code></td><td>Use a proxy-pool entry instead</td></tr>
+          <tr><td><code>block_images</code>, <code>block_webrtc</code>, <code>block_webgl</code>, <code>disable_coop</code>, <code>enable_cache</code></td><td>Engine switches</td></tr>
+          <tr><td><code>addons</code>, <code>extra_args</code></td><td>Add-on paths (Camoufox) / extra launch arguments</td></tr>
+        </table>
+      </div>
+
+      <h2 id="locale">Locale &amp; UI language</h2>
+      <div class="card">
+        <h3>Profile locale (browser environment)</h3>
+        <p>The profile-level <code>locale</code> field accepts BCP-47 tags such as <code>en-US</code>, <code>zh-CN</code>, <code>de-DE</code>, <code>ja-JP</code>.
+        It controls the <strong>browser</strong> environment: <code>navigator.language</code>, <code>Intl</code> defaults and the <code>Accept-Language</code> header.
+        Leave empty to use the engine default. Keep it consistent with <code>timezone</code> (IANA name, e.g. <code>America/New_York</code>) and the proxy exit country —
+        the fingerprint check flags timezone/exit mismatches.</p>
+        <h3>Desktop UI language</h3>
+        <p>The management UI language is <strong>independent of any profile</strong>:</p>
+        <ul>
+          <li>On first launch it follows the system/browser locale — Chinese locale → 中文, everything else → English.</li>
+          <li>Switch at any time with the <strong>中 / EN</strong> toggle at the bottom-left of the sidebar.</li>
+          <li>The choice is persisted locally and applies only to the desktop app.</li>
+        </ul>
+      </div>
+
+      <h2 id="faq">FAQ / Troubleshooting</h2>
+      <div class="card">
+        <h3>Camoufox session fails immediately with a protocol error</h3>
+        <p>Fixed in 1.6.1 (Playwright Juggler <code>Browser.setDefaultViewport</code> incompatibility). Upgrade to 1.6.1+;
+        the launch kwargs in the session log should include <code>no_viewport</code>.</p>
+        <h3>“camoufox is not installed”</h3>
+        <p>Open <strong>System → Camoufox → Install / Fetch</strong>, or run <code>python -m camoufox fetch</code> with the same Python environment.
+        Corporate proxies may need <code>HTTPS_PROXY</code> during the fetch.</p>
+        <h3>Chromium sessions fail to start</h3>
+        <p>Install the browser for the selected backend: <code>patchright install chromium</code> (preferred) or <code>playwright install chromium</code>.</p>
+        <h3>Linux GUI doesn't start</h3>
+        <p>Install <code>libwebkit2gtk-4.1-0</code> and <code>gir1.2-gtk-3.0</code>, or run <code>./FoxDesk --serve 8765</code> and use a normal browser.</p>
+        <h3>Network-drive profiles behave oddly</h3>
+        <p>SMB/NAS paths can drop mid-session and startup is slower. Prefer local disk for <code>user_data_dir</code>.</p>
+        <h3>Update check is rate-limited</h3>
+        <p>Set <code>FOXDESK_GITHUB_TOKEN</code> / <code>GITHUB_TOKEN</code>, or paste a read-only token under <strong>System → Update settings</strong>.</p>
+        <h3>Where is my data?</h3>
+        <p><code>%APPDATA%\FoxDesk</code> on Windows (legacy <code>CamoufoxManager</code> migrated). Backups are encrypted <code>.fdk</code> files.</p>
+      </div>
+
+      <h2 id="security">Security &amp; threat model</h2>
+      <div class="card">
+        <table>
+          <tr><th>Item</th><th>Behavior</th></tr>
+          <tr><td>Listen address</td><td><code>127.0.0.1</code> only — never expose to a LAN/public interface</td></tr>
+          <tr><td>API auth</td><td>Per-process random <code>X-FoxDesk-Token</code> injected into the UI</td></tr>
+          <tr><td>Data storage</td><td><code>%APPDATA%\FoxDesk</code> (local JSON)</td></tr>
+          <tr><td>Proxy passwords</td><td>Sealed locally (DPAPI on Windows)</td></tr>
+          <tr><td>Auto-update</td><td>ghproxy mirror by default; optional token; SHA256 verified when available</td></tr>
+        </table>
+        <p>Local malware can still read the data directory. This tool makes <strong>no</strong> anti-detect, payment or signup guarantee.</p>
+      </div>
+
+      <h2 id="changelog">Changelog</h2>
+      <div class="card">
+        <h3>v1.6.1 <span class="badge p0">Latest</span></h3>
+        <ul>
+          <li>Fixed: Camoufox launch failure (Playwright Juggler <code>setDefaultViewport</code> incompatibility)</li>
+          <li>Fixed: page below the fold was unscrollable (app-shell scroll model + duplicate container)</li>
+          <li>Fingerprint check result rendered as a log-style mono block — structurally cannot overflow</li>
+          <li>Unified control polish: drawn checkboxes, input tri-state, solid accent primary buttons</li>
+          <li>Versioned static assets — no more stale cached scripts after updates</li>
+          <li>Docs: English README + this page; UI language auto-detects system locale</li>
+        </ul>
+        <p>Full history: <a href="https://github.com/BB0813/foxdesk/blob/main/CHANGELOG.md">CHANGELOG.md</a></p>
+      </div>
+
+      <p style="color:var(--muted);font-size:13px;margin-top:40px">FoxDesk is a local desktop tool. No cloud control, no embedded secrets. Not an anti-detect guarantee.
+      · <a href="../index.html">中文文档</a> · <a href="https://github.com/BB0813/foxdesk">GitHub</a></p>
+    </main>
+  </div>
+  <script>
+    const navToggle = document.getElementById('navToggle');
+    const docNav = document.getElementById('docNav');
+    if (navToggle && docNav) {
+      navToggle.addEventListener('click', () => {
+        const open = docNav.classList.toggle('open');
+        navToggle.setAttribute('aria-expanded', String(open));
+        navToggle.textContent = open ? '✕' : '☰';
+      });
+    }
+    const sections = document.querySelectorAll('[id]');
+    const navLinks = document.querySelectorAll('.sidebar nav a[href^="#"]');
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          navLinks.forEach(l => l.classList.remove('active'));
+          const link = document.querySelector(`.sidebar nav a[href="#${entry.target.id}"]`);
+          if (link) link.classList.add('active');
+        }
+      });
+    }, { rootMargin: '-80px 0px -60% 0px' });
+    sections.forEach(s => observer.observe(s));
+  </script>
+</body>
+</html>

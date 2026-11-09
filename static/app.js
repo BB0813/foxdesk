@@ -841,7 +841,9 @@ const i18n = {
 };
 
 const state = {
-  lang: localStorage.getItem("cm-lang") || "zh",
+  // First run: follow the system/browser locale (zh* -> Chinese, else English);
+  // an explicit choice from the 中/EN toggle always wins and is persisted.
+  lang: localStorage.getItem("cm-lang") || ((navigator.language || "").toLowerCase().startsWith("zh") ? "zh" : "en"),
   theme: localStorage.getItem("cm-theme") || "dark",
   selectedSessions: new Set(),
   probeReports: [],
