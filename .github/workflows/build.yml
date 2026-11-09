@@ -309,6 +309,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Same version resolution as build-linux; without it the packaged zip
+      # name rendered as FoxDesk-macos-.zip (empty steps.meta output).
+      - name: Resolve version
+        id: meta
+        run: |
+          tagRef="${{ github.ref_name }}"
+          fileVersion="$(tr -d '[:space:]' < VERSION)"
+          version="${tagRef#v}"
+          [ "$version" = "$tagRef" ] && version="$fileVersion"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'

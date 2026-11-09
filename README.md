@@ -33,7 +33,7 @@
 |---|---|---|
 | Windows x64 | ✅ 完整（Setup / 便携 / 自动更新） | `FoxDesk-x.y.z-Setup.exe` |
 | Linux x64 | ✅ 实验性（便携 tar.gz；GUI 需 WebKit/GTK 运行库） | `FoxDesk-linux-x64.tar.gz` |
-| macOS x64 | ✅ 实验性（便携 zip，未签名） | `FoxDesk-macos.zip` |
+| macOS x64 | ✅ 实验性（便携 zip，未签名） | `FoxDesk-macos-x.y.z.zip` |
 
 **macOS Gatekeeper 说明**（下载 zip 后首次打开被拦时）：
 1. 最简：右键 FoxDesk.app → 打开（仅第一次需要）

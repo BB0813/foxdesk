@@ -33,7 +33,7 @@ Local dual-engine fingerprint browser manager — free, open source, privacy-fir
 |---|---|---|
 | Windows x64 | ✅ Full (Setup / portable / auto-update) | `FoxDesk-x.y.z-Setup.exe` |
 | Linux x64 | ✅ Experimental (portable tar.gz; GUI needs WebKit/GTK libs) | `FoxDesk-linux-x64.tar.gz` |
-| macOS x64 | ✅ Experimental (portable zip, unsigned) | `FoxDesk-macos.zip` |
+| macOS x64 | ✅ Experimental (portable zip, unsigned) | `FoxDesk-macos-x.y.z.zip` |
 
 **macOS Gatekeeper note** (if the first launch is blocked after downloading the zip):
 1. Simplest: right-click `FoxDesk.app` → Open (first launch only)
