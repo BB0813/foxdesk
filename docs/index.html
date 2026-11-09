@@ -190,11 +190,11 @@ python desktop.py</pre>
       <p>用户数据目录：<code>%APPDATA%\FoxDesk</code>（旧版 <code>CamoufoxManager</code> 会自动迁移）。</p>
 
       <h3>方式二：下载安装包</h3>
-      <p>从 <a href="https://github.com/BB0813/foxdesk/releases">GitHub Releases</a> 下载当前稳定线 <strong>v1.6.1</strong>（双引擎 + Patchright）。无需安装 Python 环境（打包形态）。</p>
+      <p>从 <a href="https://github.com/BB0813/foxdesk/releases">GitHub Releases</a> 下载当前稳定线 <strong>v1.6.2</strong>（双引擎 + Patchright）。无需安装 Python 环境（打包形态）。</p>
 
       <div class="card">
         <h3 style="margin-top:0">🪟 Windows</h3>
-        <p><strong>安装版</strong>：<code>FoxDesk-1.6.1-Setup.exe</code> — 双击安装到 <code>%LOCALAPPDATA%\Programs\FoxDesk</code>，开始菜单/桌面快捷方式启动。应用内「一键更新」可用（SHA256 校验）。</p>
+        <p><strong>安装版</strong>：<code>FoxDesk-1.6.2-Setup.exe</code> — 双击安装到 <code>%LOCALAPPDATA%\Programs\FoxDesk</code>，开始菜单/桌面快捷方式启动。应用内「一键更新」可用（SHA256 校验）。</p>
         <p><strong>便携版</strong>：解压 <code>FoxDesk-windows-x64-1.6.0.zip</code> 到任意目录，双击 <code>FoxDesk.exe</code>。数据目录在 <code>%APPDATA%\FoxDesk</code>，与安装版互通。</p>
       </div>
 
@@ -204,7 +204,7 @@ python desktop.py</pre>
         <pre>curl -fsSL https://bb0813.github.io/foxdesk/tools/install-linux.sh | sudo bash</pre>
         <p>脚本自动完成：下载最新版（直连失败自动切 ghproxy/ghfast 镜像）→ SHA256 校验 → 解压到 /opt/FoxDesk → 创建 <code>foxdesk</code> 命令和桌面快捷方式 → 检查运行库。</p>
         <p><strong>手动安装</strong>：</p>
-        <pre>wget https://github.com/BB0813/foxdesk/releases/download/v1.6.1/FoxDesk-linux-x64-1.6.1.tar.gz
+        <pre>wget https://github.com/BB0813/foxdesk/releases/download/v1.6.2/FoxDesk-linux-x64-1.6.2.tar.gz
 tar -xzf FoxDesk-linux-x64-1.6.0.tar.gz
 cd FoxDesk && chmod +x FoxDesk
 ./FoxDesk                 # 图形界面（需要 WebKit/GTK 运行库）
@@ -502,7 +502,17 @@ git push origin v1.6.1</pre>
       <!-- CHANGELOG -->
       <h2 id="changelog">更新日志</h2>
       <div class="card">
-        <h3>v1.6.1 <span class="badge p0">最新</span></h3>
+        <h3>v1.6.2 <span class="badge p0">最新</span></h3>
+        <p style="color:var(--muted)">2026-11-10</p>
+        <ul>
+          <li>国际化：英文 README（README.en.md）与英文文档站（docs/en）</li>
+          <li>UI 首次启动自动跟随系统语言（中文系统 → 中文，其他 → English）</li>
+          <li>语言开关增加提示并持久化选择；补全 locale 字段行为文档</li>
+          <li>（issue #9 实施）</li>
+        </ul>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <h3>v1.6.1</h3>
         <p style="color:var(--muted)">2026-11-01</p>
         <ul>
           <li>修复：Camoufox 无法启动（Playwright Juggler setDefaultViewport 协议不兼容）</li>

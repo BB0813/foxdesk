@@ -305,7 +305,16 @@ python desktop.py</pre>
 
       <h2 id="changelog">Changelog</h2>
       <div class="card">
-        <h3>v1.6.1 <span class="badge p0">Latest</span></h3>
+        <h3>v1.6.2 <span class="badge p0">Latest</span></h3>
+        <ul>
+          <li>Internationalization: English README (<code>README.en.md</code>) and English docs site (<code>docs/en</code>)</li>
+          <li>UI language auto-detects the system locale on first launch (Chinese → 中文, otherwise English)</li>
+          <li>Language toggle tooltips + persisted choice; full <code>locale</code> field documentation</li>
+          <li>Implements issue #9</li>
+        </ul>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <h3>v1.6.1</h3>
         <ul>
           <li>Fixed: Camoufox launch failure (Playwright Juggler <code>setDefaultViewport</code> incompatibility)</li>
           <li>Fixed: page below the fold was unscrollable (app-shell scroll model + duplicate container)</li>
