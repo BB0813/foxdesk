@@ -341,6 +341,7 @@ const i18n = {
     taskTest: "自检",
     taskFetch: "下载",
     maxConcurrentSessions: "最大并发会话",
+    uiLanguage: "界面语言",
     idleSessionMinutes: "空闲自动停止（分钟，0=关）",
     proxyAssignMode: "代理分配模式",
     proxyModeSticky: "粘性（档案绑定）",
@@ -761,6 +762,7 @@ const i18n = {
     taskTest: "Self-test",
     taskFetch: "Fetch",
     maxConcurrentSessions: "Max concurrent sessions",
+    uiLanguage: "Interface language",
     idleSessionMinutes: "Idle auto-stop (minutes, 0=off)",
     proxyAssignMode: "Proxy assign mode",
     proxyModeSticky: "Sticky (profile-bound)",
@@ -4056,6 +4058,12 @@ function bindEvents() {
   $$("[data-lang]").forEach((button) => {
     button.addEventListener("click", () => setLanguage(button.dataset.lang));
   });
+  // Settings-page language selector (same store as the sidebar toggle)
+  const uiLangSelect = $("#uiLanguageSelect");
+  if (uiLangSelect) {
+    uiLangSelect.value = state.lang;
+    uiLangSelect.addEventListener("change", () => setLanguage(uiLangSelect.value));
+  }
   // Page tab switching
   $$(".tab-nav button[data-page]").forEach((btn) => {
     btn.addEventListener("click", () => switchPage(btn.dataset.page));

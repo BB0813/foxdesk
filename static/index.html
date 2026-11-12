@@ -714,6 +714,13 @@
                 <input id="idleSessionMinutes" type="number" min="0" max="1440" step="1" value="0" />
               </label>
               <label>
+                <span data-i18n="uiLanguage">界面语言</span>
+                <select id="uiLanguageSelect">
+                  <option value="zh">中文</option>
+                  <option value="en">English</option>
+                </select>
+              </label>
+              <label>
                 <span data-i18n="proxyAssignMode">代理分配模式</span>
                 <select id="proxyAssignMode">
                   <option value="sticky" data-i18n-option="proxyModeSticky">粘性（档案绑定）</option>
@@ -820,6 +827,6 @@
       <button class="ctx-item danger" data-action="delete" type="button"><i data-lucide="trash-2"></i> <span data-i18n="delete">删除</span></button>
     </div>
     <script src="/assets/lucide.min.js"></script>
-    <script src="/assets/app.js?v=12"></script>
+    <script src="/assets/app.js?v=13"></script>
   </body>
 </html>

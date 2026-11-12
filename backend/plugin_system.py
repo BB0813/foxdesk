@@ -24,6 +24,7 @@ import importlib.util
 import json
 import logging
 import os
+import re
 import subprocess
 import socket
 import time
@@ -35,6 +36,11 @@ log = logging.getLogger("foxdesk.plugins")
 
 class PluginError(RuntimeError):
     pass
+
+
+# Manifest ids become path segments (data_dir/plugins/<id>) and dict keys;
+# keep them to a safe charset so a crafted manifest cannot traverse.
+_PLUGIN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
 
 class PluginContext:
@@ -121,6 +127,9 @@ class PluginManager:
                 try:
                     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
                     pid = str(manifest.get("id") or child.name)
+                    if not _PLUGIN_ID_RE.match(pid):
+                        log.warning("plugin skipped (%s): invalid id %r", child.name, pid)
+                        continue
                     if pid in self.plugins:
                         # user plugins override built-ins with the same id
                         log.info("plugin %s overridden by user dir", pid)
