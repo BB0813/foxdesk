@@ -264,6 +264,85 @@ def _open_ui_safely(url: str) -> None:
         pass
 
 
+def _tray_api_headers() -> dict[str, str]:
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+    # Same per-process token the UI gets; the server mirrors it into the
+    # instance lock dir so the desktop shell can call the local API.
+    try:
+        token = (LOCK_DIR / "api-token").read_text(encoding="utf-8").strip()
+        if token:
+            headers["X-FoxDesk-Token"] = token
+    except Exception:
+        pass
+    return headers
+
+
+def _launch_profile(port: int, profile_id: str) -> None:
+    """Launch a session from the tray quick-launch menu (best effort)."""
+    try:
+        import json
+        import urllib.request
+
+        req = urllib.request.Request(
+            f"http://{HOST}:{port}/api/sessions",
+            data=json.dumps({"profile_id": profile_id}).encode("utf-8"),
+            headers=_tray_api_headers(),
+            method="POST",
+        )
+        urllib.request.urlopen(req, timeout=8).read()
+    except Exception:
+        pass
+
+
+def _make_launch_action(port: int, profile_id: str):
+    """pystray action with the (icon, item) signature, bound to one profile.
+
+    A factory (not a defaulted-parameter lambda): pystray validates
+    co_argcount ∈ {0,1,2} and counts defaulted parameters too.
+    """
+
+    def _action(icon, item):  # noqa: ARG001 - pystray passes both
+        _launch_profile(port, profile_id)
+
+    return _action
+
+
+def _tray_launch_items(port: int):
+    """Build the dynamic "Launch Profile" tray submenu.
+
+    pystray re-invokes the action callable every time the submenu opens,
+    so the profile list stays fresh without polling. Returns the generator
+    function itself, not the items.
+    """
+    import json
+    import urllib.request
+
+    def _items():
+        import pystray
+
+        try:
+            req = urllib.request.Request(
+                f"http://{HOST}:{port}/api/profiles",
+                headers={k: v for k, v in _tray_api_headers().items() if k != "Content-Type"},
+            )
+            data = json.loads(urllib.request.urlopen(req, timeout=4).read().decode("utf-8"))
+            profiles = data if isinstance(data, list) else data.get("profiles") or []
+            profiles = sorted(profiles, key=lambda p: str(p.get("name") or ""))[:15]
+            if not profiles:
+                yield pystray.MenuItem("(no profiles)", None, enabled=False)
+                return
+            for p in profiles:
+                pid = str(p.get("id") or "")
+                if not pid:
+                    continue
+                name = str(p.get("name") or pid[:8])
+                yield pystray.MenuItem(name, _make_launch_action(port, pid))
+        except Exception:
+            yield pystray.MenuItem("(UI unreachable)", None, enabled=False)
+
+    return _items
+
+
 _server_process: subprocess.Popen[str] | None = None
 _quit_requested = False
 
@@ -333,6 +412,7 @@ def start_tray(port: int, window=None) -> None:
     menu = pystray.Menu(
         pystray.MenuItem(f"FoxDesk {APP_VERSION}", on_show, default=True),
         pystray.MenuItem("Open UI", on_open_ui),
+        pystray.MenuItem("Launch Profile", _tray_launch_items(port)),
         pystray.MenuItem("Stop All Sessions", on_stop_sessions),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("Quit", on_quit),

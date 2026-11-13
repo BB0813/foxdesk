@@ -1,6 +1,52 @@
 # Changelog
 
-## Unreleased — fingerprint check UI redesign
+## 1.6.3 — 2026-11-14 — settings language selector + plugin id hardening
+
+- Settings (System) page: explicit Interface-language selector, synced with
+  the sidebar 中/EN toggle (same store, persisted)
+- Plugins: manifest `id` validated against `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`
+  before use — ids become path segments and dict keys, so a crafted manifest
+  with `../` could point plugin_dir outside the plugins root. Invalid ids
+  are skipped with a warning (defense-in-depth; user-dir plugins are local
+  trusted code by design)
+- Security sweep: no other findings (no eval/exec/pickle, list-argv
+  subprocess only, auth surface unchanged, frontend interpolations escaped)
+
+## 1.6.2 — 2026-11-10 — internationalization (issue #9)
+
+- English README (`README.en.md`) and English docs site (`docs/en/`),
+  linked from the Chinese docs
+- UI language now follows the system/browser locale on first launch
+  (Chinese → 中文, otherwise English) instead of always starting Chinese;
+  the 中/EN sidebar toggle persists explicit choices and gained tooltips
+- `locale` field semantics documented (BCP-47, browser-level
+  navigator.language/Intl/Accept-Language; UI language is independent)
+
+## 1.6.1 — 2026-11-01 — launch & UI stability
+
+- Fixed: Camoufox failed to launch on any recent Playwright — the Firefox
+  driver sent `Browser.setDefaultViewport` with an `isMobile` field that
+  Camoufox v135+'s Juggler scheme rejects. Fix passes `no_viewport=True`
+  (Camoufox sizes the window from its own fingerprint); all three launch
+  paths adapted; cookies import on the non-persistent path fixed too
+- Fixed: content below the fold was unscrollable (`html,body height:100%`
+  pinned the document to one viewport) — app-shell scroll model, nav rail
+  permanently pinned; removed a duplicated nested workspace container
+- Fingerprint check result rendered as a log-style mono block (same
+  treatment as session logs — cannot overflow)
+- Control polish: drawn checkboxes, visible input tri-state, custom select
+  chevrons, solid accent primary buttons (dark + light themes)
+- Static assets versioned (`?v=`) so browsers stop serving stale scripts
+- CI: macOS artifact name fixed (was `FoxDesk-macos-.zip`)
+
+## 1.6.0 — 2026-11-01 — multi-platform (linux/macos)
+
+Multi-platform: Linux / macOS portable builds ship with every release
+(experimental); three-platform CI runs tests + serve smoke on each;
+POSIX fixes (token file permissions, XDG data dir, xray lookup); proxy
+pool quality/geo labels + one-click quality check. Detail sections below.
+
+### Detail — fingerprint check UI redesign
 
 The fingerprint check result was a wall of unstyled text. Rewritten:
 
@@ -12,7 +58,7 @@ The fingerprint check result was a wall of unstyled text. Rewritten:
 - **udd_warning**: network-path errors rendered as visible error banners
 - CSS: `.fp-result`, `.fp-risk-item`, `.fp-checks-grid`, `.fp-section-title`
 
-### Fingerprint check UI polish + user_data_dir local migration
+### Detail — fingerprint check UI polish + user_data_dir local migration
 - fp-checks-grid: proper 4-column table with borders and zebra rows
   (was: broken auto-fill grid with misaligned dt/dd pairs)
 - User profiles with UNC-path user_data_dir migrated to local
@@ -23,7 +69,7 @@ The fingerprint check result was a wall of unstyled text. Rewritten:
 Tests: 160 passed, 1 skipped.
 
 
-## Unreleased — network path resilience (NAS/SMB disconnection)
+### Detail — network path resilience (NAS/SMB disconnection)
 
 User-reported: FoxDesk running from a network mapped drive with
 user_data_dir on a NAS UNC path — SMB disconnections crash fingerprint
@@ -42,7 +88,7 @@ checks and session launches with cryptic WinError 53.
 Tests: 160 passed, 1 skipped.
 
 
-## Unreleased — macOS tray crash fix
+### Detail — macOS tray crash fix
 
 Mac user crash log (.ips) analyzed: pystray's NSStatusItem setup ran on a
 daemon thread, violating the AppKit main-thread assertion
@@ -54,8 +100,6 @@ Also: macOS builds now emit a proper FoxDesk.app BUNDLE with
 CFBundleShortVersionString (crash reports previously showed an empty
 version string).
 
-
-## 1.6.0 — 2026-11-01 — multi-platform (linux/macos)
 
 ### Docs mobile adaptation
 - Docs page gains a mobile top bar (brand + hamburger) with a collapsible
