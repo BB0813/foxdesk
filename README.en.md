@@ -2,7 +2,7 @@
 
 Local dual-engine fingerprint browser manager — free, open source, privacy-first.
 
-**Current version: `1.6.2` (Stable)**
+**Current version: `1.6.3` (Stable)**
 
 <p align="center">
   <img src="static/logo.png" width="120" alt="FoxDesk Logo">
