@@ -159,9 +159,13 @@ app.add_middleware(LocalApiTokenMiddleware)
 def _shutdown_cleanup() -> None:
     """Stop every worker/browser on server shutdown so nothing is orphaned."""
     from backend.local_auth import _remove_token_file
-    from backend.wiring import plugin_manager
+    from backend.wiring import plugin_manager, subscription_scheduler
 
     _remove_token_file()
+    try:
+        subscription_scheduler.stop()
+    except Exception:
+        pass
     try:
         plugin_manager.shutdown_all()
     except Exception:
@@ -180,6 +184,7 @@ def _shutdown_cleanup() -> None:
 
 app.router.add_event_handler("shutdown", _shutdown_cleanup)
 app.router.add_event_handler("startup", wiring.proxy_health.start)
+app.router.add_event_handler("startup", wiring.subscription_scheduler.start)
 app.mount("/assets", StaticFiles(directory=STATIC_DIR), name="assets")
 
 # Registration order mirrors the historical app.py ordering per domain and

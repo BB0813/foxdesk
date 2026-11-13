@@ -1,4 +1,4 @@
-"""Proxy pool routes: CRUD, import, assignment, testing, health."""
+"""Proxy pool routes: CRUD, import, subscription refresh, testing, health."""
 from __future__ import annotations
 
 from typing import Any
@@ -16,7 +16,8 @@ from pydantic import BaseModel
 import urllib.request
 
 from backend.proxy_test import _test_proxy_connection
-from backend.wiring import proxy_health
+from backend.subscriptions import SubscriptionError
+from backend.wiring import proxy_health, subscription_store
 
 router = APIRouter()
 
@@ -328,74 +329,130 @@ class SubscriptionRequest(BaseModel):
 
 
 def _validate_public_https(url: str) -> str:
-    """SSRF guard: https only, and every resolved address must be public."""
-    import ipaddress
-    import socket
-    from urllib.parse import urlparse
+    """SSRF guard kept for callers inside this module (delegates)."""
+    from backend.subscriptions import validate_public_https as _guard
 
-    parsed = urlparse(url)
-    if parsed.scheme != "https" or not parsed.hostname:
-        raise HTTPException(status_code=400, detail="subscription URL must be https://")
     try:
-        infos = socket.getaddrinfo(parsed.hostname, parsed.port or 443)
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"cannot resolve host: {exc}") from None
-    for info in infos:
-        addr = info[4][0]
-        ip = ipaddress.ip_address(addr)
-        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
-            raise HTTPException(status_code=400, detail="subscription host resolves to a non-public address")
-    return url
-
-
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
+        return _guard(url)
+    except SubscriptionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
 
 
 @router.post("/api/proxies/import-subscription")
 def import_subscription(request: SubscriptionRequest) -> dict[str, Any]:
     """Fetch a remote subscription (vless:// lines, base64-wrapped, or plain)
     and import the nodes. Every redirect hop is revalidated; cap 2 MB."""
-    import urllib.error
-    import urllib.request
+    from backend.subscriptions import fetch_subscription_text, subscription_lines
 
     url = (request.url or "").strip()
     _validate_public_https(url)
-    opener = urllib.request.build_opener(_NoRedirect)
-    text = ""
-    current = url
-    for _hop in range(4):
-        req = urllib.request.Request(current, headers={"User-Agent": "FoxDesk/subscription"})
-        try:
-            with opener.open(req, timeout=20) as resp:
-                raw = resp.read(2 * 1024 * 1024 + 1)
-        except urllib.error.HTTPError as exc:
-            if exc.code in (301, 302, 303, 307, 308) and exc.headers.get("Location"):
-                from urllib.parse import urljoin
-
-                current = urljoin(current, exc.headers["Location"])
-                _validate_public_https(current)
-                continue
-            raise HTTPException(status_code=400, detail=f"subscription fetch failed: {exc}") from None
-        if len(raw) > 2 * 1024 * 1024:
-            raise HTTPException(status_code=400, detail="subscription too large (>2 MB)")
-        text = raw.decode("utf-8", errors="replace")
-        break
-    if not text.strip():
-        raise HTTPException(status_code=400, detail="empty subscription")
-    stripped = "".join(text.split())
-    if not stripped.lower().startswith(("vless://", "vmess://", "trojan://", "ss://", "http")):
-        try:
-            import base64
-
-            pad = "=" * (-len(stripped) % 4)
-            decoded = base64.b64decode(stripped + pad, validate=False).decode("utf-8", errors="replace")
-            if "://" in decoded:
-                text = decoded
-        except Exception:
-            pass
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    try:
+        text = fetch_subscription_text(url)
+    except SubscriptionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    lines = subscription_lines(text)
     imported = proxy_pool.import_lines(lines)
     activity.log("subscription_import", f"count={len(imported)}")
     return {"ok": True, "fetched_lines": len(lines), "imported": len(imported), "proxies": imported}
+
+
+# ──────────────── subscriptions: stored URLs + auto-refresh ────────────────
+
+
+class SubscriptionAdd(BaseModel):
+    url: str
+    name: str = ""
+    interval_minutes: int = 360
+
+
+class SubscriptionUpdate(BaseModel):
+    name: str | None = None
+    enabled: bool | None = None
+    interval_minutes: int | None = None
+
+
+@router.get("/api/proxies/subscriptions")
+def list_subscriptions() -> dict[str, Any]:
+    from backend.wiring import subscription_scheduler
+
+    return {
+        "subscriptions": subscription_store.list(),
+        "scheduler": subscription_scheduler.status(),
+    }
+
+
+@router.post("/api/proxies/subscriptions")
+def add_subscription(request: SubscriptionAdd) -> dict[str, Any]:
+    from backend.subscriptions import import_for_subscription
+
+    url = (request.url or "").strip()
+    _validate_public_https(url)
+    entry = subscription_store.add(
+        url,
+        name=request.name,
+        interval_minutes=request.interval_minutes,
+    )
+    result = {"ok": True, "subscription": entry}
+    try:
+        imported = import_for_subscription(entry["id"], url)
+        subscription_store.mark_result(entry["id"], imported, None)
+        result["imported"] = imported
+        entry = subscription_store.get(entry["id"]) or entry
+        result["subscription"] = entry
+    except SubscriptionError as exc:
+        subscription_store.mark_result(entry["id"], 0, str(exc))
+        entry = subscription_store.get(entry["id"]) or entry
+        result["subscription"] = entry
+        result["error"] = str(exc)
+        result["ok"] = False
+    activity.log("subscription_add", f"url={url} imported={result.get('imported', 0)}")
+    return result
+
+
+@router.patch("/api/proxies/subscriptions/{sub_id}")
+def update_subscription(sub_id: str, request: SubscriptionUpdate) -> dict[str, Any]:
+    data = {k: v for k, v in request.model_dump().items() if v is not None}
+    entry = subscription_store.update(sub_id, data)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="subscription not found")
+    return {"ok": True, "subscription": entry}
+
+
+@router.delete("/api/proxies/subscriptions/{sub_id}")
+def delete_subscription(sub_id: str, delete_nodes: bool = False) -> dict[str, Any]:
+    from backend.subscriptions import remove_subscription_nodes
+
+    removed = subscription_store.remove(sub_id)
+    if not removed:
+        raise HTTPException(status_code=404, detail="subscription not found")
+    nodes_removed = 0
+    if delete_nodes:
+        nodes_removed = remove_subscription_nodes(sub_id)
+    activity.log("subscription_delete", f"nodes_removed={nodes_removed}")
+    return {"ok": True, "nodes_removed": nodes_removed}
+
+
+@router.post("/api/proxies/subscriptions/{sub_id}/refresh")
+def refresh_subscription(sub_id: str) -> dict[str, Any]:
+    from backend.subscriptions import refresh_subscription as _refresh
+
+    try:
+        result = _refresh(subscription_store, sub_id)
+    except SubscriptionError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None
+    activity.log("subscription_refresh", f"id={sub_id} ok={result.get('ok')}")
+    return result
+
+
+@router.post("/api/proxies/subscriptions/refresh-all")
+def refresh_all_subscriptions() -> dict[str, Any]:
+    from backend.subscriptions import refresh_subscription as _refresh
+
+    results = []
+    for entry in subscription_store.list():
+        try:
+            result = _refresh(subscription_store, str(entry["id"]))
+        except SubscriptionError as exc:
+            result = {"ok": False, "error": str(exc)}
+        results.append({"id": entry["id"], **result})
+    return {"ok": True, "results": results}

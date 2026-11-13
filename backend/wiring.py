@@ -26,6 +26,7 @@ from backend.proxy_test import test_proxy_item_for_health
 from backend.proxy_health import ProxyHealthScheduler
 from backend.plugin_system import PluginManager
 from backend.setup_manager import SetupManager
+from backend.subscriptions import SubscriptionScheduler, SubscriptionStore
 from backend.update_manager import UpdateManager
 
 
@@ -93,3 +94,6 @@ def _plugin_setting(key: str, default: Any = None) -> Any:
 
 plugin_manager = PluginManager(DATA_DIR, ROOT / "plugins", _plugin_setting)
 plugin_manager.scan_and_load()
+
+subscription_store = SubscriptionStore(DATA_DIR / "subscriptions.json")
+subscription_scheduler = SubscriptionScheduler(subscription_store)

@@ -76,6 +76,24 @@ const i18n = {
     probeExport: "导出对比 JSON",
     subscriptionImport: "订阅导入（vless/订阅链接）",
     subscriptionImportBtn: "导入订阅",
+    subscriptions: "代理订阅",
+    subscriptionsDesc: "托管订阅链接：按间隔自动刷新节点（仅替换本订阅导入的节点）",
+    subRefreshAll: "全部刷新",
+    subName: "名称",
+    subUrl: "订阅地址",
+    subInterval: "自动刷新间隔（分钟，0=手动）",
+    subAdd: "添加订阅",
+    subAdded: "已添加订阅",
+    subRefreshed: "已刷新",
+    subDeleted: "已删除订阅",
+    subConfirmDelete: "删除订阅？确定后同时删除该订阅导入的节点",
+    subNoSubs: "暂无订阅",
+    subNoSubsHint: "添加订阅链接后按间隔自动刷新节点",
+    subLastRefresh: "上次刷新",
+    subNodes: "节点",
+    subNever: "未刷新过",
+    subManual: "手动",
+    subEnable: "自动刷新",
     subscriptionDone: "订阅导入完成",
     tabPlugins: "插件",
     pluginsTitle: "插件",
@@ -107,6 +125,8 @@ const i18n = {
     qualityMobile: "移动 IP",
     qualityUnknown: "未知",
     noProcesses: "暂无进程",
+    sessionSearch: "搜索会话…",
+    noMatchingSessions: "无匹配会话",
     justNow: "刚刚",
     minutesAgo: "分钟前",
     hoursAgo: "小时前",
@@ -497,6 +517,24 @@ const i18n = {
     batchQualityBtn: "Check all quality",
     subscriptionImport: "Subscription (vless / share links)",
     subscriptionImportBtn: "Import",
+    subscriptions: "Proxy subscriptions",
+    subscriptionsDesc: "Managed subscription URLs — nodes auto-refresh on an interval (only nodes imported by that subscription are replaced)",
+    subRefreshAll: "Refresh all",
+    subName: "Name",
+    subUrl: "Subscription URL",
+    subInterval: "Auto-refresh interval (minutes, 0 = manual)",
+    subAdd: "Add subscription",
+    subAdded: "Subscription added",
+    subRefreshed: "Refreshed",
+    subDeleted: "Subscription deleted",
+    subConfirmDelete: "Delete this subscription? Its imported nodes will also be removed",
+    subNoSubs: "No subscriptions",
+    subNoSubsHint: "Add a subscription URL to refresh its nodes on an interval",
+    subLastRefresh: "Last refresh",
+    subNodes: "nodes",
+    subNever: "never refreshed",
+    subManual: "manual",
+    subEnable: "Auto refresh",
     subscriptionDone: "Subscription imported",
     tabPlugins: "Plugins",
     pluginsTitle: "Plugins",
@@ -528,6 +566,8 @@ const i18n = {
     qualityMobile: "Mobile IP",
     qualityUnknown: "Unknown",
     noProcesses: "No processes",
+    sessionSearch: "Search sessions…",
+    noMatchingSessions: "No matching sessions",
     justNow: "just now",
     minutesAgo: "min ago",
     hoursAgo: "hr ago",
@@ -859,8 +899,10 @@ const state = {
   tagFilter: null,
   allTags: [],
   proxies: [],
+  subscriptions: [],
   templates: [],
   sessions: [],
+  sessionFilter: "",
   formSnapshot: "",
   formDirty: false,
   firstRunDismissed: localStorage.getItem("cm-first-run-dismissed") === "1",
@@ -2366,6 +2408,7 @@ async function loadSessions() {
   const sessions = await api("/api/sessions");
   state.sessions = sessions;
   updateSessionBadge(sessions);
+  applySessionFilter();
   // Harvest probe reports for the cross-engine compare view (keep last 24).
   for (const item of sessions || []) {
     if (!item.fingerprint_report) continue;
@@ -2391,6 +2434,33 @@ async function loadSessions() {
   if ($("#profileList")) {
     renderProfiles();
   }
+}
+
+// Filter the session list locally (label / pid / engine / mode / tags).
+function applySessionFilter() {
+  const sessions = state.sessions || [];
+  const q = (state.sessionFilter || "").trim().toLowerCase();
+  const visible = q
+    ? sessions.filter((s) =>
+        [
+          s.label,
+          s.id,
+          s.pid != null ? String(s.pid) : "",
+          s.engine,
+          s.mode,
+          (s.tags || []).join(" "),
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(q)
+      )
+    : sessions;
+  const list = $("#sessionList");
+  if (q && !visible.length) {
+    list.innerHTML = `<div class="empty"><strong>${t("noMatchingSessions")}</strong><span class="empty-hint">${escapeHtml(q)}</span></div>`;
+    return;
+  }
+  renderProcesses("#sessionList", visible, t("stop"), true);
 }
 
 async function loadTasks() {
@@ -2656,6 +2726,61 @@ async function loadProxies() {
   fillProxySelect($("#proxyPoolSelect")?.value || "");
   renderProxyPool();
   loadProxyHealthStatus().catch(() => {});
+  loadSubscriptions().catch(() => {});
+}
+
+// ── Managed subscriptions (auto-refresh) ──
+async function loadSubscriptions() {
+  try {
+    const data = await api("/api/proxies/subscriptions");
+    state.subscriptions = data.subscriptions || [];
+  } catch (_) {
+    state.subscriptions = [];
+  }
+  renderSubscriptions();
+}
+
+function renderSubscriptions() {
+  const list = $("#subscriptionList");
+  if (!list) return;
+  const subs = state.subscriptions || [];
+  if (!subs.length) {
+    list.innerHTML = `<div class="empty"><strong>${t("subNoSubs")}</strong><span class="empty-hint">${t("subNoSubsHint")}</span></div>`;
+    return;
+  }
+  list.innerHTML = subs
+    .map((s) => {
+      const statusTag =
+        s.last_status === "ok"
+          ? `<span class="tag running"><i data-lucide="check"></i>${t("subLastRefresh")} ${escapeHtml(String(s.last_count || 0))} ${t("subNodes")}</span>`
+          : s.last_status === "error"
+            ? `<span class="tag failed"><i data-lucide="alert-triangle"></i>${escapeHtml(s.last_error || "error")}</span>`
+            : `<span class="tag">${t("subNever")}</span>`;
+      const intervalStr = (s.interval_minutes || 0) > 0 ? `${s.interval_minutes}m` : t("subManual");
+      return `
+        <article class="plugin-row" data-sub-id="${escapeAttr(s.id)}">
+          <div class="row-main">
+            <div style="min-width:0">
+              <div class="row-title">${escapeHtml(s.name || s.url)}</div>
+              <div class="row-meta" title="${escapeAttr(s.url)}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(s.url)}</div>
+              <div class="tagline" style="padding:6px 0 0">
+                <span class="tag p0"><i data-lucide="clock"></i>${escapeHtml(intervalStr)}</span>
+                ${statusTag}
+              </div>
+            </div>
+            <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
+              <label style="display:flex;align-items:center;gap:6px;margin:0;font-size:12px;color:var(--muted)">
+                <input type="checkbox" class="sub-toggle" ${s.enabled ? "checked" : ""} />
+                <span>${t("subEnable")}</span>
+              </label>
+              <button class="button secondary sub-refresh" type="button" style="min-height:28px;font-size:12px">${t("refresh")}</button>
+              <button class="button danger sub-delete" type="button" style="min-height:28px;font-size:12px">${t("delete")}</button>
+            </div>
+          </div>
+        </article>`;
+    })
+    .join("");
+  renderIcons();
 }
 
 function renderProxyPool() {
@@ -2785,6 +2910,96 @@ function renderProxyPool() {
       toast(err.message);
     } finally {
       btn.disabled = false;
+    }
+  });
+  // Managed subscriptions (auto-refresh)
+  $("#subAddBtn")?.addEventListener("click", async () => {
+    const url = $("#subUrlInput")?.value?.trim() || "";
+    if (!url) return toast(t("mirrorUrlRequired"));
+    const btn = $("#subAddBtn");
+    btn.disabled = true;
+    try {
+      const result = await api("/api/proxies/subscriptions", {
+        method: "POST",
+        body: JSON.stringify({
+          url,
+          name: $("#subNameInput")?.value?.trim() || "",
+          interval_minutes: Number($("#subIntervalInput")?.value || 360),
+        }),
+      });
+      const sub = result.subscription || {};
+      if (result.ok) {
+        toast(`${t("subAdded")}: ${result.imported ?? 0} ${t("subNodes")}`);
+      } else {
+        toast(`${t("proxyFailed")}: ${result.error || ""}`);
+      }
+      $("#subUrlInput").value = "";
+      $("#subNameInput").value = "";
+      await loadProxies();
+      const hint = $("#subscriptionHint");
+      if (hint && sub.last_error) hint.textContent = sub.last_error;
+      else if (hint) hint.textContent = "";
+    } catch (err) {
+      toast(err.message);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+  $("#subRefreshAllBtn")?.addEventListener("click", async () => {
+    const btn = $("#subRefreshAllBtn");
+    btn.disabled = true;
+    try {
+      await api("/api/proxies/subscriptions/refresh-all", { method: "POST", body: "{}" });
+      await loadProxies();
+      toast(t("subRefreshed"));
+    } catch (err) {
+      toast(err.message);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+  $("#subscriptionList")?.addEventListener("click", async (e) => {
+    const row = e.target.closest?.("[data-sub-id]");
+    if (!row) return;
+    const subId = row.dataset.subId;
+    if (e.target.closest(".sub-refresh")) {
+      try {
+        const result = await api(`/api/proxies/subscriptions/${encodeURIComponent(subId)}/refresh`, {
+          method: "POST",
+          body: "{}",
+        });
+        if (!result.ok) toast(`${t("proxyFailed")}: ${result.error || ""}`);
+        else toast(`${t("subRefreshed")}: ${result.imported ?? 0} ${t("subNodes")}`);
+        await loadProxies();
+      } catch (err) {
+        toast(err.message);
+      }
+    } else if (e.target.closest(".sub-delete")) {
+      const removeNodes = confirm(t("subConfirmDelete"));
+      try {
+        await api(`/api/proxies/subscriptions/${encodeURIComponent(subId)}?delete_nodes=${removeNodes}`, {
+          method: "DELETE",
+        });
+        await loadProxies();
+        toast(t("subDeleted"));
+      } catch (err) {
+        toast(err.message);
+      }
+    }
+  });
+  $("#subscriptionList")?.addEventListener("change", async (e) => {
+    const toggle = e.target.closest?.(".sub-toggle");
+    if (!toggle) return;
+    const row = toggle.closest("[data-sub-id]");
+    if (!row) return;
+    try {
+      await api(`/api/proxies/subscriptions/${encodeURIComponent(row.dataset.subId)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ enabled: toggle.checked }),
+      });
+    } catch (err) {
+      toast(err.message);
+      toggle.checked = !toggle.checked;
     }
   });
   $$(".proxy-quality").forEach((btn) => {
@@ -3869,6 +4084,14 @@ function switchPage(page) {
 function bindEvents() {
   $("#refreshBtn").addEventListener("click", refreshAll);
   $("#refreshSessionsBtn").addEventListener("click", loadSessions);
+  const sessionSearch = $("#sessionSearchInput");
+  if (sessionSearch) {
+    sessionSearch.value = state.sessionFilter || "";
+    sessionSearch.addEventListener("input", () => {
+      state.sessionFilter = sessionSearch.value;
+      applySessionFilter();
+    });
+  }
   $("#newProfileBtn").addEventListener("click", () => loadProfile(null));
   document.addEventListener("change", (e) => {
     const select = e.target.closest?.(".probe-compare-select");
